@@ -5,7 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2025-01-10
+## [0.2.0] - 2026-01-10
+
+### Added
+
+- **Configurable Embedding Models**: Choose from multiple OpenAI embedding models:
+  - `text-embedding-3-small` - Fast and affordable (default, $0.02/M tokens)
+  - `text-embedding-3-large` - High accuracy for complex searches ($0.13/M tokens)
+  - `text-embedding-ada-002` - Legacy compatibility ($0.10/M tokens)
+
+- **Model Selection Options**:
+  - CLI flag: `ogrep index . -m large`
+  - Environment variable: `export OGREP_MODEL=large`
+  - Model aliases: `small`, `large`, `ada`
+
+- **New `ogrep models` Command**: View available embedding models with pricing and use cases
+
+- **Short CLI Flags**:
+  - `-m` for `--model`
+  - `-d` for `--dimensions`
+  - `-n` for `--top` (query results)
+  - `-f` for `--force`
+
+### Changed
+
+- Restructured CLI into modular `ogrep/commands/` package
+- Added comprehensive docstrings to all public modules
+- Public Python API exports for library usage
+
+### Technical
+
+- 27 tests passing (up from 25)
+- CLI complexity reduced from 38 to 11
+
+## [0.1.0] - 2026-01-10
 
 ### Added
 
