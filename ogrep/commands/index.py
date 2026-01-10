@@ -59,7 +59,6 @@ def cmd_index(args: argparse.Namespace) -> int:
     if stats.chunks_total > 0:
         print(f"  Chunks: {stats.chunks_total} total", end="")
         if stats.chunks_reused > 0:
-            pct = stats.chunks_reused * 100 // stats.chunks_total
             print(f" ({stats.chunks_reused} reused, ~{stats.tokens_saved_estimate} tokens saved)")
         else:
             print(f" ({stats.chunks_embedded} embedded)")

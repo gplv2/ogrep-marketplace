@@ -10,14 +10,11 @@ from __future__ import annotations
 import argparse
 import random
 import re
-import shutil
 import tempfile
 from pathlib import Path
 
-from ..db import connect
 from ..indexer import index_path, iter_files
 from ..search import query as search_query
-
 
 # Patterns to identify significant code lines
 SIGNIFICANT_PATTERNS = [
@@ -157,7 +154,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
         return 1
 
     print(f"Found {len(samples)} test patterns:")
-    for file_path, line_num, original, query in samples[:5]:
+    for file_path, line_num, _original, query in samples[:5]:
         rel_path = file_path.relative_to(root) if file_path.is_relative_to(root) else file_path
         print(f"  {rel_path}:{line_num} -> \"{query[:50]}...\"")
     if len(samples) > 5:
@@ -199,7 +196,6 @@ def cmd_tune(args: argparse.Namespace) -> int:
     best_accuracy = 0.0
 
     for chunk_size, accuracy, hits in results:
-        marker = ""
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_chunk = chunk_size
@@ -207,7 +203,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
     print("-" * 30)
     print(f"\nRecommended chunk size: {best_chunk} lines")
-    print(f"\nTo use this setting:")
+    print("\nTo use this setting:")
     print(f"  ogrep index . --chunk-lines {best_chunk}")
 
     # Offer to reindex with optimal settings
