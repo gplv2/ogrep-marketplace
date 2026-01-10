@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-10
+
+### Added
+
+- **Smart Embedding Reuse**: Save ~80% on API tokens when re-indexing! When files change, ogrep now reuses embeddings for unchanged chunks instead of re-embedding everything.
+  ```
+  Files: 3 indexed, 42 skipped
+  Chunks: 12 total (9 reused, ~900 tokens saved)
+  ```
+
+- **Auto-Tuning**: New `ogrep tune` command finds the optimal chunk size for your codebase:
+  - Tests chunk sizes 30, 45, 60, 90, 120 lines
+  - Samples real function/class definitions as test patterns
+  - Reports accuracy scores and recommends best setting
+  - `ogrep tune . --apply` to auto-reindex with optimal settings
+
+- **Smart Source-Only Defaults**: ogrep now focuses on source code by default:
+  - Excludes: docs (`*.md`), config (`*.json`, `*.yaml`), build outputs, lock files
+  - Excludes secrets: `.env`, `credentials.*`, `secrets.*`
+  - Skips: `.git/`, `node_modules/`, `.venv/`, `__pycache__/`
+
+- **File Filtering Flags**:
+  - `-e/--exclude PATTERN`: Add patterns to exclude (e.g., `-e 'test_*'`)
+  - `-i/--include PATTERN`: Override default excludes (e.g., `-i '*.md'` to index markdown)
+
+- **Indexing Statistics**: See what happened during indexing:
+  - Files indexed vs skipped
+  - Chunks embedded vs reused
+  - Estimated tokens saved
+
+### Fixed
+
+- **Model Mismatch Error**: Clear error message when querying with wrong model:
+  ```
+  Dimension mismatch: query uses 3072D (large) but index was built with 1536D (small).
+  Use -m small or reindex with -m large.
+  ```
+
+### Technical
+
+- 40 tests passing (up from 27)
+- 13 new tests for embedding reuse feature
+- Optimal default chunk size: 60 lines (tested for best relevance)
+
 ## [0.2.0] - 2026-01-10
 
 ### Added
