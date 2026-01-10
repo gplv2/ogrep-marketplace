@@ -7,6 +7,8 @@ This file provides guidance for Claude Code when working in this repository.
 **ogrep** is a local semantic grep tool with:
 - SQLite-based local index (no external vector DB)
 - OpenAI embeddings for semantic search (configurable model)
+- Smart defaults for source-only indexing
+- Auto-tuning for optimal chunk size
 - Claude Code plugin/skill integration
 - Multi-repo scope fencing
 
@@ -22,16 +24,17 @@ ogrep-marketplace/
 │   ├── commands/             # CLI command implementations
 │   │   ├── __init__.py
 │   │   ├── _common.py        # Shared utilities (scope resolution)
-│   │   ├── index.py
-│   │   ├── query.py
-│   │   ├── reset.py
-│   │   ├── reindex.py
-│   │   ├── clean.py
-│   │   ├── status.py
-│   │   └── models.py
+│   │   ├── index.py          # Index command
+│   │   ├── query.py          # Query command
+│   │   ├── reset.py          # Reset command
+│   │   ├── reindex.py        # Reindex command
+│   │   ├── clean.py          # Clean command
+│   │   ├── status.py         # Status command
+│   │   ├── models.py         # Models command
+│   │   └── tune.py           # Tune command (auto-tuning)
 │   ├── models.py             # Embedding model definitions
 │   ├── db.py                 # SQLite schema/connection
-│   ├── indexer.py            # File indexing logic
+│   ├── indexer.py            # File indexing logic + DEFAULT_EXCLUDES
 │   ├── search.py             # Query/search logic
 │   ├── embed.py              # OpenAI embeddings
 │   ├── chunking.py           # Text chunking
@@ -50,17 +53,106 @@ ogrep-marketplace/
 └── activate.sh               # Venv activation helper
 ```
 
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `ogrep index .` | Index a directory (source files only) |
+| `ogrep query "text" -n 10` | Semantic search |
+| `ogrep status` | Show index stats |
+| `ogrep reset -f` | Delete index |
+| `ogrep reindex .` | Rebuild index |
+| `ogrep clean --vacuum` | Remove stale entries |
+| `ogrep models` | List available models |
+| `ogrep tune .` | Auto-tune chunk size |
+
+## Smart Defaults
+
+### Source-Only Indexing
+
+Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
+
+| Category | Patterns |
+|----------|----------|
+| **Binary** | `*.pyc`, `*.so`, `*.dll`, `*.exe`, `*.whl` |
+| **Secrets** | `.env`, `.env.*`, `secrets.*`, `credentials.*` |
+| **Docs** | `*.md`, `*.txt`, `*.rst`, `docs/*` |
+| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini` |
+| **Build** | `dist/*`, `build/*`, `vendor/*`, `target/*` |
+| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock` |
+
+**Skipped directories** (in `DEFAULT_SKIP_DIRS`):
+- `.git`, `.venv`, `node_modules`, `__pycache__`, `.ogrep`
+
+### Chunk Size Optimization
+
+Default: **60 lines** with 10-line overlap.
+
+Tested results:
+
+| Chunk Size | Accuracy | Notes |
+|------------|----------|-------|
+| 30 lines | 0.64 | Too granular |
+| 45 lines | 0.88 | Good |
+| **60 lines** | **0.92** | **Best (default)** |
+| 90 lines | 0.92 | Equivalent |
+| 120 lines | 0.92 | Larger context |
+
+## File Filtering Flags
+
+| Flag | Description |
+|------|-------------|
+| `-e`, `--exclude PATTERN` | Add patterns to exclude |
+| `-i`, `--include PATTERN` | Override default excludes |
+
+Examples:
+```bash
+ogrep index . -e 'test_*'      # Exclude test files
+ogrep index . -i '*.md'        # Include markdown (normally excluded)
+```
+
+## Auto-Tuning
+
+The `tune` command tests different chunk sizes:
+
+```bash
+ogrep tune .           # Test and recommend
+ogrep tune . --apply   # Test and reindex with optimal settings
+ogrep tune . -s 10     # Use 10 test samples
+```
+
+**How it works:**
+1. Scans for significant patterns (function/class definitions)
+2. Creates semantic queries ("where is function X defined")
+3. Tests chunk sizes: 30, 45, 60, 90, 120
+4. Measures if correct file+line appears in top 5 results
+5. Reports accuracy and recommends optimal chunk size
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | Required. OpenAI API key | - |
+| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OGREP_DIMENSIONS` | Default dimensions | Model default |
+| `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
+
+## Embedding Models
+
+| Model | Alias | Dimensions | Use Case |
+|-------|-------|------------|----------|
+| text-embedding-3-small | `small` | 1536 | Default, cost-effective |
+| text-embedding-3-large | `large` | 3072 | High accuracy |
+| text-embedding-ada-002 | `ada` | 1536 | Legacy |
+
+**Important:** Query model must match index model.
+
 ## Development Workflow
 
 ### Setup
 
 ```bash
-# Activate virtual environment
 source .venv/bin/activate
-# Or use the helper
-source activate.sh
-
-# Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 ```
 
@@ -80,56 +172,60 @@ make check       # All checks
 | `ogrep/cli.py` | CLI argument parsing and dispatch |
 | `ogrep/commands/` | Individual command implementations |
 | `ogrep/models.py` | Embedding model definitions and resolution |
-| `ogrep/indexer.py` | File walking and indexing logic |
+| `ogrep/indexer.py` | File walking, filtering, indexing logic |
 | `ogrep/search.py` | Query execution and scoring |
 | `ogrep/db.py` | SQLite schema and connection |
 | `tests/conftest.py` | Pytest fixtures with OpenAI mock |
 
-## CLI Commands
+## Common Tasks
 
-| Command | Description |
-|---------|-------------|
-| `ogrep index .` | Index a directory |
-| `ogrep query "text" -n 10` | Semantic search |
-| `ogrep status` | Show index stats |
-| `ogrep reset -f` | Delete index |
-| `ogrep reindex .` | Rebuild index |
-| `ogrep clean --vacuum` | Remove stale entries |
-| `ogrep models` | List available models |
+### Adding a new CLI command
 
-## Environment Variables
+1. Create `ogrep/commands/<name>.py` with `cmd_<name>` function
+2. Export from `ogrep/commands/__init__.py`
+3. Add parser in `cli.py` `_build_parser()` function
+4. Add tests in `tests/test_cli.py`
+5. Add command file in `plugins/ogrep/commands/<name>.md`
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | Required. OpenAI API key | - |
-| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
-| `OGREP_DIMENSIONS` | Default dimensions | Model default |
-| `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
+### Modifying default excludes
 
-## Embedding Models
+1. Edit `DEFAULT_EXCLUDES` tuple in `ogrep/indexer.py`
+2. Run tests to ensure nothing breaks
+3. Update documentation
 
-Configured via `-m` flag or `OGREP_MODEL` environment variable:
+### Adding a new embedding model
 
-| Model | Alias | Dimensions | Use Case |
-|-------|-------|------------|----------|
-| text-embedding-3-small | `small` | 1536 | Default, cost-effective |
-| text-embedding-3-large | `large` | 3072 | High accuracy, multi-language |
-| text-embedding-ada-002 | `ada` | 1536 | Legacy compatibility |
+1. Add entry to `MODELS` dict in `models.py`
+2. Optionally add alias to `MODEL_ALIASES`
+3. Update documentation
 
-## Scope Fencing
+### Adding a new skill
 
-The tool prevents cross-repo pollution with these strategies:
+1. Create `plugins/ogrep/skills/<name>/SKILL.md`
+2. Define frontmatter with `name`, `description`, `allowed-tools`
+3. Document skill behavior in markdown body
 
-1. **Default**: `.ogrep/index.sqlite` in repo root
-2. **Profile**: `.ogrep/<profile>/index.sqlite`
-3. **Global cache**: `~/.cache/ogrep/<hash>/index.sqlite`
-4. **Explicit**: `--db /path/to/db.sqlite`
+## Debugging Tips
 
-## Testing Notes
+```bash
+# Check index status
+ogrep status
 
-- Tests use a mock OpenAI client by default (see `conftest.py`)
-- Real API tests are marked with `@pytest.mark.integration`
-- Run integration tests with: `OGREP_INTEGRATION_TESTS=1 pytest -m integration`
+# Reset and reindex
+ogrep reindex .
+
+# View database directly
+sqlite3 .ogrep/index.sqlite
+
+# Check for stale files
+ogrep clean --vacuum
+
+# List models
+ogrep models
+
+# Test chunk sizes
+ogrep tune . -s 5
+```
 
 ## Plugin Structure
 
@@ -149,38 +245,17 @@ plugins/ogrep/
     └── SKILL.md
 ```
 
-## Common Tasks
+## Scope Fencing
 
-### Adding a new CLI command
+Prevents cross-repo pollution:
 
-1. Create `ogrep/commands/<name>.py` with `cmd_<name>` function
-2. Export from `ogrep/commands/__init__.py`
-3. Add parser in `cli.py` `_build_parser()` function
-4. Add tests in `tests/test_cli.py`
-5. Add command file in `plugins/ogrep/commands/<name>.md`
+1. **Default**: `.ogrep/index.sqlite` in repo root
+2. **Profile**: `.ogrep/<profile>/index.sqlite`
+3. **Global cache**: `~/.cache/ogrep/<hash>/index.sqlite`
+4. **Explicit**: `--db /path/to/db.sqlite`
 
-### Modifying the database schema
+## Testing Notes
 
-1. Update `SCHEMA` in `db.py`
-2. Consider migration strategy (usually reset + reindex)
-3. Update tests in `tests/test_db.py`
-
-### Adding a new embedding model
-
-1. Add entry to `MODELS` dict in `models.py`
-2. Optionally add alias to `MODEL_ALIASES`
-3. Update documentation
-
-### Adding a new skill
-
-1. Create `plugins/ogrep/skills/<name>/SKILL.md`
-2. Define frontmatter with `name`, `description`, `allowed-tools`
-3. Document skill behavior in markdown body
-
-## Debugging Tips
-
-1. Check index status: `ogrep status`
-2. Reset and reindex: `ogrep reindex .`
-3. View database directly: `sqlite3 .ogrep/index.sqlite`
-4. Check for stale files: `ogrep clean --vacuum`
-5. List models: `ogrep models`
+- Tests use a mock OpenAI client by default (see `conftest.py`)
+- Real API tests are marked with `@pytest.mark.integration`
+- Run integration tests with: `OGREP_INTEGRATION_TESTS=1 pytest -m integration`
