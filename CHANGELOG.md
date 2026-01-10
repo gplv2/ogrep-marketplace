@@ -22,11 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
 - **Supported Local Models**:
-  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - Starting default: 90-line chunks
-  - `bge-base-en-v1.5` (alias: `bge`) - Starting default: 30-line chunks
+  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - 768D, 90-line chunks
+  - `bge-base-en-v1.5` (alias: `bge`) - 768D, 30-line chunks
+  - `all-MiniLM-L6-v2` (alias: `minilm`) - 384D, 30-line chunks, **96% accuracy** (best tested)
 
 - **Model-Specific Chunk Size Defaults**: The CLI provides sensible starting defaults per model:
-  - `nomic`: 90 lines
+  - `minilm`: 30 lines (smallest model, highest accuracy)
+  - `nomic`: 90 lines (best for larger context)
   - `bge`: 30 lines
   - OpenAI models: 60 lines
 
