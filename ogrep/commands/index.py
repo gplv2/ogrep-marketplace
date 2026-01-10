@@ -11,6 +11,7 @@ import argparse
 from pathlib import Path
 
 from ..indexer import index_path
+from ..models import get_optimal_chunk_lines
 from ._common import resolve_db_path
 
 
@@ -28,7 +29,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             - db, profile, global_cache, repo_root: Scope options
             - model: OpenAI embedding model name
             - dimensions: Embedding dimensions (model-specific)
-            - chunk_lines: Lines per chunk
+            - chunk_lines: Lines per chunk (None = model-specific default)
             - overlap: Overlapping lines between chunks
             - max_bytes: Maximum file size to index
             - exclude: Additional glob patterns to exclude
@@ -41,12 +42,17 @@ def cmd_index(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve() if args.repo_root else root
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
+    # Use model-specific optimal chunk size if not explicitly specified
+    chunk_lines = args.chunk_lines
+    if chunk_lines is None:
+        chunk_lines = get_optimal_chunk_lines(args.model)
+
     stats = index_path(
         root=root,
         db_path=db,
         model=args.model,
         dimensions=args.dimensions,
-        chunk_lines=args.chunk_lines,
+        chunk_lines=chunk_lines,
         overlap=args.overlap,
         max_bytes=args.max_bytes,
         exclude=args.exclude,

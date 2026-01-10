@@ -334,25 +334,34 @@ lms --version
 
 ### Setup
 
-1. **Load an embedding model:**
+1. **Download an embedding model:**
    ```bash
-   # List available embedding models
-   lms ls --embedding
+   # Download nomic (recommended - good balance of speed and quality)
+   lms get nomic-embed-text-v1.5 -y
 
-   # Load nomic (recommended)
-   lms load nomic-ai/nomic-embed-text-v1.5 -y
+   # Or download BGE (higher quality quantization)
+   lms get bge-base-en-v1.5 -y
+
+   # List downloaded models
+   lms ls
+   ```
+
+2. **Load the model into memory:**
+   ```bash
+   # Load nomic
+   lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
 
    # Or load BGE
-   lms load BAAI/bge-base-en-v1.5 -y
+   lms load bge-base-en-v1.5 -y
    ```
 
-2. **Start the headless server:**
+3. **Start the server:**
    ```bash
    lms server start --port 1234
-   lms server status  # Verify running
+   lms server status  # Verify: "Server: ON (port: 1234)"
    ```
 
-3. **Configure ogrep:**
+4. **Configure ogrep:**
    ```bash
    export OGREP_BASE_URL=http://localhost:1234/v1
    ```
@@ -378,6 +387,25 @@ OGREP_BASE_URL=http://localhost:1234/v1
 OGREP_MODEL=nomic-embed-text-v1.5
 ```
 
+### Chunk Size Tuning
+
+**Critical:** Different models require different chunk sizes for optimal results.
+
+| Model | Optimal Chunk Size | Notes |
+|-------|-------------------|-------|
+| nomic-embed-text-v1.5 | 90 lines | Better with larger context |
+| bge-base-en-v1.5 | 30 lines | Fails completely at 90+ lines |
+
+Always tune when using a new model:
+
+```bash
+# Find optimal chunk size for your model and codebase
+ogrep tune . -m nomic -s 10
+
+# Apply the recommended setting
+ogrep reindex . -m nomic --chunk-lines 90
+```
+
 ### Dimension Mismatch
 
 OpenAI models use 1536D or 3072D, local models use 768D. You cannot mix models:
@@ -390,6 +418,11 @@ Use -m small or reindex with -m nomic.
 ### Auto-Start Server on Boot
 
 Configure LM Studio settings to start the server on login without GUI.
+
+### Detailed Tuning Guide
+
+For comprehensive benchmarks, model comparisons, and troubleshooting, see:
+[docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md)
 
 ## Development Workflow
 

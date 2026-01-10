@@ -89,8 +89,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.add_argument(
         "--chunk-lines",
         type=int,
-        default=60,
-        help="Lines per chunk (default: 60)",
+        default=None,
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
     )
     p_index.add_argument(
         "--overlap",
@@ -175,8 +175,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reindex.add_argument(
         "--chunk-lines",
         type=int,
-        default=60,
-        help="Lines per chunk (default: 60)",
+        default=None,
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
     )
     p_reindex.add_argument(
         "--overlap",
