@@ -1,6 +1,6 @@
 {
   "name": "ogrep",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Semantic grep Skill + commands (uses local ogrep CLI)",
   "skills": "./skills/",
   "commands": ["./commands/"]
