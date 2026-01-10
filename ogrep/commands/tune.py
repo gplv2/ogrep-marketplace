@@ -156,7 +156,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
     print(f"Found {len(samples)} test patterns:")
     for file_path, line_num, _original, query in samples[:5]:
         rel_path = file_path.relative_to(root) if file_path.is_relative_to(root) else file_path
-        print(f"  {rel_path}:{line_num} -> \"{query[:50]}...\"")
+        print(f'  {rel_path}:{line_num} -> "{query[:50]}..."')
     if len(samples) > 5:
         print(f"  ... and {len(samples) - 5} more")
     print()

@@ -97,9 +97,7 @@ def query(
     con = connect(db_path)
 
     # Check index model/dimensions before querying
-    index_info = con.execute(
-        "SELECT model, dim FROM chunks LIMIT 1"
-    ).fetchone()
+    index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
     if index_info is None:
         return []  # Empty index
 

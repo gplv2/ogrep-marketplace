@@ -100,11 +100,14 @@ def second_function():
 
     # Append new function
     time.sleep(0.01)
-    appended_content = initial_content + """
+    appended_content = (
+        initial_content
+        + """
 def third_function():
     '''Third function added later.'''
     return 3
 """
+    )
     (temp_dir / "functions.py").write_text(appended_content)
 
     # Re-index
@@ -163,10 +166,7 @@ def test_embedding_preserved_in_db(temp_dir: Path) -> None:
 
     # Get original embeddings
     con = sqlite3.connect(str(db_path))
-    original = {
-        row[0]: row[1]
-        for row in con.execute("SELECT text_sha256, embedding FROM chunks")
-    }
+    original = {row[0]: row[1] for row in con.execute("SELECT text_sha256, embedding FROM chunks")}
     con.close()
 
     # Modify only chunk 2
@@ -180,8 +180,7 @@ def test_embedding_preserved_in_db(temp_dir: Path) -> None:
     # Get new embeddings
     con = sqlite3.connect(str(db_path))
     new_embeddings = {
-        row[0]: row[1]
-        for row in con.execute("SELECT text_sha256, embedding FROM chunks")
+        row[0]: row[1] for row in con.execute("SELECT text_sha256, embedding FROM chunks")
     }
     con.close()
 
@@ -251,9 +250,7 @@ def test_exclude_pattern_counted_correctly(temp_dir: Path) -> None:
     (temp_dir / "keep.py").write_text("# keep")
     (temp_dir / "skip_this.py").write_text("# skip")
 
-    stats = index_path(
-        root=temp_dir, db_path=db_path, exclude=["skip_*.py"]
-    )
+    stats = index_path(root=temp_dir, db_path=db_path, exclude=["skip_*.py"])
 
     assert stats.files_indexed == 1  # Only keep.py
 

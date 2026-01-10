@@ -438,7 +438,9 @@ def index_path(
             chunk_hashes.append(tsha)
 
             if tsha in existing_embeddings:
-                reusable_indices.append((i, existing_embeddings[tsha][0], existing_embeddings[tsha][1]))
+                reusable_indices.append(
+                    (i, existing_embeddings[tsha][0], existing_embeddings[tsha][1])
+                )
                 stats.chunks_reused += 1
             else:
                 chunks_to_embed.append((i, normalized_text))
