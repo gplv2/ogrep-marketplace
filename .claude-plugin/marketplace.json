@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "ogrep",
-      "source": "plugins/ogrep",
+      "source": "./plugins/ogrep",
       "description": "Semantic grep skill and commands using local SQLite index + OpenAI embeddings"
     }
   ]
