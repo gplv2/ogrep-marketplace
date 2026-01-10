@@ -13,25 +13,24 @@ This file provides guidance for Claude Code when working in this repository.
 ## Directory Structure
 
 ```
-ogrep/
-├── .claude-plugin/           # Marketplace config (repo root)
+ogrep-marketplace/
+├── .claude-plugin/           # Marketplace config
 │   └── marketplace.json
-├── ogrep-marketplace/        # Python package
-│   ├── ogrep/                # Main source code
-│   │   ├── cli.py            # CLI commands
-│   │   ├── db.py             # SQLite schema/connection
-│   │   ├── indexer.py        # File indexing logic
-│   │   ├── search.py         # Query/search logic
-│   │   ├── embed.py          # OpenAI embeddings
-│   │   ├── chunking.py       # Text chunking
-│   │   └── mcp/              # MCP server (optional)
-│   ├── plugins/ogrep/        # Claude Code plugin
-│   │   ├── .claude-plugin/
-│   │   │   └── plugin.json
-│   │   ├── commands/         # Slash commands
-│   │   └── skills/           # Skills
-│   ├── tests/                # Test suite
-│   └── pyproject.toml        # Package config
+├── ogrep/                    # Python package
+│   ├── cli.py                # CLI commands
+│   ├── db.py                 # SQLite schema/connection
+│   ├── indexer.py            # File indexing logic
+│   ├── search.py             # Query/search logic
+│   ├── embed.py              # OpenAI embeddings
+│   ├── chunking.py           # Text chunking
+│   └── mcp/                  # MCP server (optional)
+├── plugins/ogrep/            # Claude Code plugin
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── commands/             # Slash commands
+│   └── skills/               # Skills
+├── tests/                    # Test suite
+├── pyproject.toml            # Package config
 ├── .env.example              # Environment template
 ├── .pre-commit-config.yaml   # Pre-commit hooks
 ├── .yamllint.yaml            # YAML linting config
@@ -50,7 +49,7 @@ source .venv/bin/activate
 source activate.sh
 
 # Install in editable mode with dev dependencies
-pip install -e "./ogrep-marketplace[dev]"
+pip install -e ".[dev]"
 ```
 
 ### Testing
@@ -98,7 +97,7 @@ The tool prevents cross-repo pollution with these strategies:
 
 ## Plugin Structure
 
-The Claude Code plugin is at `ogrep-marketplace/plugins/ogrep/`:
+The Claude Code plugin is at `plugins/ogrep/`:
 
 ```
 plugins/ogrep/

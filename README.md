@@ -89,7 +89,7 @@ make check   # All checks
 
 ## Documentation
 
-- [QUICKSTART.md](ogrep-marketplace/QUICKSTART.md) - Quick start guide
+- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
 - [CLAUDE.md](CLAUDE.md) - Developer guide for Claude Code
 
 ## License

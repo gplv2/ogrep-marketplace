@@ -27,7 +27,7 @@ source .venv/bin/activate
 # Install in editable mode if not already installed
 if ! command -v ogrep &> /dev/null; then
     echo "Installing ogrep in editable mode..."
-    pip install -e "./ogrep-marketplace[dev]" > /dev/null
+    pip install -e ".[dev]" > /dev/null
 fi
 
 echo "ogrep development environment activated"

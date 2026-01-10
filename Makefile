@@ -31,10 +31,10 @@ help:
 # =============================================================================
 
 install:
-	pip install -e ./ogrep-marketplace
+	pip install -e .
 
 install-dev:
-	pip install -e "./ogrep-marketplace[dev]"
+	pip install -e ".[dev]"
 
 hooks:
 	pre-commit install
@@ -44,21 +44,21 @@ hooks:
 # =============================================================================
 
 test:
-	cd ogrep-marketplace && pytest
+	pytest
 
 test-cov:
-	cd ogrep-marketplace && pytest --cov=ogrep --cov-report=term-missing
+	pytest --cov=ogrep --cov-report=term-missing
 
 lint:
-	ruff check ogrep-marketplace/ogrep ogrep-marketplace/tests
+	ruff check ogrep tests
 	yamllint -c .yamllint.yaml .
 
 fmt:
-	ruff format ogrep-marketplace/ogrep ogrep-marketplace/tests
-	ruff check --fix ogrep-marketplace/ogrep ogrep-marketplace/tests
+	ruff format ogrep tests
+	ruff check --fix ogrep tests
 
 typecheck:
-	cd ogrep-marketplace && mypy ogrep
+	mypy ogrep
 
 check: lint test
 
@@ -79,14 +79,14 @@ clean:
 	find . -type f -name ".coverage" -delete 2>/dev/null || true
 
 build: clean
-	cd ogrep-marketplace && python -m build
+	python -m build
 
 # =============================================================================
 # Validation
 # =============================================================================
 
 validate-syntax:
-	python -m compileall ogrep-marketplace/ogrep
+	python -m compileall ogrep
 
 validate-cli:
 	ogrep --help

@@ -20,13 +20,13 @@ echo "Python code checks (ogrep)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 echo "→ ruff check..."
-ruff check ogrep-marketplace/ogrep ogrep-marketplace/tests
+ruff check ogrep tests
 
 echo "→ ruff format check..."
-ruff format --check ogrep-marketplace/ogrep ogrep-marketplace/tests
+ruff format --check ogrep tests
 
 echo "→ pytest..."
-cd ogrep-marketplace && pytest -q && cd ..
+pytest -q
 
 echo ""
 echo "All checks passed! Pushing..."

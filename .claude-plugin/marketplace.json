@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "ogrep",
-      "path": "ogrep-marketplace/plugins/ogrep",
+      "path": "plugins/ogrep",
       "description": "Semantic grep skill and commands using local SQLite index + OpenAI embeddings"
     }
   ]
