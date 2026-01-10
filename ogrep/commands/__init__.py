@@ -12,6 +12,7 @@ Commands:
     - clean: Remove stale entries from the index
     - status: Show index status and statistics
     - models: List available embedding models
+    - tune: Auto-tune chunk size for optimal relevance
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from .query import cmd_query
 from .reindex import cmd_reindex
 from .reset import cmd_reset
 from .status import cmd_status
+from .tune import cmd_tune
 
 __all__ = [
     "cmd_index",
@@ -32,4 +34,5 @@ __all__ = [
     "cmd_clean",
     "cmd_status",
     "cmd_models",
+    "cmd_tune",
 ]

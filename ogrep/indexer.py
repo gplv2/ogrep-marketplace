@@ -39,6 +39,13 @@ DEFAULT_EXCLUDES = (
     # OS files
     ".DS_Store",
     "Thumbs.db",
+    # Environment/secrets (never index these!)
+    ".env",
+    ".env.*",
+    "*.env",
+    ".envrc",
+    "secrets.*",
+    "credentials.*",
     # Documentation (index source code, not docs)
     "*.md",
     "*.txt",

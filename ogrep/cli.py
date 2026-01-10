@@ -33,6 +33,7 @@ from .commands import (
     cmd_reindex,
     cmd_reset,
     cmd_status,
+    cmd_tune,
 )
 from .commands._common import add_scope_args
 from .models import DEFAULT_MODEL
@@ -230,6 +231,30 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Show available OpenAI embedding models with pricing and use cases.",
     )
     p_models.set_defaults(func=cmd_models)
+
+    # tune command
+    p_tune = sub.add_parser(
+        "tune",
+        help="Auto-tune chunk size for optimal relevance",
+        description="Test different chunk sizes and recommend optimal settings.",
+    )
+    p_tune.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
+    add_scope_args(p_tune)
+    _add_model_args(p_tune)
+    p_tune.add_argument(
+        "--samples",
+        "-s",
+        type=int,
+        default=5,
+        help="Number of code patterns to test (default: 5)",
+    )
+    p_tune.add_argument(
+        "--apply",
+        "-a",
+        action="store_true",
+        help="Apply optimal settings and reindex",
+    )
+    p_tune.set_defaults(func=cmd_tune)
 
     return p
 
