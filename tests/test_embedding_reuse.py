@@ -6,8 +6,6 @@ import sqlite3
 import time
 from pathlib import Path
 
-import pytest
-
 from ogrep.indexer import IndexStats, index_path
 
 
@@ -98,7 +96,7 @@ def second_function():
     (temp_dir / "functions.py").write_text(initial_content)
 
     # First index
-    stats1 = index_path(root=temp_dir, db_path=db_path, chunk_lines=20)
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=20)
 
     # Append new function
     time.sleep(0.01)
@@ -177,7 +175,7 @@ def test_embedding_preserved_in_db(temp_dir: Path) -> None:
     (temp_dir / "two_chunks.py").write_text(chunk1 + "\n" + chunk2_modified)
 
     # Re-index
-    stats = index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
 
     # Get new embeddings
     con = sqlite3.connect(str(db_path))
@@ -205,7 +203,7 @@ def test_reuse_with_different_chunk_boundaries(temp_dir: Path) -> None:
     (temp_dir / "shifting.py").write_text(content)
 
     # First index
-    stats1 = index_path(root=temp_dir, db_path=db_path, chunk_lines=30)
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=30)
 
     # Insert lines at beginning (shifts all chunks)
     time.sleep(0.01)
