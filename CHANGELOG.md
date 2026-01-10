@@ -22,17 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
 - **Supported Local Models**:
-  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - Best for larger context, 90-line chunks
-  - `bge-base-en-v1.5` (alias: `bge`) - Best for smaller chunks, 30-line chunks
+  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - Starting default: 90-line chunks
+  - `bge-base-en-v1.5` (alias: `bge`) - Starting default: 30-line chunks
 
-- **Model-Specific Chunk Sizes**: The CLI now automatically uses optimal chunk sizes based on the embedding model:
-  - `nomic`: 90 lines (72% accuracy in tuning tests)
-  - `bge`: 30 lines (52% accuracy in tuning tests)
-  - OpenAI models: 60 lines (default)
+- **Model-Specific Chunk Size Defaults**: The CLI provides sensible starting defaults per model:
+  - `nomic`: 90 lines
+  - `bge`: 30 lines
+  - OpenAI models: 60 lines
 
-  No need to specify `--chunk-lines` - it's now model-aware.
+  These are starting points based on initial testing. **Your codebase may have different optimal settings** - use `ogrep tune` to find what works best for your repository.
 
-- **New API Function**: `get_optimal_chunk_lines(model)` returns the tuned chunk size for any model.
+- **OGREP_CHUNK_LINES Environment Variable**: Save your tuned chunk size to use it automatically:
+  ```bash
+  # After running: ogrep tune . -m nomic
+  # If tune recommends 75 lines for your codebase:
+  export OGREP_CHUNK_LINES=75
+  ```
+
+- **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default).
 
 - **Comprehensive Documentation**: New `docs/LOCAL_EMBEDDINGS_GUIDE.md` with:
   - Step-by-step LM Studio installation for macOS/Linux/Windows

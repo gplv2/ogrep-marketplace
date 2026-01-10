@@ -261,6 +261,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply optimal settings and reindex",
     )
+    p_tune.add_argument(
+        "--save",
+        action="store_true",
+        help="Save optimal chunk size to .env file as OGREP_CHUNK_LINES",
+    )
     p_tune.set_defaults(func=cmd_tune)
 
     return p

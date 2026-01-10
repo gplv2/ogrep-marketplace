@@ -16,6 +16,33 @@ from pathlib import Path
 from ..indexer import index_path, iter_files
 from ..search import query as search_query
 
+
+def _save_chunk_lines_to_env(env_file: Path, chunk_lines: int) -> None:
+    """
+    Save OGREP_CHUNK_LINES to a .env file.
+
+    Creates the file if it doesn't exist, or updates the existing value.
+    """
+    env_var = f"OGREP_CHUNK_LINES={chunk_lines}"
+
+    if env_file.exists():
+        content = env_file.read_text()
+        lines = content.splitlines()
+        updated = False
+
+        for i, line in enumerate(lines):
+            if line.startswith("OGREP_CHUNK_LINES="):
+                lines[i] = env_var
+                updated = True
+                break
+
+        if not updated:
+            lines.append(env_var)
+
+        env_file.write_text("\n".join(lines) + "\n")
+    else:
+        env_file.write_text(env_var + "\n")
+
 # Patterns to identify significant code lines
 SIGNIFICANT_PATTERNS = [
     # Python
@@ -203,8 +230,18 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
     print("-" * 30)
     print(f"\nRecommended chunk size: {best_chunk} lines")
-    print("\nTo use this setting:")
-    print(f"  ogrep index . --chunk-lines {best_chunk}")
+
+    # Save to .env if requested
+    if args.save:
+        env_file = root / ".env"
+        _save_chunk_lines_to_env(env_file, best_chunk)
+        print(f"\nSaved OGREP_CHUNK_LINES={best_chunk} to {env_file}")
+    else:
+        print("\nTo use this setting:")
+        print(f"  export OGREP_CHUNK_LINES={best_chunk}")
+        print(f"  # Or add to .env: OGREP_CHUNK_LINES={best_chunk}")
+        print(f"  # Or use: ogrep index . --chunk-lines {best_chunk}")
+        print(f"\n  Tip: Use --save to automatically save to .env")
 
     # Offer to reindex with optimal settings
     if args.apply:

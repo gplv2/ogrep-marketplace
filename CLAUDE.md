@@ -250,6 +250,7 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OPENAI_API_KEY` | Required for OpenAI models | - |
 | `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
+| `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 

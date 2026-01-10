@@ -18,12 +18,13 @@ from dataclasses import dataclass
 # Environment variable names
 ENV_MODEL = "OGREP_MODEL"
 ENV_DIMENSIONS = "OGREP_DIMENSIONS"
+ENV_CHUNK_LINES = "OGREP_CHUNK_LINES"
 
 # Default model if not specified
 DEFAULT_MODEL = "text-embedding-3-small"
 
-
 # Default chunk size for models without specific tuning
+# These are starting points - run `ogrep tune` on your codebase for best results
 DEFAULT_CHUNK_LINES = 60
 
 
@@ -245,19 +246,27 @@ def get_optimal_chunk_lines(model: str | None = None) -> int:
     """
     Get the optimal chunk size for a model.
 
-    Different embedding models perform best with different chunk sizes.
-    This was determined through empirical tuning:
-        - nomic-embed-text-v1.5: 90 lines (72% accuracy)
-        - bge-base-en-v1.5: 30 lines (52% accuracy)
-        - OpenAI models: 60 lines (default)
+    Priority:
+        1. OGREP_CHUNK_LINES environment variable (user's tuned value)
+        2. Model-specific default from tuning tests
+        3. Global default (60 lines)
+
+    The model-specific defaults are starting points based on initial testing.
+    Different codebases may have very different optimal settings - use
+    `ogrep tune` to find the best chunk size for your specific repository.
 
     Args:
         model: Model ID, alias, or None to use default/env.
 
     Returns:
-        Optimal chunk size in lines for the model.
+        Chunk size in lines.
 
     Examples:
+        >>> # With OGREP_CHUNK_LINES=45 set in environment
+        >>> get_optimal_chunk_lines("nomic")
+        45
+
+        >>> # Without env var, uses model default
         >>> get_optimal_chunk_lines("nomic")
         90
         >>> get_optimal_chunk_lines("bge")
@@ -265,6 +274,12 @@ def get_optimal_chunk_lines(model: str | None = None) -> int:
         >>> get_optimal_chunk_lines("small")
         60
     """
+    # User's tuned value takes precedence
+    env_chunk = os.environ.get(ENV_CHUNK_LINES)
+    if env_chunk:
+        return int(env_chunk)
+
+    # Fall back to model-specific default
     resolved = resolve_model(model)
     return MODELS[resolved].optimal_chunk_lines
 

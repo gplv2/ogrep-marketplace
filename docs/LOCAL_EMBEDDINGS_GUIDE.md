@@ -208,20 +208,43 @@ Chunk Size   Accuracy   Hits
 
 ### How to Tune for Your Codebase
 
-Always run tuning when switching models:
+The model-specific defaults are just starting points. **Your codebase will likely have different optimal settings.** Always run tuning when switching models or on a new repository:
 
 ```bash
 # Set your base URL
 export OGREP_BASE_URL=http://localhost:1234/v1
 
 # Run tuning with the model you plan to use
-ogrep tune . -m nomic -s 10  # Use 10 samples for more reliable results
+ogrep tune . -m nomic --samples 10  # Use 10 samples for more reliable results
 
-# Apply the recommended chunk size
-ogrep reindex . -m nomic --chunk-lines <recommended>
+# Option 1: Save to .env (recommended)
+ogrep tune . -m nomic --samples 10 --save
+# Creates/updates .env with: OGREP_CHUNK_LINES=<optimal>
+
+# Option 2: Apply immediately and reindex
+ogrep tune . -m nomic --samples 10 --apply
+
+# Option 3: Save AND apply
+ogrep tune . -m nomic --samples 10 --save --apply
 ```
 
-**Tip:** Use `-s 10` or higher for more statistically significant results. The default 5 samples can be noisy.
+### Tune Command Options
+
+| Flag | Description |
+|------|-------------|
+| `--samples N`, `-s N` | Number of code patterns to test (default: 5, recommend: 10+) |
+| `--save` | Save optimal chunk size to `.env` as `OGREP_CHUNK_LINES` |
+| `--apply`, `-a` | Reindex immediately with optimal settings |
+| `--model M`, `-m M` | Model to test with |
+
+### Environment Variable Priority
+
+When indexing, chunk size is determined in this order:
+1. `--chunk-lines` command-line argument (explicit override)
+2. `OGREP_CHUNK_LINES` environment variable (your tuned value)
+3. Model-specific default (starting point)
+
+**Tip:** Use `--samples 10` or higher for more statistically significant results. The default 5 samples can be noisy.
 
 ---
 
