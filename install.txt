@@ -1,0 +1,6 @@
+/plugin marketplace add gplv2/ogrep-marketplace
+
+/plugin install ogrep@ogrep-marketplace
+
+
+
