@@ -237,6 +237,30 @@ ogrep tune . -m nomic --samples 10 --save --apply
 | `--apply`, `-a` | Reindex immediately with optimal settings |
 | `--model M`, `-m M` | Model to test with |
 
+### Understanding --save vs --apply
+
+These flags serve different purposes and can be combined:
+
+| Flag | What it does |
+|------|--------------|
+| `--save` | Writes `OGREP_CHUNK_LINES=N` to `.env` file (for future indexes) |
+| `--apply` | Immediately reindexes with optimal chunk size |
+
+**Use cases:**
+
+```bash
+# Just save for later (don't reindex now)
+ogrep tune . -m nomic --save
+
+# Reindex now but don't persist setting
+ogrep tune . -m nomic --apply
+
+# Both: save AND reindex immediately
+ogrep tune . -m nomic --save --apply
+```
+
+Without `--apply`, you'd need to manually run `ogrep reindex .` afterward if you want to use the tuned settings right away.
+
 ### Environment Variable Priority
 
 When indexing, chunk size is determined in this order:
