@@ -1,14 +1,66 @@
 # ogrep
 
-Local semantic grep powered by:
-- **SQLite index** (`.ogrep/index.sqlite` by default)
-- **OpenAI embeddings** (configurable model)
+**Semantic grep for codebases** — local-first, SQLite-backed, and built for Claude Code.
 
-Search your codebase by meaning, not just keywords.
+ogrep lets you search your codebase by meaning, not just keywords.
+
+It builds a tiny local index (`.ogrep/index.sqlite` by default) and uses embeddings to answer questions like:
+
+- *"where is authentication handled?"*
+- *"how are API errors mapped to exceptions?"*
+- *"where do we open DB connections and run queries?"*
+
+## Embedding Providers
+
+**Choose your embedding source:**
+
+| Provider | Cost | Privacy | Setup |
+|----------|------|---------|-------|
+| **OpenAI API** | $0.02/M tokens | Cloud | Just add `OPENAI_API_KEY` |
+| **LM Studio** (local) | Free | 100% local | Run `lms server start` |
+
+```bash
+# OpenAI (cloud)
+export OPENAI_API_KEY="sk-..."
+ogrep index . -m small
+
+# LM Studio (local, free, offline)
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index . -m nomic
+```
+
+Both work identically — same CLI, same index format, same queries.
+
+---
+
+## Why ogrep?
+
+### Local-first & simple
+
+- Index lives in **one SQLite file** (per repo, or per profile)
+- Designed to be fast to start and easy to reset
+- No external services required (with local models)
+
+### Built for real dev workflows
+
+- **Smart embedding reuse**: unchanged files skipped; only changed chunks re-embedded
+- **Source-only defaults**: reduces noise, avoids indexing junk
+- **Auto-tuning**: finds optimal chunk size for your codebase
+
+### Two ways to use it
+
+| Method | Best For |
+|--------|----------|
+| **CLI** (`pip`/`pipx`) | Terminal users, CI/CD, scripts |
+| **Claude Code Plugin** | If you live in Claude Code (recommended) |
+
+> **Note:** This repo is primarily a Claude Code Skill + Marketplace plugin integration — not an MCP server. If you want MCP for other clients, see [Optional Extras](#optional-extras).
+
+---
 
 ## Installation
 
-### Option A: pip / pipx (Recommended for CLI users)
+### Option A: pip / pipx (CLI users)
 
 ```bash
 # Install with pipx (isolated environment)
@@ -16,9 +68,6 @@ pipx install ogrep
 
 # Or with pip
 pip install ogrep
-
-# Set your OpenAI API key
-export OPENAI_API_KEY="sk-..."
 ```
 
 ### Option B: Claude Code Marketplace + Plugin
@@ -38,21 +87,40 @@ pip install "ogrep[speed]"   # Faster scoring with numpy
 pip install "ogrep[mcp]"     # MCP server support
 ```
 
+---
+
 ## Quick Start
 
+### With OpenAI
+
 ```bash
-# Index the current directory (source files only by default)
-ogrep index .
+export OPENAI_API_KEY="sk-..."
 
-# Semantic search
-ogrep query "where is authentication handled?" -n 15
-
-# Check index status
-ogrep status
-
-# Auto-tune chunk size for your codebase
-ogrep tune .
+ogrep index .                              # Index current directory
+ogrep query "where is auth handled?" -n 10 # Semantic search
+ogrep status                               # Check index stats
 ```
+
+### With LM Studio (Local, Free)
+
+```bash
+# 1. Install LM Studio from https://lmstudio.ai
+# 2. Download and load a model
+lms get nomic-embed-text-v1.5 -y
+lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
+lms server start
+
+# 3. Point ogrep to local server
+export OGREP_BASE_URL=http://localhost:1234/v1
+
+# 4. Index and query
+ogrep index . -m nomic
+ogrep query "database connection handling" -m nomic
+```
+
+See [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup and tuning.
+
+---
 
 ## CLI Commands
 
@@ -65,45 +133,61 @@ ogrep tune .
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available embedding models |
-| `ogrep tune .` | Auto-tune chunk size |
+| `ogrep tune .` | Auto-tune chunk size for your codebase |
+
+---
+
+## Embedding Models
+
+### OpenAI Models (Cloud)
+
+| Model | Alias | Dimensions | Price | Best For |
+|-------|-------|------------|-------|----------|
+| text-embedding-3-small | `small` | 1536 | $0.02/M | Most use cases (default) |
+| text-embedding-3-large | `large` | 3072 | $0.13/M | High-accuracy, multi-language |
+| text-embedding-ada-002 | `ada` | 1536 | $0.10/M | Legacy compatibility |
+
+### Local Models (via LM Studio)
+
+| Model | Alias | Dimensions | Optimal Chunks | Notes |
+|-------|-------|------------|----------------|-------|
+| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | 90 lines | Recommended local model |
+| bge-base-en-v1.5 | `bge` | 768 | 30 lines | Smaller chunks work better |
+
+```bash
+# Use model alias
+ogrep index . -m nomic
+
+# Set default via environment
+export OGREP_MODEL=nomic
+```
+
+> **Important:** Query model must match index model. Use `ogrep status` to check.
+
+---
 
 ## Smart Defaults
 
-ogrep is optimized for **source code search** out of the box:
+ogrep is optimized for **source code search** out of the box.
 
 ### Source-Only Indexing
 
 By default, ogrep indexes only source files and excludes:
 
-| Category | Patterns |
+| Category | Examples |
 |----------|----------|
 | **Docs** | `*.md`, `*.txt`, `*.rst`, `docs/*` |
-| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `.editorconfig` |
-| **Secrets** | `.env`, `.env.*`, `secrets.*`, `credentials.*` |
-| **Build** | `dist/*`, `build/*`, `vendor/*`, `*.min.js`, `*.min.css` |
-| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock` |
-| **Git metadata** | `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep` |
-| **Images** | `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.svg`, `*.webp`, `*.ico`, `*.bmp`, `*.tiff`, `*.psd` |
-| **Fonts** | `*.woff`, `*.woff2`, `*.ttf`, `*.otf`, `*.eot` |
-| **Media** | `*.mp3`, `*.mp4`, `*.wav`, `*.avi`, `*.mov`, `*.webm` |
-| **Archives** | `*.zip`, `*.tar`, `*.gz`, `*.rar`, `*.7z` |
-| **Databases** | `*.sqlite`, `*.sqlite3`, `*.db` |
-| **Logs** | `*.log`, `logs/*` |
-| **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
+| **Config** | `*.json`, `*.yaml`, `*.toml`, `.editorconfig` |
+| **Secrets** | `.env`, `secrets.*`, `credentials.*` |
+| **Build** | `dist/*`, `build/*`, `*.min.js` |
+| **Binary** | Images, fonts, media, archives, databases |
+| **Lock files** | `package-lock.json`, `yarn.lock`, `poetry.lock` |
 
-**Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `venv/`, `__pycache__/`, `.ogrep/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `.tox/`, `.githooks/`, `storage/`
-
-### Optimal Chunk Size
-
-Default: **60 lines** with 10-line overlap (tested for best relevance).
+**Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `__pycache__/`, `.ogrep/`
 
 ### Smart Embedding Reuse
 
-ogrep minimizes API token usage with intelligent incremental indexing:
-
-- **Unchanged files**: Completely skipped (no API calls)
-- **Modified files**: Only changed chunks are re-embedded
-- **Append-only edits**: Existing chunks reuse cached embeddings
+ogrep minimizes API costs with intelligent incremental indexing:
 
 ```bash
 $ ogrep index .
@@ -112,19 +196,55 @@ Indexed into .ogrep/index.sqlite
   Chunks: 12 total (9 reused, ~900 tokens saved)
 ```
 
-**Example savings:**
 | Edit Pattern | Without Reuse | With Reuse | Savings |
 |--------------|---------------|------------|---------|
 | Edit 1 line in 300-line file | 5 embeds | 1 embed | 80% |
 | Append function to file | 5 embeds | 1 embed | 80% |
 | No changes | 5 embeds | 0 embeds | 100% |
 
-## File Filtering
+---
 
-### Override Default Excludes
+## Auto-Tuning
+
+Different models and codebases have different optimal chunk sizes. Find yours:
 
 ```bash
-# Include markdown files (normally excluded)
+ogrep tune . -m nomic
+```
+
+```
+Testing chunk size 30... accuracy=0.32 (2/5 hits)
+Testing chunk size 45... accuracy=0.56 (4/5 hits)
+Testing chunk size 60... accuracy=0.36 (3/5 hits)
+Testing chunk size 90... accuracy=0.72 (5/5 hits)  <-- OPTIMAL
+Testing chunk size 120... accuracy=0.68 (5/5 hits)
+
+Recommended chunk size: 90 lines
+```
+
+### Save & Apply Tuning Results
+
+```bash
+# Just save for later (writes to .env)
+ogrep tune . -m nomic --save
+
+# Reindex immediately with optimal settings
+ogrep tune . -m nomic --apply
+
+# Both: save AND reindex
+ogrep tune . -m nomic --save --apply
+```
+
+The `OGREP_CHUNK_LINES` environment variable persists your tuned value.
+
+---
+
+## File Filtering
+
+### Include Normally-Excluded Files
+
+```bash
+# Include markdown files
 ogrep index . -i '*.md'
 
 # Include multiple patterns
@@ -141,104 +261,23 @@ ogrep index . -e 'test_*' -e '*_test.py'
 ogrep index . -e 'fixtures/*' -e 'mocks/*'
 ```
 
-## Auto-Tuning
-
-Find the optimal chunk size for your codebase:
-
-```bash
-ogrep tune .
-```
-
-**Example output:**
-
-```
-Analyzing codebase for significant patterns...
-Found 5 test patterns:
-  src/auth.py:27 -> "where is the function authenticate defined..."
-  src/models.py:15 -> "where is the class User defined..."
-  src/api.py:42 -> "where is the function handle_request defined..."
-
-Testing chunk size 30... accuracy=0.64 (4/5 hits)
-Testing chunk size 45... accuracy=0.88 (5/5 hits)
-Testing chunk size 60... accuracy=0.92 (5/5 hits)
-Testing chunk size 90... accuracy=0.92 (5/5 hits)
-Testing chunk size 120... accuracy=0.92 (5/5 hits)
-
-==================================================
-RESULTS
-==================================================
-Chunk Size   Accuracy   Hits
-------------------------------
-30           0.64       4/5
-45           0.88       5/5
-60           0.92       5/5
-90           0.92       5/5
-120          0.92       5/5
-------------------------------
-
-Recommended chunk size: 60 lines
-
-To use this setting:
-  ogrep index . --chunk-lines 60
-```
-
-### Apply Optimal Settings
-
-```bash
-# Auto-tune and reindex with optimal settings
-ogrep tune . --apply
-
-# Use more test samples for better accuracy
-ogrep tune . -s 10
-```
-
-## Chunk Size Comparison
-
-Results from testing on a Python codebase:
-
-| Chunk Size | Chunks | Storage | Top Score | Notes |
-|------------|--------|---------|-----------|-------|
-| 30 lines | 221 | ~1.6MB | 0.373 | High precision, more storage |
-| 45 lines | 100 | 832KB | 0.362 | Good balance |
-| **60 lines** | 74 | ~600KB | **0.382** | **Best relevance (default)** |
-| 90 lines | 52 | ~450KB | 0.350 | Larger context |
-| 120 lines | 44 | 412KB | 0.309 | May miss specific functions |
-
-## Embedding Models
-
-Use `-m` or `--model` flag, or set `OGREP_MODEL` environment variable:
-
-```bash
-# Use model alias
-ogrep index . -m large
-
-# Use full model name
-ogrep index . --model text-embedding-3-large
-
-# Set default via environment
-export OGREP_MODEL=large
-ogrep index .
-```
-
-| Model | Alias | Dimensions | Price | Best For |
-|-------|-------|------------|-------|----------|
-| text-embedding-3-small | `small` | 1536 | $0.02/M | Most use cases (recommended) |
-| text-embedding-3-large | `large` | 3072 | $0.13/M | High-accuracy, multi-language |
-| text-embedding-ada-002 | `ada` | 1536 | $0.10/M | Legacy compatibility |
-
-**Note:** Query model must match index model. Use `ogrep status` to check.
+---
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | Required. Your OpenAI API key |
-| `OGREP_MODEL` | Default embedding model (default: `text-embedding-3-small`) |
-| `OGREP_DIMENSIONS` | Default embedding dimensions (optional) |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI API key (required for cloud) | — |
+| `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | — |
+| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OGREP_CHUNK_LINES` | Tuned chunk size | Model default |
+| `OGREP_DIMENSIONS` | Embedding dimensions | Model default |
+
+---
 
 ## Multi-Repo Scope Management
 
-Prevent cross-repo pollution with scope flags:
+Prevent cross-repo pollution:
 
 | Flag | Description |
 |------|-------------|
@@ -247,10 +286,12 @@ Prevent cross-repo pollution with scope flags:
 | `--global-cache` | Use `~/.cache/ogrep/<hash>/index.sqlite` |
 | `--repo-root PATH` | Explicit repo root |
 
+---
+
 ## Example Queries
 
 ```bash
-# Find where something is implemented
+# Find implementations
 ogrep query "where is user authentication handled?" -n 10
 
 # Find error handling
@@ -263,6 +304,16 @@ ogrep query "database connection and queries" -n 10
 ogrep query "recursive file scanning" -n 5
 ```
 
+---
+
+## Documentation
+
+- [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) — Local model setup, tuning, and troubleshooting
+- [QUICKSTART.md](QUICKSTART.md) — Quick start guide
+- [CLAUDE.md](CLAUDE.md) — Developer guide for Claude Code
+
+---
+
 ## Development
 
 ```bash
@@ -272,15 +323,12 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-make test    # Run tests
+make test    # Run tests (42 tests)
 make lint    # Run linters
 make check   # All checks
 ```
 
-## Documentation
-
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
-- [CLAUDE.md](CLAUDE.md) - Developer guide for Claude Code
+---
 
 ## License
 
