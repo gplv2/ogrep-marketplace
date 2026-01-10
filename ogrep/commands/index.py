@@ -31,6 +31,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             - chunk_lines: Lines per chunk
             - overlap: Overlapping lines between chunks
             - max_bytes: Maximum file size to index
+            - exclude: List of glob patterns to exclude
 
     Returns:
         Exit code (0 for success).
@@ -47,6 +48,7 @@ def cmd_index(args: argparse.Namespace) -> int:
         chunk_lines=args.chunk_lines,
         overlap=args.overlap,
         max_bytes=args.max_bytes,
+        exclude=args.exclude,
     )
     print(f"Indexed into {db}")
     return 0

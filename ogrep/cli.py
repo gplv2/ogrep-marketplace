@@ -103,6 +103,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=2_000_000,
         help="Max file size in bytes (default: 2MB)",
     )
+    p_index.add_argument(
+        "--exclude",
+        "-e",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Exclude files matching glob pattern (can be repeated). "
+        "Examples: -e '*.md' -e 'vendor/*' -e 'docs/*'",
+    )
     p_index.set_defaults(func=cmd_index)
 
     # query command
@@ -164,6 +173,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=2_000_000,
         help="Max file size in bytes",
+    )
+    p_reindex.add_argument(
+        "--exclude",
+        "-e",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Exclude files matching glob pattern (can be repeated)",
     )
     p_reindex.set_defaults(func=cmd_reindex)
 

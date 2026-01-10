@@ -8,9 +8,10 @@ database. Supports incremental updates by tracking file hashes.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from tqdm import tqdm
@@ -22,6 +23,20 @@ from .models import resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {".git", ".venv", "node_modules", ".ogrep", "__pycache__"}
+
+#: Default exclude patterns for common non-source files
+DEFAULT_EXCLUDES = (
+    "*.pyc",
+    "*.pyo",
+    "*.so",
+    "*.dylib",
+    "*.dll",
+    "*.exe",
+    "*.egg-info/*",
+    "*.egg",
+    ".DS_Store",
+    "Thumbs.db",
+)
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -53,24 +68,81 @@ def _is_probably_text(b: bytes) -> bool:
     return b.find(b"\x00") == -1
 
 
-def iter_files(root: Path) -> Iterable[Path]:
+def _matches_pattern(path: Path, root: Path, patterns: Sequence[str]) -> bool:
     """
-    Recursively iterate over files in a directory, skipping common non-source dirs.
+    Check if a path matches any of the exclude patterns.
+
+    Patterns can be:
+    - Simple globs: *.md, *.pyc
+    - Directory globs: vendor/*, docs/*
+    - Full path globs: **/test_*.py
+
+    Args:
+        path: File path to check.
+        root: Root directory for relative path calculation.
+        patterns: Sequence of glob patterns to match against.
+
+    Returns:
+        True if the path matches any pattern, False otherwise.
+    """
+    try:
+        rel_path = path.relative_to(root)
+    except ValueError:
+        rel_path = path
+
+    rel_str = str(rel_path)
+    name = path.name
+
+    for pattern in patterns:
+        # Match against filename
+        if fnmatch.fnmatch(name, pattern):
+            return True
+        # Match against relative path
+        if fnmatch.fnmatch(rel_str, pattern):
+            return True
+        # Match with ** prefix for deep matching
+        if "**" not in pattern and fnmatch.fnmatch(rel_str, f"**/{pattern}"):
+            return True
+
+    return False
+
+
+def iter_files(
+    root: Path,
+    exclude: Sequence[str] = (),
+    skip_dirs: set[str] | None = None,
+) -> Iterable[Path]:
+    """
+    Recursively iterate over files in a directory, with filtering.
 
     Skips directories like .git, node_modules, .venv, etc. that typically
-    contain non-source files.
+    contain non-source files. Supports exclude patterns for fine-grained
+    file filtering.
 
     Args:
         root: Root directory to scan.
+        exclude: Glob patterns for files to exclude (e.g., "*.md", "vendor/*").
+        skip_dirs: Directory names to skip. Defaults to DEFAULT_SKIP_DIRS.
 
     Yields:
         Path objects for each file found.
+
+    Example:
+        >>> list(iter_files(Path("."), exclude=["*.md", "*.json"]))
     """
+    if skip_dirs is None:
+        skip_dirs = DEFAULT_SKIP_DIRS
+
+    all_excludes = list(DEFAULT_EXCLUDES) + list(exclude)
+
     for dirpath, dirnames, filenames in os.walk(root):
         # Modify dirnames in-place to skip certain directories
-        dirnames[:] = [d for d in dirnames if d not in DEFAULT_SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         for fn in filenames:
-            yield Path(dirpath) / fn
+            p = Path(dirpath) / fn
+            if all_excludes and _matches_pattern(p, root, all_excludes):
+                continue
+            yield p
 
 
 def index_path(
@@ -81,6 +153,7 @@ def index_path(
     chunk_lines: int = 120,
     overlap: int = 20,
     max_bytes: int = 2_000_000,
+    exclude: Sequence[str] = (),
 ) -> None:
     """
     Index a directory for semantic search.
@@ -97,9 +170,11 @@ def index_path(
         chunk_lines: Number of lines per chunk.
         overlap: Number of overlapping lines between chunks.
         max_bytes: Maximum file size to index (larger files are skipped).
+        exclude: Glob patterns for files to exclude (e.g., "*.md", "vendor/*").
 
     Note:
         Files are skipped if:
+        - They match an exclude pattern
         - They exceed max_bytes in size
         - They appear to be binary (contain null bytes)
         - They haven't changed since last indexing (same mtime, size, hash)
@@ -108,6 +183,7 @@ def index_path(
         >>> index_path(
         ...     root=Path("."),
         ...     db_path=Path(".ogrep/index.sqlite"),
+        ...     exclude=["*.md", "docs/*"],
         ... )
     """
     # Resolve model from arg, env, or default
@@ -115,7 +191,7 @@ def index_path(
 
     con = connect(db_path)
 
-    files = list(iter_files(root))
+    files = list(iter_files(root, exclude=exclude))
     for p in tqdm(files, desc="Indexing"):
         if not p.is_file():
             continue
