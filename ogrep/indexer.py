@@ -18,6 +18,7 @@ from tqdm import tqdm
 from .chunking import chunk_lines as chunk_text
 from .db import connect
 from .embed import embed_texts
+from .models import resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {".git", ".venv", "node_modules", ".ogrep", "__pycache__"}
@@ -75,7 +76,7 @@ def iter_files(root: Path) -> Iterable[Path]:
 def index_path(
     root: Path,
     db_path: Path,
-    model: str = "text-embedding-3-small",
+    model: str | None = None,
     dimensions: int | None = None,
     chunk_lines: int = 120,
     overlap: int = 20,
@@ -91,7 +92,7 @@ def index_path(
     Args:
         root: Directory to index.
         db_path: Path to the SQLite database file.
-        model: OpenAI embedding model name.
+        model: OpenAI embedding model name or alias (None for default/env).
         dimensions: Embedding dimensions (None for model default).
         chunk_lines: Number of lines per chunk.
         overlap: Number of overlapping lines between chunks.
@@ -107,9 +108,11 @@ def index_path(
         >>> index_path(
         ...     root=Path("."),
         ...     db_path=Path(".ogrep/index.sqlite"),
-        ...     model="text-embedding-3-small",
         ... )
     """
+    # Resolve model from arg, env, or default
+    model = resolve_model(model)
+
     con = connect(db_path)
 
     files = list(iter_files(root))
