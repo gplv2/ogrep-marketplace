@@ -1,6 +1,6 @@
 {
   "name": "ogrep-marketplace",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Claude Code marketplace for ogrep - local semantic grep with SQLite + OpenAI embeddings",
   "owner": {
     "name": "gplv2",
