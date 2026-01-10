@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .db import connect
 from .embed import embed_texts
+from .models import MODEL_ALIASES
 
 # Optional numpy for faster similarity calculations
 try:
@@ -95,10 +96,34 @@ def query(
     """
     con = connect(db_path)
 
+    # Check index model/dimensions before querying
+    index_info = con.execute(
+        "SELECT model, dim FROM chunks LIMIT 1"
+    ).fetchone()
+    if index_info is None:
+        return []  # Empty index
+
+    index_model, index_dim = index_info
+
     # Embed the query
-    q_blob, _ = embed_texts([q], model=model, dimensions=dimensions)
+    q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
     q_arr = array.array("f")
     q_arr.frombytes(q_blob[0])
+
+    # Validate dimensions match
+    if q_dim != index_dim:
+        # Reverse lookup for model aliases (prefer shortest alias)
+        alias_lookup: dict[str, str] = {}
+        for alias, full_name in MODEL_ALIASES.items():
+            if full_name not in alias_lookup or len(alias) < len(alias_lookup[full_name]):
+                alias_lookup[full_name] = alias
+        index_alias = alias_lookup.get(index_model, index_model)
+        query_alias = alias_lookup.get(model, model)
+        raise ValueError(
+            f"Dimension mismatch: query uses {q_dim}D ({model}) "
+            f"but index was built with {index_dim}D ({index_model}). "
+            f"Use -m {index_alias} or reindex with -m {query_alias}."
+        )
 
     # Fetch all chunks
     rows = con.execute(
