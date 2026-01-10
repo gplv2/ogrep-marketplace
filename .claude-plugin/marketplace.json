@@ -1,0 +1,12 @@
+{
+  "name": "ogrep-marketplace",
+  "version": "0.1.0",
+  "description": "Claude Code marketplace for ogrep - local semantic grep with SQLite + OpenAI embeddings",
+  "plugins": [
+    {
+      "name": "ogrep",
+      "path": "ogrep-marketplace/plugins/ogrep",
+      "description": "Semantic grep skill and commands using local SQLite index + OpenAI embeddings"
+    }
+  ]
+}

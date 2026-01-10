@@ -1,115 +1,214 @@
 # ogrep
 
-Local semantic "grep" powered by:
-- Local SQLite index (`.ogrep/index.sqlite` by default)
-- OpenAI embeddings (used only to vectorize chunks)
+Local semantic grep powered by:
+- **SQLite index** (`.ogrep/index.sqlite` by default)
+- **OpenAI embeddings** (used only for vectorization)
 
-## Install
+Search your codebase by meaning, not just keywords.
 
-Requirements:
-- Python 3.10+
-- `OPENAI_API_KEY` in your environment
+## Installation
 
-Recommended:
+### Option A: pip / pipx (Recommended for CLI users)
+
 ```bash
+# Install with pipx (isolated environment)
 pipx install ogrep
-export OPENAI_API_KEY="..."
-```
 
-Or:
-```bash
+# Or with pip
 pip install ogrep
-export OPENAI_API_KEY="..."
+
+# Set your OpenAI API key
+export OPENAI_API_KEY="sk-..."
 ```
 
-Optional extras:
+### Option B: Claude Code Marketplace + Plugin
+
 ```bash
-pip install "ogrep[speed]"   # faster scoring with numpy
-pip install "ogrep[mcp]"     # enable MCP server wrapper
+# Add the marketplace
+/plugin marketplace add gplv2/ogrep-marketplace
+
+# Install the plugin
+/plugin install ogrep@ogrep-marketplace
 ```
 
-## CLI
+### Optional Extras
+
+```bash
+# Faster scoring with numpy
+pip install "ogrep[speed]"
+
+# MCP server support
+pip install "ogrep[mcp]"
+```
+
+## Quick Start
+
+```bash
+# Index the current directory
+ogrep index .
+
+# Semantic search
+ogrep query "where is invoice status handled?" --top 15
+
+# Check index status
+ogrep status
+```
+
+## CLI Commands
+
+### index
 
 Index a directory (creates `.ogrep/index.sqlite`):
+
 ```bash
+ogrep index .
+ogrep index /path/to/repo
+ogrep index . --chunk-lines 100 --overlap 20
+```
+
+### query
+
+Semantic search over the index:
+
+```bash
+ogrep query "error handling logic" --top 20
+ogrep query "database connection" --model text-embedding-3-large
+```
+
+### status
+
+Show index statistics:
+
+```bash
+ogrep status
+```
+
+### reset
+
+Remove the index database:
+
+```bash
+ogrep reset           # Interactive confirmation
+ogrep reset --force   # No confirmation
+```
+
+### reindex
+
+Force rebuild from scratch:
+
+```bash
+ogrep reindex .
+```
+
+### clean
+
+Remove stale entries (deleted files):
+
+```bash
+ogrep clean           # Remove stale entries
+ogrep clean --vacuum  # Also compact database
+```
+
+## Multi-Repo Scope Management
+
+ogrep supports multiple indexing strategies to prevent cross-repo pollution:
+
+### Default: Per-repo local index
+
+```bash
+# Index is stored at .ogrep/index.sqlite in the repo
 ogrep index .
 ```
 
-Query:
+### Profile-based indexes
+
+Multiple indexes per repo with different settings:
+
 ```bash
-ogrep query "where is invoice status handled?" --top 15
+# Create different profiles
+ogrep index . --profile detailed --chunk-lines 50
+ogrep index . --profile compact --chunk-lines 200
+
+# Query specific profile
+ogrep query "test" --profile detailed
 ```
 
-Common flags:
+### Global cache mode
+
+Shared cache under `~/.cache/ogrep/` keyed by repo path:
+
 ```bash
-ogrep index . --db .ogrep/index.sqlite
-ogrep query "device_number_map" --db .ogrep/index.sqlite --top 25
+ogrep index . --global-cache
+ogrep query "test" --global-cache
 ```
 
-Output is grep-friendly:
-- `path:start_line-end_line  score=...`
-- followed by a short snippet
+### Explicit database path
 
-## SQLite schema (high level)
+Full control over index location:
 
-The index is a single SQLite file.
-
-- `files`
-  - One row per indexed file: `path`, `mtime_ns`, `size`, `sha256`
-  - Used to skip unchanged files
-
-- `chunks`
-  - One row per chunk: `file_id`, `chunk_index`, `start_line`, `end_line`, `text`
-  - Stores embedding as a float32 BLOB + `dim` + `model`
-
-## Claude Code Skill behavior
-
-A Claude Code Skill can call `ogrep` via Bash:
-- If `.ogrep/index.sqlite` is missing, run: `ogrep index .`
-- For semantic questions, run: `ogrep query "<question>" --top 15`
-- Then open the top hits and answer with paths + line ranges
-
-Minimal SKILL.md example is included below in this README (copy/paste).
-
-### Minimal SKILL.md (copy/paste)
-Create: `~/.claude/skills/ogrep/SKILL.md`
-
-```md
----
-name: ogrep
-description: Semantic grep using local SQLite + OpenAI embeddings via the `ogrep` CLI.
-allowed-tools: Bash, Read
----
-
-Use `ogrep` for meaning-based searches.
-
-If `.ogrep/index.sqlite` doesn't exist:
-- ogrep index .
-
-Then:
-- ogrep query "<question>" --top 15
+```bash
+ogrep index . --db /path/to/custom.sqlite
+ogrep query "test" --db /path/to/custom.sqlite
 ```
 
-## Marketplace / plugin install (optional)
+## SQLite Schema
 
-If you later add a Claude marketplace to this repo, it typically looks like:
-- `.claude-plugin/marketplace.json` at repo root
-- `plugins/<plugin-name>/.claude-plugin/plugin.json`
+The index is a single SQLite file with two tables:
 
-Then, inside Claude Code:
-- `/plugin marketplace add OWNER/REPO`
-- `/plugin install <plugin>@<marketplace-name>`
+- **files**: One row per indexed file (`path`, `mtime_ns`, `size`, `sha256`)
+- **chunks**: One row per chunk (`file_id`, `chunk_index`, `start_line`, `end_line`, `text`, `embedding`)
 
-This skeleton repo focuses on pip-first. You can add the marketplace later without changing the CLI.
+## Environment Variables
 
-## MCP wrapper (optional)
+- `OPENAI_API_KEY` (required): Your OpenAI API key for embeddings
+
+## Claude Code Skill
+
+When installed as a Claude Code plugin, the `semantic-grep` skill is available:
+
+```
+Use ogrep for meaning-based code searches:
+1. If index doesn't exist: ogrep index .
+2. For semantic queries: ogrep query "<question>" --top 15
+3. Open top results for detailed analysis
+```
+
+## MCP Server (Optional)
 
 If installed with the `mcp` extra:
+
 ```bash
 pip install "ogrep[mcp]"
 python -m ogrep.mcp
 ```
 
-This starts a local MCP server (stdio transport) exposing:
-- `ogrep_index(path, db)`
-- `ogrep_search(q, db, top_k)`
+Exposes tools:
+- `ogrep_index(path, db)` - Index a directory
+- `ogrep_search(q, db, top_k)` - Semantic search
+
+## Development
+
+```bash
+# Clone and setup
+git clone https://github.com/gplv2/ogrep-marketplace.git
+cd ogrep-marketplace
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Run tests
+make test
+
+# Run linters
+make lint
+
+# Format code
+make fmt
+
+# All checks
+make check
+```
+
+## License
+
+MIT

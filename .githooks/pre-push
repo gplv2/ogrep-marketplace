@@ -1,0 +1,32 @@
+#!/bin/bash
+# Pre-push hook: runs linters and tests before pushing to remote
+
+set -e
+
+echo "Running pre-push checks..."
+
+# Get the repo root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Activate venv if present
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Python code checks (ogrep)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+echo "→ ruff check..."
+ruff check ogrep-marketplace/ogrep ogrep-marketplace/tests
+
+echo "→ ruff format check..."
+ruff format --check ogrep-marketplace/ogrep ogrep-marketplace/tests
+
+echo "→ pytest..."
+cd ogrep-marketplace && pytest -q && cd ..
+
+echo ""
+echo "All checks passed! Pushing..."

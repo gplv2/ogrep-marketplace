@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import array
 import math
-from typing import List, Optional, Tuple
 
 from openai import OpenAI
 
 
-def _l2_normalize(vec: List[float]) -> List[float]:
+def _l2_normalize(vec: list[float]) -> list[float]:
     s = 0.0
     for x in vec:
         s += x * x
@@ -16,10 +15,10 @@ def _l2_normalize(vec: List[float]) -> List[float]:
 
 
 def embed_texts(
-    texts: List[str],
+    texts: list[str],
     model: str = "text-embedding-3-small",
-    dimensions: Optional[int] = None,
-) -> Tuple[List[bytes], int]:
+    dimensions: int | None = None,
+) -> tuple[list[bytes], int]:
     """Return (list_of_embedding_blobs_float32, dim)."""
     client = OpenAI()
 
@@ -29,8 +28,8 @@ def embed_texts(
 
     resp = client.embeddings.create(**kwargs)
 
-    vectors: List[bytes] = []
-    dim: Optional[int] = None
+    vectors: list[bytes] = []
+    dim: int | None = None
     for item in resp.data:
         v = _l2_normalize(list(item.embedding))
         if dim is None:

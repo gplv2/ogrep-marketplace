@@ -3,7 +3,6 @@ from __future__ import annotations
 import array
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from .db import connect
 from .embed import embed_texts
@@ -25,7 +24,7 @@ class Hit:
 
 def _dot_py(a: array.array, b: array.array) -> float:
     s = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=True):
         s += float(x) * float(y)
     return s
 
@@ -35,8 +34,8 @@ def query(
     q: str,
     top_k: int = 10,
     model: str = "text-embedding-3-small",
-    dimensions: Optional[int] = None,
-) -> List[Hit]:
+    dimensions: int | None = None,
+) -> list[Hit]:
     con = connect(db_path)
 
     q_blob, _ = embed_texts([q], model=model, dimensions=dimensions)
@@ -49,19 +48,23 @@ def query(
            JOIN files f ON f.id = c.file_id"""
     ).fetchall()
 
-    hits: List[Hit] = []
+    hits: list[Hit] = []
     if np is not None:
         qv = np.frombuffer(q_blob[0], dtype=np.float32)
         for path, sl, el, text, emb in rows:
             v = np.frombuffer(emb, dtype=np.float32)
             score = float(np.dot(qv, v))  # cosine if normalized
-            hits.append(Hit(score=score, path=path, start_line=int(sl), end_line=int(el), text=text))
+            hits.append(
+                Hit(score=score, path=path, start_line=int(sl), end_line=int(el), text=text)
+            )
     else:
         for path, sl, el, text, emb in rows:
             v = array.array("f")
             v.frombytes(emb)
             score = _dot_py(q_arr, v)
-            hits.append(Hit(score=score, path=path, start_line=int(sl), end_line=int(el), text=text))
+            hits.append(
+                Hit(score=score, path=path, start_line=int(sl), end_line=int(el), text=text)
+            )
 
     hits.sort(key=lambda h: h.score, reverse=True)
     return hits[:top_k]

@@ -8,7 +8,7 @@ except Exception as e:
     raise SystemExit(
         "MCP extra not installed. Install with: pip install 'ogrep[mcp]'\n"
         f"Original import error: {e}"
-    )
+    ) from e
 
 from ogrep.indexer import index_path
 from ogrep.search import query as query_db

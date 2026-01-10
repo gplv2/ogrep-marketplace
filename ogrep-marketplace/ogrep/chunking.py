@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass(frozen=True)
@@ -12,9 +11,9 @@ class Chunk:
     text: str
 
 
-def chunk_lines(text: str, chunk_size: int = 120, overlap: int = 20) -> List[Chunk]:
+def chunk_lines(text: str, chunk_size: int = 120, overlap: int = 20) -> list[Chunk]:
     lines = text.splitlines()
-    out: List[Chunk] = []
+    out: list[Chunk] = []
     i = 0
     idx = 0
 

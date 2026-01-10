@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
 
 from tqdm import tqdm
 
-from .chunking import chunk_lines
+from .chunking import chunk_lines as chunk_text
 from .db import connect
 from .embed import embed_texts
 
@@ -33,7 +33,7 @@ def index_path(
     root: Path,
     db_path: Path,
     model: str = "text-embedding-3-small",
-    dimensions: Optional[int] = None,
+    dimensions: int | None = None,
     chunk_lines: int = 120,
     overlap: int = 20,
     max_bytes: int = 2_000_000,
@@ -69,7 +69,12 @@ def index_path(
             (rel,),
         ).fetchone()
 
-        if row and int(row[1]) == st.st_mtime_ns and int(row[2]) == st.st_size and str(row[3]) == sha:
+        if (
+            row
+            and int(row[1]) == st.st_mtime_ns
+            and int(row[2]) == st.st_size
+            and str(row[3]) == sha
+        ):
             continue  # unchanged
 
         if row:
@@ -87,14 +92,14 @@ def index_path(
             file_id = int(cur.lastrowid)
 
         text = b.decode("utf-8", errors="ignore")
-        chunks = chunk_lines(text, chunk_size=chunk_lines, overlap=overlap)
+        chunks = chunk_text(text, chunk_size=chunk_lines, overlap=overlap)
         if not chunks:
             continue
 
         texts = [c.text.replace("\r\n", "\n") for c in chunks]
         emb_blobs, dim = embed_texts(texts, model=model, dimensions=dimensions)
 
-        for c, emb in zip(chunks, emb_blobs):
+        for c, emb in zip(chunks, emb_blobs, strict=True):
             tsha = hashlib.sha256(c.text.encode("utf-8", errors="ignore")).hexdigest()
             con.execute(
                 """INSERT INTO chunks(file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
