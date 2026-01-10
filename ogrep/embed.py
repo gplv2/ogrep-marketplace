@@ -1,22 +1,26 @@
 """
 Embedding module for ogrep.
 
-Provides text embedding functionality using OpenAI's embedding API.
+Provides text embedding functionality using OpenAI's embedding API
+or a local OpenAI-compatible server (like LM Studio).
+
 Embeddings are L2-normalized for cosine similarity calculations and
 stored as compact float32 binary blobs.
 
 Requires:
-    OPENAI_API_KEY environment variable to be set.
+    OPENAI_API_KEY environment variable (not required for local servers).
 
 Configuration:
     OGREP_MODEL: Override default embedding model.
     OGREP_DIMENSIONS: Override default embedding dimensions.
+    OGREP_BASE_URL: Use local OpenAI-compatible server (e.g., http://localhost:1234/v1).
 """
 
 from __future__ import annotations
 
 import array
 import math
+import os
 
 from openai import OpenAI
 
@@ -87,7 +91,14 @@ def embed_texts(
     resolved_model = resolve_model(model)
     resolved_dimensions = resolve_dimensions(dimensions, resolved_model)
 
-    client = OpenAI()
+    # Support local OpenAI-compatible servers (e.g., LM Studio)
+    base_url = os.environ.get("OGREP_BASE_URL")
+    if base_url:
+        # Local servers don't require a real API key
+        api_key = os.environ.get("OPENAI_API_KEY", "lm-studio")
+        client = OpenAI(base_url=base_url, api_key=api_key)
+    else:
+        client = OpenAI()
 
     kwargs: dict = {"input": texts, "model": resolved_model}
     if resolved_dimensions is not None:

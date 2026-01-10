@@ -97,6 +97,35 @@ MODELS: dict[str, EmbeddingModel] = {
         ),
         notes="Legacy model. Consider migrating to text-embedding-3-small for better performance.",
     ),
+    # Local models via LM Studio
+    "bge-base-en-v1.5": EmbeddingModel(
+        id="bge-base-en-v1.5",
+        name="BGE Base English v1.5 (Local)",
+        description="Local embedding model via LM Studio (768D)",
+        dimensions=768,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Privacy-sensitive",
+            "Cost-free",
+        ),
+        notes="Requires: lms server start. Set OGREP_BASE_URL=http://localhost:1234/v1",
+    ),
+    "nomic-embed-text-v1.5": EmbeddingModel(
+        id="nomic-embed-text-v1.5",
+        name="Nomic Embed Text v1.5 (Local)",
+        description="Local embedding model via LM Studio (768D)",
+        dimensions=768,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Privacy-sensitive",
+            "Cost-free",
+        ),
+        notes="Requires: lms load nomic-ai/nomic-embed-text-v1.5 && lms server start",
+    ),
 }
 
 # Model aliases for convenience
@@ -106,6 +135,10 @@ MODEL_ALIASES: dict[str, str] = {
     "ada": "text-embedding-ada-002",
     "3-small": "text-embedding-3-small",
     "3-large": "text-embedding-3-large",
+    # Local model aliases
+    "bge": "bge-base-en-v1.5",
+    "nomic": "nomic-embed-text-v1.5",
+    "local": "nomic-embed-text-v1.5",  # Default local model
 }
 
 
@@ -238,6 +271,25 @@ def format_models_table() -> str:
             "  small -> text-embedding-3-small",
             "  large -> text-embedding-3-large",
             "  ada   -> text-embedding-ada-002",
+            "  bge   -> bge-base-en-v1.5 (local)",
+            "  nomic -> nomic-embed-text-v1.5 (local)",
+            "  local -> nomic-embed-text-v1.5",
+            "",
+            "Local Models (via LM Studio):",
+            "=" * 60,
+            "",
+            "Install:",
+            "  1. Download LM Studio from https://lmstudio.ai/",
+            "  2. Run: ~/.lmstudio/bin/lms bootstrap",
+            "",
+            "Setup:",
+            "  1. lms load nomic-ai/nomic-embed-text-v1.5 -y",
+            "  2. lms server start",
+            "  3. export OGREP_BASE_URL=http://localhost:1234/v1",
+            "",
+            "Usage:",
+            "  ogrep index . -m nomic",
+            "  ogrep query 'search term' -m nomic",
         ]
     )
 

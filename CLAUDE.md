@@ -247,12 +247,15 @@ ogrep tune . -s 10     # Use 10 test samples
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Required. OpenAI API key | - |
+| `OPENAI_API_KEY` | Required for OpenAI models | - |
 | `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
+| `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
 ## Embedding Models
+
+### OpenAI Models (Cloud)
 
 | Model | Alias | Dimensions | Use Case |
 |-------|-------|------------|----------|
@@ -260,7 +263,133 @@ ogrep tune . -s 10     # Use 10 test samples
 | text-embedding-3-large | `large` | 3072 | High accuracy |
 | text-embedding-ada-002 | `ada` | 1536 | Legacy |
 
+### Local Models (via LM Studio)
+
+| Model | Alias | Dimensions | Use Case |
+|-------|-------|------------|----------|
+| bge-base-en-v1.5 | `bge` | 768 | Local/offline, privacy |
+| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | Local/offline, privacy |
+
 **Important:** Query model must match index model.
+
+## Local Embedding Models
+
+Use local embedding models for offline operation, privacy, or cost-free usage.
+
+### Prerequisites
+
+#### Step 1: Install LM Studio
+
+**System Requirements:**
+- 16GB RAM minimum (for embedding models)
+- macOS 13.6+, Windows 10+, or Ubuntu 22.04+
+
+Download LM Studio from [lmstudio.ai](https://lmstudio.ai/):
+
+**macOS:**
+1. Download the DMG from [lmstudio.ai](https://lmstudio.ai/)
+2. Open the DMG and drag LM Studio to Applications
+3. **Launch LM Studio once** - this creates `~/.lmstudio/` directory
+
+**Linux (Ubuntu/Debian):**
+1. Download the AppImage from [lmstudio.ai](https://lmstudio.ai/)
+2. Make executable: `chmod +x LM-Studio-*.AppImage`
+3. **Run it once**: `./LM-Studio-*.AppImage` - this creates `~/.lmstudio/` directory
+4. Close LM Studio after it finishes initializing
+
+**Windows:**
+1. Download the installer from [lmstudio.ai](https://lmstudio.ai/)
+2. Run the EXE installer
+3. **Launch LM Studio once** - this creates the `.lmstudio` directory
+
+> **Important:** You must launch LM Studio at least once before proceeding.
+> The CLI is only available after LM Studio creates the `~/.lmstudio/` directory.
+
+#### Step 2: Add CLI to PATH
+
+After LM Studio has been launched once, add the `lms` CLI to your PATH:
+
+**macOS/Linux:**
+```bash
+~/.lmstudio/bin/lms bootstrap
+lms --version  # Verify: should show version number
+```
+
+**Windows (PowerShell):**
+```powershell
+& "$env:USERPROFILE\.lmstudio\bin\lms.exe" bootstrap
+lms --version
+```
+
+**Troubleshooting:** If you get "command not found" or "directory not found":
+- Ensure LM Studio was launched at least once
+- Check that `~/.lmstudio/bin/lms` exists: `ls ~/.lmstudio/bin/`
+- If using a custom install location, check `~/.lmstudio-home-pointer`:
+  ```bash
+  cat ~/.lmstudio-home-pointer  # Shows actual LM Studio home
+  # Then use that path, e.g.:
+  ~/.cache/lm-studio/bin/lms bootstrap
+  ```
+- If missing, launch LM Studio again and wait for it to fully initialize
+
+### Setup
+
+1. **Load an embedding model:**
+   ```bash
+   # List available embedding models
+   lms ls --embedding
+
+   # Load nomic (recommended)
+   lms load nomic-ai/nomic-embed-text-v1.5 -y
+
+   # Or load BGE
+   lms load BAAI/bge-base-en-v1.5 -y
+   ```
+
+2. **Start the headless server:**
+   ```bash
+   lms server start --port 1234
+   lms server status  # Verify running
+   ```
+
+3. **Configure ogrep:**
+   ```bash
+   export OGREP_BASE_URL=http://localhost:1234/v1
+   ```
+
+### Usage
+
+```bash
+# Index with local model
+ogrep index . -m nomic
+
+# Query with local model
+ogrep query "where is auth handled" -m nomic -r
+
+# Check status
+ogrep status
+```
+
+### Using .env File
+
+```bash
+# .env
+OGREP_BASE_URL=http://localhost:1234/v1
+OGREP_MODEL=nomic-embed-text-v1.5
+```
+
+### Dimension Mismatch
+
+OpenAI models use 1536D or 3072D, local models use 768D. You cannot mix models:
+
+```
+Dimension mismatch: query uses 768D (nomic) but index was built with 1536D (small).
+Use -m small or reindex with -m nomic.
+```
+
+### Auto-Start Server on Boot
+
+Configure LM Studio settings to start the server on login without GUI.
 
 ## Development Workflow
 
