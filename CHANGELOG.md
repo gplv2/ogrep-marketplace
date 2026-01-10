@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-01-10
+
+### Added
+
+- **Query Refresh Flag**: New `--refresh` (`-r`) flag for the query command that automatically checks for changed files and reindexes before searching:
+  ```bash
+  ogrep query "where is auth handled" --refresh
+  ```
+  This ensures AI tools always get accurate results reflecting the current codebase state.
+
+- **Stale File Detection**: Query command can now detect files that have been modified or deleted since last indexing by comparing mtime/size.
+
+- **Claude Code Hook Documentation**: Added documentation for configuring Claude Code hooks to auto-reindex after file edits as an alternative to `--refresh`.
+
+### Changed
+
+- **Skill Updated**: The semantic-grep skill now uses `--refresh` by default to prevent stale results.
+- **Plugin Query Command**: Updated to use `--refresh` flag.
+
+### Documentation
+
+- New "AI Tool Integration" section in CLAUDE.md explaining `--refresh` flag and hook configuration.
+- Added 2 new tests for stale file detection (42 tests total).
+
 ## [0.3.2] - 2026-01-10
 
 ### Fixed
