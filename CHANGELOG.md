@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   export OGREP_CHUNK_LINES=75
   ```
 
+- **Tune Command `--save` Flag**: Automatically save optimal chunk size to `.env` file:
+  ```bash
+  ogrep tune . -m nomic --save           # Save to .env
+  ogrep tune . -m nomic --save --apply   # Save and reindex
+  ```
+
 - **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default).
 
 - **Comprehensive Documentation**: New `docs/LOCAL_EMBEDDINGS_GUIDE.md` with:
