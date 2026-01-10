@@ -138,6 +138,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=10,
         help="Number of results (default: 10)",
     )
+    p_query.add_argument(
+        "--refresh",
+        "-r",
+        action="store_true",
+        help="Check for changed files and reindex before querying. "
+        "Recommended for AI tools to ensure results reflect current code.",
+    )
     _add_model_args(p_query, for_query=True)
     p_query.set_defaults(func=cmd_query)
 

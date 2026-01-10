@@ -58,13 +58,93 @@ ogrep-marketplace/
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index a directory (source files only) |
-| `ogrep query "text" -n 10` | Semantic search |
+| `ogrep query "text" -n 10 -r` | Semantic search (with refresh) |
 | `ogrep status` | Show index stats |
 | `ogrep reset -f` | Delete index |
 | `ogrep reindex .` | Rebuild index |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
 | `ogrep tune .` | Auto-tune chunk size |
+
+## AI Tool Integration (IMPORTANT)
+
+### The --refresh Flag
+
+**Always use `--refresh` (or `-r`) when querying from AI tools:**
+
+```bash
+ogrep query "where is auth handled" --refresh
+```
+
+The `--refresh` flag:
+1. Checks all indexed files for changes (mtime/size comparison)
+2. Runs incremental reindex on changed files (fast, reuses embeddings)
+3. Then executes the query against fresh data
+
+**Why this matters**: Without `--refresh`, queries may return stale results
+based on outdated embeddings. This is especially critical in AI tool contexts
+where files are being edited between queries.
+
+### Claude Code Hooks (Alternative)
+
+Instead of using `--refresh` on every query, you can configure Claude Code
+to automatically reindex after file edits using hooks.
+
+#### Hook Configuration
+
+Create or edit `.claude/settings.json` in your project root:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "ogrep index . 2>/dev/null || true"
+      }
+    ]
+  }
+}
+```
+
+#### Hook File Locations
+
+| Location | Scope | Path |
+|----------|-------|------|
+| **Project** | This repo only | `<repo>/.claude/settings.json` |
+| **User** | All repos | `~/.claude/settings.json` |
+
+#### Example: Full Hook Configuration
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "ogrep index . 2>/dev/null || true"
+      }
+    ]
+  }
+}
+```
+
+**Matcher options:**
+- `"Edit|Write"` - Trigger on file edits and writes
+- `"Edit"` - Only on Edit tool
+- `".*"` - All tool uses (not recommended)
+
+### When to Use Each Approach
+
+| Approach | Best For | Trade-offs |
+|----------|----------|------------|
+| `--refresh` flag | General use, any environment | Small latency on each query |
+| Claude Code hooks | Heavy editing sessions | Requires Claude Code, config setup |
+| Both | Maximum reliability | Redundant but safe |
+
+**Recommendation**: The semantic-grep skill uses `--refresh` by default.
+Add hooks as an optimization if query latency becomes noticeable during
+heavy editing sessions.
 
 ## Smart Defaults
 

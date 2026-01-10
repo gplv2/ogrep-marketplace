@@ -14,9 +14,23 @@ Fast semantic search over local repos using `ogrep` (SQLite index + OpenAI embed
 # Index the repo (run once, or after major changes)
 ogrep index .
 
-# Semantic search
-ogrep query "where is authentication handled?" -n 15
+# Semantic search (ALWAYS use --refresh for accurate results)
+ogrep query "where is authentication handled?" -n 15 --refresh
 ```
+
+## IMPORTANT: Always Use --refresh
+
+**When querying, ALWAYS use the `--refresh` flag:**
+
+```bash
+ogrep query "your search" --refresh
+```
+
+The `--refresh` flag checks for changed files and reindexes them before searching.
+Without it, queries may return stale results based on outdated embeddings.
+
+This is especially critical in AI tool contexts where files are being edited
+between queries. The `--refresh` operation is fast due to smart embedding reuse.
 
 ## Smart Defaults
 
@@ -31,7 +45,7 @@ ogrep query "where is authentication handled?" -n 15
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
-| `ogrep query "text" -n 15` | Semantic search |
+| `ogrep query "text" -n 15 -r` | Semantic search with refresh |
 | `ogrep status` | Show index info |
 | `ogrep reset -f` | Delete index |
 | `ogrep models` | List embedding models |
@@ -49,8 +63,45 @@ ogrep index . -e 'test_*' -e 'fixtures/*'
 ogrep index . -m large
 ```
 
+## Alternative: Claude Code Hooks
+
+Instead of using `--refresh` on every query, you can configure Claude Code
+to automatically reindex after file edits using hooks.
+
+### Hook Configuration
+
+Create or edit `.claude/settings.json` in your project root:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "ogrep index . --quiet 2>/dev/null || true"
+      }
+    ]
+  }
+}
+```
+
+**Hook file locations:**
+- **Project-specific**: `.claude/settings.json` (in your repo root)
+- **User-global**: `~/.claude/settings.json`
+
+### When to Use Hooks vs --refresh
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| `--refresh` flag | Works everywhere, no config needed | Small latency on each query |
+| Claude Code hooks | Zero query latency | Requires Claude Code, hook config |
+
+**Recommendation**: Use `--refresh` as the default approach. Add hooks as an
+optimization if query latency becomes noticeable.
+
 ## Operational Notes
 
 - Requires `OPENAI_API_KEY` in environment
 - Model must match between index and query (use same `-m` flag)
 - Run `ogrep status` to check current index model
+- Without `--refresh`, embeddings may be stale after file edits

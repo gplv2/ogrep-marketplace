@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
+from ogrep.commands.query import _check_stale_files
 from ogrep.indexer import index_path
 from ogrep.search import query
 
@@ -102,3 +104,46 @@ def test_skip_binary_files(temp_dir: Path) -> None:
     paths = [h.path for h in hits]
     assert any("sample.py" in p for p in paths)
     assert not any("binary.bin" in p for p in paths)
+
+
+def test_check_stale_files_detects_changes(temp_dir: Path) -> None:
+    """Test that _check_stale_files detects modified files."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create and index a file
+    source_file = temp_dir / "changeable.py"
+    source_file.write_text("def original():\n    return 1\n")
+
+    index_path(root=temp_dir, db_path=db_path)
+
+    # Initially, no stale files
+    stale = _check_stale_files(db_path, temp_dir)
+    assert len(stale) == 0
+
+    # Modify the file (ensure mtime changes)
+    time.sleep(0.01)
+    source_file.write_text("def modified():\n    return 2\n")
+
+    # Now it should be detected as stale
+    stale = _check_stale_files(db_path, temp_dir)
+    assert len(stale) == 1
+    assert "changeable.py" in str(stale[0])
+
+
+def test_check_stale_files_detects_deletions(temp_dir: Path) -> None:
+    """Test that _check_stale_files detects deleted files."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create and index a file
+    source_file = temp_dir / "deletable.py"
+    source_file.write_text("def will_be_deleted():\n    pass\n")
+
+    index_path(root=temp_dir, db_path=db_path)
+
+    # Delete the file
+    source_file.unlink()
+
+    # Should detect the deleted file
+    stale = _check_stale_files(db_path, temp_dir)
+    assert len(stale) == 1
+    assert "deletable.py" in str(stale[0])
