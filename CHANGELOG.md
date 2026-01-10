@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-10
+
+### Added
+
+- **Local Embedding Models**: Run semantic search completely offline using LM Studio. No API keys required, zero cost.
+  ```bash
+  # Set up local server
+  lms get nomic-embed-text-v1.5 -y
+  lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
+  lms server start
+
+  # Index with local model
+  export OGREP_BASE_URL=http://localhost:1234/v1
+  ogrep index . -m nomic
+  ```
+
+- **Supported Local Models**:
+  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - Best for larger context, 90-line chunks
+  - `bge-base-en-v1.5` (alias: `bge`) - Best for smaller chunks, 30-line chunks
+
+- **Model-Specific Chunk Sizes**: The CLI now automatically uses optimal chunk sizes based on the embedding model:
+  - `nomic`: 90 lines (72% accuracy in tuning tests)
+  - `bge`: 30 lines (52% accuracy in tuning tests)
+  - OpenAI models: 60 lines (default)
+
+  No need to specify `--chunk-lines` - it's now model-aware.
+
+- **New API Function**: `get_optimal_chunk_lines(model)` returns the tuned chunk size for any model.
+
+- **Comprehensive Documentation**: New `docs/LOCAL_EMBEDDINGS_GUIDE.md` with:
+  - Step-by-step LM Studio installation for macOS/Linux/Windows
+  - Model download and loading commands (`lms get`, `lms load`)
+  - Full tuning benchmark data comparing nomic vs bge
+  - Query quality analysis with real test results
+  - Troubleshooting guide
+
+### Changed
+
+- **CLI Help**: `--chunk-lines` now shows model-specific defaults in help text
+- **EmbeddingModel Dataclass**: Added `optimal_chunk_lines` field for per-model tuning
+
+### Documentation
+
+- Updated CLAUDE.md with local model setup, chunk tuning section, and `lms get` download instructions
+- Added tuning results table showing model performance differences
+
 ## [0.3.4] - 2026-01-10
 
 ### Added
