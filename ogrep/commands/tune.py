@@ -221,7 +221,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
         if db.exists():
             db.unlink()
 
-        index_path(
+        stats = index_path(
             root=root,
             db_path=db,
             model=args.model,
@@ -229,5 +229,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
             overlap=max(5, best_chunk // 6),
         )
         print(f"Indexed into {db}")
+        print(f"  Files: {stats.files_indexed} indexed")
+        print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
 
     return 0

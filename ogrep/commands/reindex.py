@@ -47,7 +47,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         print(f"Removed existing index at {db}")
 
     # Reindex
-    index_path(
+    stats = index_path(
         root=root,
         db_path=db,
         model=args.model,
@@ -58,5 +58,10 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         exclude=args.exclude,
         include=args.include,
     )
+
+    # Display indexing statistics
     print(f"Reindexed into {db}")
+    print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
+    if stats.chunks_total > 0:
+        print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
     return 0

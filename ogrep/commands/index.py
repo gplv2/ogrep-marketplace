@@ -41,7 +41,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve() if args.repo_root else root
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
-    index_path(
+    stats = index_path(
         root=root,
         db_path=db,
         model=args.model,
@@ -52,5 +52,15 @@ def cmd_index(args: argparse.Namespace) -> int:
         exclude=args.exclude,
         include=args.include,
     )
+
+    # Display indexing statistics
     print(f"Indexed into {db}")
+    print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
+    if stats.chunks_total > 0:
+        print(f"  Chunks: {stats.chunks_total} total", end="")
+        if stats.chunks_reused > 0:
+            pct = stats.chunks_reused * 100 // stats.chunks_total
+            print(f" ({stats.chunks_reused} reused, ~{stats.tokens_saved_estimate} tokens saved)")
+        else:
+            print(f" ({stats.chunks_embedded} embedded)")
     return 0

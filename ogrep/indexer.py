@@ -12,6 +12,7 @@ import fnmatch
 import hashlib
 import os
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from tqdm import tqdm
@@ -207,6 +208,23 @@ def iter_files(
             yield p
 
 
+@dataclass
+class IndexStats:
+    """Statistics from an indexing operation."""
+
+    files_scanned: int = 0
+    files_indexed: int = 0
+    files_skipped: int = 0
+    chunks_total: int = 0
+    chunks_reused: int = 0
+    chunks_embedded: int = 0
+
+    @property
+    def tokens_saved_estimate(self) -> int:
+        """Estimate tokens saved by reusing embeddings (~100 tokens per chunk)."""
+        return self.chunks_reused * 100
+
+
 def index_path(
     root: Path,
     db_path: Path,
@@ -217,13 +235,17 @@ def index_path(
     max_bytes: int = 2_000_000,
     exclude: Sequence[str] = (),
     include: Sequence[str] = (),
-) -> None:
+) -> IndexStats:
     """
     Index a directory for semantic search.
 
     Scans all files under root, chunks text files, generates embeddings,
     and stores them in the database. Supports incremental updates by
     checking file modification time, size, and content hash.
+
+    Smart embedding reuse: When a file changes, existing chunk embeddings
+    are reused if the chunk text hasn't changed (matched by text_sha256).
+    This saves API tokens for common edit patterns like appending code.
 
     By default, excludes common non-source files (docs, config, build outputs).
     Use --include to override specific excludes.
@@ -239,6 +261,9 @@ def index_path(
         exclude: Additional glob patterns to exclude.
         include: Glob patterns to include (overrides default excludes).
 
+    Returns:
+        IndexStats with counts of files/chunks processed and reused.
+
     Note:
         Files are skipped if:
         - They match an exclude pattern (unless overridden by include)
@@ -247,19 +272,21 @@ def index_path(
         - They haven't changed since last indexing (same mtime, size, hash)
 
     Example:
-        >>> index_path(
+        >>> stats = index_path(
         ...     root=Path("."),
         ...     db_path=Path(".ogrep/index.sqlite"),
         ... )
-        >>> # Include markdown files (normally excluded)
-        >>> index_path(root, db_path, include=["*.md"])
+        >>> print(f"Reused {stats.chunks_reused} chunks")
     """
     # Resolve model from arg, env, or default
     model = resolve_model(model)
+    stats = IndexStats()
 
     con = connect(db_path)
 
     files = list(iter_files(root, exclude=exclude, include=include))
+    stats.files_scanned = len(files)
+
     for p in tqdm(files, desc="Indexing"):
         if not p.is_file():
             continue
@@ -272,16 +299,19 @@ def index_path(
 
         # Skip large files
         if st.st_size > max_bytes:
+            stats.files_skipped += 1
             continue
 
         # Read file contents
         try:
             b = p.read_bytes()
         except Exception:
+            stats.files_skipped += 1
             continue
 
         # Skip binary files
         if not _is_probably_text(b):
+            stats.files_skipped += 1
             continue
 
         sha = _sha256_bytes(b)
@@ -299,11 +329,20 @@ def index_path(
             and int(row[2]) == st.st_size
             and str(row[3]) == sha
         ):
+            stats.files_skipped += 1
             continue  # File unchanged, skip
 
-        # Update or insert file record
+        stats.files_indexed += 1
+
+        # Cache existing embeddings before deletion (for reuse)
+        existing_embeddings: dict[str, tuple[bytes, int]] = {}
         if row:
             file_id = int(row[0])
+            for r in con.execute(
+                "SELECT text_sha256, embedding, dim FROM chunks WHERE file_id=?",
+                (file_id,),
+            ):
+                existing_embeddings[str(r[0])] = (r[1], int(r[2]))
             con.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
             con.execute(
                 "UPDATE files SET mtime_ns=?, size=?, sha256=? WHERE id=?",
@@ -322,13 +361,42 @@ def index_path(
         if not chunks:
             continue
 
-        # Generate embeddings
-        texts = [c.text.replace("\r\n", "\n") for c in chunks]
-        emb_blobs, dim = embed_texts(texts, model=model, dimensions=dimensions)
+        stats.chunks_total += len(chunks)
 
-        # Store chunks with embeddings
-        for c, emb in zip(chunks, emb_blobs, strict=True):
-            tsha = hashlib.sha256(c.text.encode("utf-8", errors="ignore")).hexdigest()
+        # Compute text hashes and identify reusable vs new chunks
+        chunk_hashes = []
+        chunks_to_embed = []
+        reusable_indices = []  # (chunk_index, cached_embedding, cached_dim)
+
+        for i, c in enumerate(chunks):
+            normalized_text = c.text.replace("\r\n", "\n")
+            tsha = hashlib.sha256(normalized_text.encode("utf-8", errors="ignore")).hexdigest()
+            chunk_hashes.append(tsha)
+
+            if tsha in existing_embeddings:
+                reusable_indices.append((i, existing_embeddings[tsha][0], existing_embeddings[tsha][1]))
+                stats.chunks_reused += 1
+            else:
+                chunks_to_embed.append((i, normalized_text))
+                stats.chunks_embedded += 1
+
+        # Generate embeddings only for new chunks
+        new_embeddings: dict[int, tuple[bytes, int]] = {}
+        if chunks_to_embed:
+            texts = [t for _, t in chunks_to_embed]
+            emb_blobs, dim = embed_texts(texts, model=model, dimensions=dimensions)
+            for (idx, _), emb in zip(chunks_to_embed, emb_blobs, strict=True):
+                new_embeddings[idx] = (emb, dim)
+
+        # Store all chunks with embeddings (reused or new)
+        for i, c in enumerate(chunks):
+            tsha = chunk_hashes[i]
+            if i in new_embeddings:
+                emb, dim = new_embeddings[i]
+            else:
+                # Find in reusable
+                emb, dim = next((e, d) for idx, e, d in reusable_indices if idx == i)
+
             con.execute(
                 """INSERT INTO chunks(file_id, chunk_index, start_line, end_line,
                    text, text_sha256, embedding, dim, model)
@@ -337,3 +405,5 @@ def index_path(
             )
 
         con.commit()
+
+    return stats

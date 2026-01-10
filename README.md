@@ -89,6 +89,28 @@ By default, ogrep indexes only source files and excludes:
 
 Default: **60 lines** with 10-line overlap (tested for best relevance).
 
+### Smart Embedding Reuse
+
+ogrep minimizes API token usage with intelligent incremental indexing:
+
+- **Unchanged files**: Completely skipped (no API calls)
+- **Modified files**: Only changed chunks are re-embedded
+- **Append-only edits**: Existing chunks reuse cached embeddings
+
+```bash
+$ ogrep index .
+Indexed into .ogrep/index.sqlite
+  Files: 3 indexed, 42 skipped
+  Chunks: 12 total (9 reused, ~900 tokens saved)
+```
+
+**Example savings:**
+| Edit Pattern | Without Reuse | With Reuse | Savings |
+|--------------|---------------|------------|---------|
+| Edit 1 line in 300-line file | 5 embeds | 1 embed | 80% |
+| Append function to file | 5 embeds | 1 embed | 80% |
+| No changes | 5 embeds | 0 embeds | 100% |
+
 ## File Filtering
 
 ### Override Default Excludes

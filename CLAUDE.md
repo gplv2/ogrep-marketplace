@@ -98,6 +98,31 @@ Tested results:
 | 90 lines | 0.92 | Equivalent |
 | 120 lines | 0.92 | Larger context |
 
+### Smart Embedding Reuse
+
+Implemented in `ogrep/indexer.py` - minimizes API token usage:
+
+1. **File unchanged**: Completely skipped (mtime, size, sha256 match)
+2. **File modified**: Cache existing chunk embeddings by `text_sha256` before delete
+3. **Re-chunk**: Compute new chunk hashes
+4. **Reuse**: Match new hashes against cached embeddings
+5. **Embed**: Only call API for truly new chunks
+
+**Key code path:**
+```python
+# Cache existing embeddings before deletion
+existing_embeddings = {r[0]: (r[1], r[2]) for r in
+    con.execute("SELECT text_sha256, embedding, dim FROM chunks WHERE file_id=?")}
+
+# After re-chunking, check each chunk's hash
+if tsha in existing_embeddings:
+    reusable_indices.append((i, existing_embeddings[tsha]))
+else:
+    chunks_to_embed.append((i, text))
+```
+
+**`IndexStats` dataclass** tracks: `files_scanned`, `files_indexed`, `files_skipped`, `chunks_total`, `chunks_reused`, `chunks_embedded`, `tokens_saved_estimate`.
+
 ## File Filtering Flags
 
 | Flag | Description |
@@ -259,3 +284,20 @@ Prevents cross-repo pollution:
 - Tests use a mock OpenAI client by default (see `conftest.py`)
 - Real API tests are marked with `@pytest.mark.integration`
 - Run integration tests with: `OGREP_INTEGRATION_TESTS=1 pytest -m integration`
+
+### Test Files
+
+| File | Coverage |
+|------|----------|
+| `tests/test_chunking.py` | Text chunking logic |
+| `tests/test_cli.py` | CLI help and argument parsing |
+| `tests/test_db.py` | Database schema and connections |
+| `tests/test_roundtrip.py` | End-to-end index/query flow |
+| `tests/test_embedding_reuse.py` | Smart embedding reuse (13 tests) |
+
+### Key Embedding Reuse Tests
+
+- `test_embedding_reuse_on_small_edit`: Verifies unchanged chunks reuse embeddings
+- `test_embedding_reuse_append_only`: Tests common append-only edit pattern
+- `test_embedding_preserved_in_db`: Confirms reused embeddings are byte-identical
+- `test_tokens_saved_estimate`: Validates savings calculation
