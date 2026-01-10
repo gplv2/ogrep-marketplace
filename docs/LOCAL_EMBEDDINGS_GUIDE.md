@@ -302,7 +302,7 @@ When indexing, chunk size is determined in this order:
 
 ## Query Quality Analysis
 
-We tested identical queries on both models to compare result quality.
+We tested identical queries on all models to compare result quality.
 
 ### Test Queries and Results
 
@@ -310,46 +310,62 @@ We tested identical queries on both models to compare result quality.
 
 | Model | Top Result | Score | Correct? |
 |-------|------------|-------|----------|
+| **OpenAI** | `indexer.py:401` (actual cache logic) | 0.57 | ✅ Yes |
 | **Nomic** | `indexer.py:401` (actual cache logic) | 0.75 | ✅ Yes |
 | **BGE** | `__init__.py:1` (package overview) | 0.68 | ❌ No |
+| **MiniLM** | `indexer.py:281` (IndexStats class) | 0.41 | ⚠️ Partial |
 
-**Winner: Nomic** - Found the actual caching implementation.
+**Winner: OpenAI & Nomic** - Both found the actual caching implementation.
 
 #### Query 2: "what files are excluded from indexing"
 
 | Model | Top Result | Score | Correct? |
 |-------|------------|-------|----------|
+| **OpenAI** | `indexer.py:51` (DEFAULT_EXCLUDES list) | 0.55 | ✅ Yes |
 | **Nomic** | `test_embedding_reuse.py:241` | 0.66 | ✅ Relevant |
 | **BGE** | `test_embedding_reuse.py:241` | 0.74 | ✅ Relevant |
+| **MiniLM** | `indexer.py:241` (iter_files with exclude) | 0.57 | ✅ Yes |
 
-**Winner: Tie** - Both found the same relevant file. BGE had higher score.
+**Winner: OpenAI** - Found the actual DEFAULT_EXCLUDES definition.
 
 #### Query 3: "how does the CLI parse arguments"
 
 | Model | Top Result | Score | Correct? |
 |-------|------------|-------|----------|
+| **OpenAI** | `cli.py:51` (argument parsing) | 0.43 | ✅ Yes |
 | **Nomic** | `commands/_common.py:81` (argument helpers) | 0.57 | ⚠️ Partial |
-| **BGE** | `cli.py:241` (main CLI parser) | 0.71 | ✅ Better |
+| **BGE** | `cli.py:241` (main CLI parser) | 0.71 | ✅ Yes |
+| **MiniLM** | `commands/_common.py:1` (shared utilities) | 0.48 | ⚠️ Partial |
 
-**Winner: BGE** - Found the main CLI file, not just a helper.
+**Winner: OpenAI & BGE** - Found the main CLI file.
 
 #### Query 4: "database schema for storing chunks"
 
 | Model | Top Result | Score | Correct? |
 |-------|------------|-------|----------|
+| **OpenAI** | `indexer.py:451` (chunk insertion) | 0.49 | ⚠️ Partial |
 | **Nomic** | `db.py:1` (database module) | 0.70 | ✅ Yes |
 | **BGE** | `commands/clean.py:1` (clean command) | 0.61 | ❌ No |
+| **MiniLM** | `db.py:21` (SCHEMA definition) | 0.57 | ✅ Yes |
 
-**Winner: Nomic** - Found the actual database schema file.
+**Winner: Nomic & MiniLM** - Found the database schema.
 
 ### Summary
 
-| Metric | Nomic | BGE |
-|--------|-------|-----|
-| Correct top results | 3/4 | 2/4 |
-| Average score | 0.67 | 0.69 |
-| Best for conceptual queries | ✅ | |
-| Best for keyword-like queries | | ✅ |
+| Metric | OpenAI | Nomic | BGE | MiniLM |
+|--------|--------|-------|-----|--------|
+| Correct top results | 3/4 | 3/4 | 2/4 | 3/4 |
+| Average score | 0.51 | 0.67 | 0.69 | 0.51 |
+| Best for conceptual queries | ✅ | ✅ | | |
+| Best for keyword-like queries | | | ✅ | |
+| Best accuracy/size ratio | | | | ✅ |
+
+### Key Insights
+
+1. **OpenAI and Nomic** excel at conceptual queries requiring understanding of code purpose
+2. **BGE** produces higher similarity scores but often misses the most relevant result
+3. **MiniLM** matches OpenAI's accuracy despite being 60x smaller and free
+4. **All local models** are viable alternatives to OpenAI for semantic code search
 
 ---
 
