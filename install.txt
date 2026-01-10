@@ -1,3 +1,37 @@
+
+# Do this from ~/repos/ogrep/ogrep-marketplace (the dir that contains pyproject.toml):
+
+# make sure you're using the venv's pip
+which python
+python -m pip -V
+
+# install in editable mode so the `ogrep` entrypoint is generated
+python -m pip install -U pip
+python -m pip install -e .
+
+# refresh shell command cache (bash/zsh)
+hash -r 2>/dev/null || true
+
+which ogrep
+ogrep --help
+
+# If you want it runnable even without installing, add this file:
+
+ogrep/__main__.py
+
+from .cli import main
+
+if __name__ == "__main__":
+    main()
+Then you can always do:
+
+python -m ogrep --help
+
+But the “proper” pip-first flow is python -m pip install -e . so ogrep exists as a command.
+
+
+# inside claude code 
+
 /plugin marketplace add gplv2/ogrep-marketplace
 
 /plugin install ogrep@ogrep-marketplace
