@@ -1,2 +1,50 @@
-__all__ = ["__version__"]
+"""
+ogrep - Local semantic grep powered by SQLite and OpenAI embeddings.
+
+Search your codebase by meaning, not just keywords. ogrep indexes your
+source files into a local SQLite database and uses OpenAI's embedding
+API to enable semantic search.
+
+Basic Usage:
+    CLI:
+        $ ogrep index .
+        $ ogrep query "where is authentication handled?"
+
+    Python API:
+        >>> from ogrep import index_path, query
+        >>> from pathlib import Path
+        >>> index_path(Path("."), Path(".ogrep/index.sqlite"))
+        >>> hits = query(Path(".ogrep/index.sqlite"), "database connection")
+        >>> for h in hits:
+        ...     print(f"{h.path}:{h.start_line}")
+
+Modules:
+    indexer: File scanning and embedding generation
+    search: Semantic query functionality
+    chunking: Text splitting with overlap
+    db: SQLite database management
+    embed: OpenAI embedding API wrapper
+    commands: CLI command implementations
+"""
+
+from .chunking import Chunk, chunk_lines
+from .db import connect
+from .embed import embed_texts
+from .indexer import index_path, iter_files
+from .search import Hit, query
+
 __version__ = "0.1.0"
+
+__all__ = [
+    "__version__",
+    # Core functions
+    "index_path",
+    "query",
+    "iter_files",
+    "embed_texts",
+    "connect",
+    "chunk_lines",
+    # Data classes
+    "Hit",
+    "Chunk",
+]
