@@ -23,7 +23,20 @@ from .embed import embed_texts
 from .models import resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
-DEFAULT_SKIP_DIRS = {".git", ".venv", "node_modules", ".ogrep", "__pycache__"}
+DEFAULT_SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".ogrep",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".tox",
+    ".githooks",
+    "storage",  # Laravel/framework cache directories
+}
 
 #: Default exclude patterns for common non-source files
 DEFAULT_EXCLUDES = (
@@ -37,9 +50,15 @@ DEFAULT_EXCLUDES = (
     "*.egg-info/*",
     "*.egg",
     "*.whl",
+    "*.dist-info/*",
     # OS files
     ".DS_Store",
     "Thumbs.db",
+    # Git metadata
+    ".gitignore",
+    ".gitattributes",
+    ".gitmodules",
+    ".gitkeep",
     # Environment/secrets (never index these!)
     ".env",
     ".env.*",
@@ -60,6 +79,7 @@ DEFAULT_EXCLUDES = (
     "*.ini",
     "*.cfg",
     "*.conf",
+    ".editorconfig",
     # Lock files
     "*.lock",
     "package-lock.json",
@@ -80,6 +100,7 @@ DEFAULT_EXCLUDES = (
     "coverage/*",
     ".coverage",
     "htmlcov/*",
+    ".phpunit.result.cache",
     # Vendor directories
     "vendor/*",
     "third_party/*",
@@ -90,6 +111,49 @@ DEFAULT_EXCLUDES = (
     "Makefile",
     "Dockerfile",
     "*.dockerfile",
+    # Logs
+    "*.log",
+    "logs/*",
+    # Images (also filtered by binary detection, but skip early)
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.bmp",
+    "*.ico",
+    "*.svg",
+    "*.webp",
+    "*.tiff",
+    "*.tif",
+    "*.psd",
+    "*.ai",
+    "*.eps",
+    # Fonts
+    "*.woff",
+    "*.woff2",
+    "*.ttf",
+    "*.otf",
+    "*.eot",
+    # Audio/video
+    "*.mp3",
+    "*.mp4",
+    "*.wav",
+    "*.avi",
+    "*.mov",
+    "*.webm",
+    # Archives
+    "*.zip",
+    "*.tar",
+    "*.gz",
+    "*.rar",
+    "*.7z",
+    # Database files
+    "*.sqlite",
+    "*.sqlite3",
+    "*.db",
+    # Python package metadata
+    "*.pth",
+    "py.typed",
 )
 
 

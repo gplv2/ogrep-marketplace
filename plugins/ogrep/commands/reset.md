@@ -4,9 +4,9 @@ allowed-tools: Bash
 argument-hint: [--force]
 ---
 
-Remove the semantic search index. Use `--force` to skip confirmation.
+Remove the semantic search index.
 
 Run:
-- `ogrep reset $ARGUMENTS`
+- `ogrep reset -f`
 
-Without `--force`, this will prompt for confirmation.
+The `-f` flag is required in non-interactive mode (like Claude Code).

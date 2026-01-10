@@ -77,12 +77,22 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Binary** | `*.pyc`, `*.so`, `*.dll`, `*.exe`, `*.whl` |
 | **Secrets** | `.env`, `.env.*`, `secrets.*`, `credentials.*` |
 | **Docs** | `*.md`, `*.txt`, `*.rst`, `docs/*` |
-| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini` |
+| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `.editorconfig` |
 | **Build** | `dist/*`, `build/*`, `vendor/*`, `target/*` |
-| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock` |
+| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock` |
+| **Git metadata** | `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep` |
+| **Images** | `*.png`, `*.jpg`, `*.gif`, `*.svg`, `*.webp`, `*.ico`, `*.bmp`, `*.tiff`, `*.psd` |
+| **Fonts** | `*.woff`, `*.woff2`, `*.ttf`, `*.otf`, `*.eot` |
+| **Media** | `*.mp3`, `*.mp4`, `*.wav`, `*.avi`, `*.mov`, `*.webm` |
+| **Archives** | `*.zip`, `*.tar`, `*.gz`, `*.rar`, `*.7z` |
+| **Databases** | `*.sqlite`, `*.sqlite3`, `*.db` |
+| **Logs** | `*.log`, `logs/*` |
+| **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
 
 **Skipped directories** (in `DEFAULT_SKIP_DIRS`):
-- `.git`, `.venv`, `node_modules`, `__pycache__`, `.ogrep`
+- `.git`, `.venv`, `venv`, `node_modules`, `__pycache__`, `.ogrep`
+- `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tox`
+- `.githooks`, `storage`
 
 ### Chunk Size Optimization
 

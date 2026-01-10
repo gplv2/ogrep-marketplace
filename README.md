@@ -78,12 +78,20 @@ By default, ogrep indexes only source files and excludes:
 | Category | Patterns |
 |----------|----------|
 | **Docs** | `*.md`, `*.txt`, `*.rst`, `docs/*` |
-| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini` |
+| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `.editorconfig` |
 | **Secrets** | `.env`, `.env.*`, `secrets.*`, `credentials.*` |
-| **Build** | `dist/*`, `build/*`, `vendor/*`, `*.min.js` |
-| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock` |
+| **Build** | `dist/*`, `build/*`, `vendor/*`, `*.min.js`, `*.min.css` |
+| **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock` |
+| **Git metadata** | `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep` |
+| **Images** | `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.svg`, `*.webp`, `*.ico`, `*.bmp`, `*.tiff`, `*.psd` |
+| **Fonts** | `*.woff`, `*.woff2`, `*.ttf`, `*.otf`, `*.eot` |
+| **Media** | `*.mp3`, `*.mp4`, `*.wav`, `*.avi`, `*.mov`, `*.webm` |
+| **Archives** | `*.zip`, `*.tar`, `*.gz`, `*.rar`, `*.7z` |
+| **Databases** | `*.sqlite`, `*.sqlite3`, `*.db` |
+| **Logs** | `*.log`, `logs/*` |
+| **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
 
-**Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `__pycache__/`, `.ogrep/`
+**Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `venv/`, `__pycache__/`, `.ogrep/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `.tox/`, `.githooks/`, `storage/`
 
 ### Optimal Chunk Size
 

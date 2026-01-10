@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-01-10
+
+### Added
+
+- **Expanded Default Exclusions**: More comprehensive filtering for source-only indexing:
+  - **Directories**: `venv/`, `.githooks/`, `storage/` (Laravel), `.mypy_cache/`, `.tox/`, `.pytest_cache/`, `.ruff_cache/`
+  - **Git metadata**: `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep`
+  - **Images**: `*.png`, `*.jpg`, `*.gif`, `*.svg`, `*.webp`, `*.ico`, `*.bmp`, `*.tiff`, `*.psd`
+  - **Fonts**: `*.woff`, `*.woff2`, `*.ttf`, `*.otf`, `*.eot`
+  - **Media**: `*.mp3`, `*.mp4`, `*.wav`, `*.avi`, `*.mov`, `*.webm`
+  - **Archives**: `*.zip`, `*.tar`, `*.gz`, `*.rar`, `*.7z`
+  - **Databases**: `*.sqlite`, `*.sqlite3`, `*.db`
+  - **Logs**: `*.log`, `logs/*`
+  - **Python packages**: `*.dist-info/*`, `*.pth`, `py.typed`
+  - **Config**: `.editorconfig`, `.phpunit.result.cache`
+
+### Fixed
+
+- **Non-Interactive Reset**: `ogrep reset` now requires `-f` flag when running non-interactively (e.g., from Claude Code) instead of crashing with EOFError
+
 ## [0.3.0] - 2026-01-10
 
 ### Added

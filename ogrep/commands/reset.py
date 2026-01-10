@@ -36,6 +36,11 @@ def cmd_reset(args: argparse.Namespace) -> int:
         return 0
 
     if not args.force:
+        import sys
+
+        if not sys.stdin.isatty():
+            print("Non-interactive mode requires --force (-f) flag.")
+            return 1
         confirm = input(f"Delete {db}? [y/N]: ").strip().lower()
         if confirm not in ("y", "yes"):
             print("Aborted.")
