@@ -91,14 +91,14 @@ def test_skip_binary_files(temp_dir: Path) -> None:
     # Create a binary file
     (temp_dir / "binary.bin").write_bytes(b"\x00\x01\x02\x03\xff\xfe")
 
-    # Create a text file
-    (temp_dir / "text.txt").write_text("This is a text file")
+    # Create a source file (use .py extension since .txt is excluded by default)
+    (temp_dir / "sample.py").write_text("# This is a source file\nprint('hello')")
 
     index_path(root=temp_dir, db_path=db_path)
 
-    # Query should only find the text file
-    hits = query(db_path=db_path, q="text file", top_k=10)
+    # Query should only find the source file
+    hits = query(db_path=db_path, q="source file", top_k=10)
 
     paths = [h.path for h in hits]
-    assert any("text.txt" in p for p in paths)
+    assert any("sample.py" in p for p in paths)
     assert not any("binary.bin" in p for p in paths)

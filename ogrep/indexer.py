@@ -26,6 +26,7 @@ DEFAULT_SKIP_DIRS = {".git", ".venv", "node_modules", ".ogrep", "__pycache__"}
 
 #: Default exclude patterns for common non-source files
 DEFAULT_EXCLUDES = (
+    # Binary/compiled
     "*.pyc",
     "*.pyo",
     "*.so",
@@ -34,8 +35,53 @@ DEFAULT_EXCLUDES = (
     "*.exe",
     "*.egg-info/*",
     "*.egg",
+    "*.whl",
+    # OS files
     ".DS_Store",
     "Thumbs.db",
+    # Documentation (index source code, not docs)
+    "*.md",
+    "*.txt",
+    "*.rst",
+    "docs/*",
+    # Config/data files
+    "*.json",
+    "*.yaml",
+    "*.yml",
+    "*.toml",
+    "*.ini",
+    "*.cfg",
+    "*.conf",
+    # Lock files
+    "*.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "poetry.lock",
+    "Cargo.lock",
+    "Gemfile.lock",
+    # Build outputs
+    "dist/*",
+    "build/*",
+    "out/*",
+    "target/*",
+    # Minified files
+    "*.min.js",
+    "*.min.css",
+    "*.map",
+    # Test/coverage
+    "coverage/*",
+    ".coverage",
+    "htmlcov/*",
+    # Vendor directories
+    "vendor/*",
+    "third_party/*",
+    # Common non-source
+    "LICENSE*",
+    "LICENCE*",
+    "COPYING*",
+    "Makefile",
+    "Dockerfile",
+    "*.dockerfile",
 )
 
 
@@ -110,25 +156,29 @@ def _matches_pattern(path: Path, root: Path, patterns: Sequence[str]) -> bool:
 def iter_files(
     root: Path,
     exclude: Sequence[str] = (),
+    include: Sequence[str] = (),
     skip_dirs: set[str] | None = None,
 ) -> Iterable[Path]:
     """
     Recursively iterate over files in a directory, with filtering.
 
     Skips directories like .git, node_modules, .venv, etc. that typically
-    contain non-source files. Supports exclude patterns for fine-grained
-    file filtering.
+    contain non-source files. Supports exclude/include patterns for
+    fine-grained file filtering.
 
     Args:
         root: Root directory to scan.
-        exclude: Glob patterns for files to exclude (e.g., "*.md", "vendor/*").
+        exclude: Additional glob patterns to exclude (added to defaults).
+        include: Glob patterns to include even if they match excludes.
+            Use to override defaults, e.g., include=["*.md"] to index markdown.
         skip_dirs: Directory names to skip. Defaults to DEFAULT_SKIP_DIRS.
 
     Yields:
         Path objects for each file found.
 
     Example:
-        >>> list(iter_files(Path("."), exclude=["*.md", "*.json"]))
+        >>> list(iter_files(Path("."), exclude=["test_*"]))
+        >>> list(iter_files(Path("."), include=["*.md"]))  # Override default exclude
     """
     if skip_dirs is None:
         skip_dirs = DEFAULT_SKIP_DIRS
@@ -140,6 +190,11 @@ def iter_files(
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         for fn in filenames:
             p = Path(dirpath) / fn
+            # Check if explicitly included (overrides excludes)
+            if include and _matches_pattern(p, root, include):
+                yield p
+                continue
+            # Check excludes
             if all_excludes and _matches_pattern(p, root, all_excludes):
                 continue
             yield p
@@ -150,10 +205,11 @@ def index_path(
     db_path: Path,
     model: str | None = None,
     dimensions: int | None = None,
-    chunk_lines: int = 120,
-    overlap: int = 20,
+    chunk_lines: int = 60,
+    overlap: int = 10,
     max_bytes: int = 2_000_000,
     exclude: Sequence[str] = (),
+    include: Sequence[str] = (),
 ) -> None:
     """
     Index a directory for semantic search.
@@ -161,6 +217,9 @@ def index_path(
     Scans all files under root, chunks text files, generates embeddings,
     and stores them in the database. Supports incremental updates by
     checking file modification time, size, and content hash.
+
+    By default, excludes common non-source files (docs, config, build outputs).
+    Use --include to override specific excludes.
 
     Args:
         root: Directory to index.
@@ -170,11 +229,12 @@ def index_path(
         chunk_lines: Number of lines per chunk.
         overlap: Number of overlapping lines between chunks.
         max_bytes: Maximum file size to index (larger files are skipped).
-        exclude: Glob patterns for files to exclude (e.g., "*.md", "vendor/*").
+        exclude: Additional glob patterns to exclude.
+        include: Glob patterns to include (overrides default excludes).
 
     Note:
         Files are skipped if:
-        - They match an exclude pattern
+        - They match an exclude pattern (unless overridden by include)
         - They exceed max_bytes in size
         - They appear to be binary (contain null bytes)
         - They haven't changed since last indexing (same mtime, size, hash)
@@ -183,15 +243,16 @@ def index_path(
         >>> index_path(
         ...     root=Path("."),
         ...     db_path=Path(".ogrep/index.sqlite"),
-        ...     exclude=["*.md", "docs/*"],
         ... )
+        >>> # Include markdown files (normally excluded)
+        >>> index_path(root, db_path, include=["*.md"])
     """
     # Resolve model from arg, env, or default
     model = resolve_model(model)
 
     con = connect(db_path)
 
-    files = list(iter_files(root, exclude=exclude))
+    files = list(iter_files(root, exclude=exclude, include=include))
     for p in tqdm(files, desc="Indexing"):
         if not p.is_file():
             continue

@@ -6,22 +6,51 @@ allowed-tools: Bash, Read
 
 # Semantic grep workflow (ogrep)
 
-You can do fast semantic search over the local repo using `ogrep` (SQLite index + OpenAI embeddings).
+Fast semantic search over local repos using `ogrep` (SQLite index + OpenAI embeddings).
 
-## Rules
-1. Prefer `ogrep query` before manual ripgrep when the user intent is conceptual.
-2. If the repo is not indexed yet, run `ogrep index .` first.
-3. Use the results to open the top files and then proceed with normal code reasoning.
+## Quick Start
+
+```bash
+# Index the repo (run once, or after major changes)
+ogrep index .
+
+# Semantic search
+ogrep query "where is authentication handled?" -n 15
+```
+
+## Smart Defaults
+
+**Source-only indexing** - By default, ogrep indexes only source code:
+- Excludes: `*.md`, `*.json`, `*.yaml`, `*.toml`, `docs/*`, `vendor/*`, etc.
+- Skips: `.git/`, `node_modules/`, `.venv/`, `__pycache__/`
+
+**Optimal chunk size** - 60 lines with 10-line overlap (tested for best relevance).
 
 ## Commands
 
-Index (creates `.ogrep/index.sqlite`):
-- `ogrep index .`
+| Command | Description |
+|---------|-------------|
+| `ogrep index .` | Index current directory |
+| `ogrep query "text" -n 15` | Semantic search |
+| `ogrep status` | Show index info |
+| `ogrep reset -f` | Delete index |
+| `ogrep models` | List embedding models |
 
-Query:
-- `ogrep query "<natural language query>" --top 15`
+## Override Defaults
 
-## Operational notes
-- Requires `OPENAI_API_KEY` in the environment for embeddings.
-- Indexing sends chunk text to the embeddings API; keep chunk sizes reasonable.
+```bash
+# Include markdown files (normally excluded)
+ogrep index . -i '*.md'
 
+# Add extra exclusions
+ogrep index . -e 'test_*' -e 'fixtures/*'
+
+# Use high-accuracy model (slower, more expensive)
+ogrep index . -m large
+```
+
+## Operational Notes
+
+- Requires `OPENAI_API_KEY` in environment
+- Model must match between index and query (use same `-m` flag)
+- Run `ogrep status` to check current index model

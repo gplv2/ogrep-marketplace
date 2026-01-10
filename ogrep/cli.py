@@ -88,14 +88,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.add_argument(
         "--chunk-lines",
         type=int,
-        default=120,
-        help="Lines per chunk (default: 120)",
+        default=60,
+        help="Lines per chunk (default: 60)",
     )
     p_index.add_argument(
         "--overlap",
         type=int,
-        default=20,
-        help="Overlapping lines between chunks (default: 20)",
+        default=10,
+        help="Overlapping lines between chunks (default: 10)",
     )
     p_index.add_argument(
         "--max-bytes",
@@ -109,8 +109,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATTERN",
-        help="Exclude files matching glob pattern (can be repeated). "
-        "Examples: -e '*.md' -e 'vendor/*' -e 'docs/*'",
+        help="Additional exclude patterns (added to defaults)",
+    )
+    p_index.add_argument(
+        "--include",
+        "-i",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Include patterns (override default excludes). "
+        "Example: -i '*.md' to index markdown files",
     )
     p_index.set_defaults(func=cmd_index)
 
@@ -159,14 +167,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reindex.add_argument(
         "--chunk-lines",
         type=int,
-        default=120,
-        help="Lines per chunk",
+        default=60,
+        help="Lines per chunk (default: 60)",
     )
     p_reindex.add_argument(
         "--overlap",
         type=int,
-        default=20,
-        help="Overlapping lines between chunks",
+        default=10,
+        help="Overlapping lines between chunks (default: 10)",
     )
     p_reindex.add_argument(
         "--max-bytes",
@@ -180,7 +188,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="PATTERN",
-        help="Exclude files matching glob pattern (can be repeated)",
+        help="Additional exclude patterns (added to defaults)",
+    )
+    p_reindex.add_argument(
+        "--include",
+        "-i",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Include patterns (override default excludes)",
     )
     p_reindex.set_defaults(func=cmd_reindex)
 
