@@ -136,6 +136,21 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Requires: lms load nomic-ai/nomic-embed-text-v1.5 && lms server start",
         optimal_chunk_lines=90,  # Tuned: performs best with larger context
     ),
+    "text-embedding-all-minilm-l6-v2-embedding": EmbeddingModel(
+        id="text-embedding-all-minilm-l6-v2-embedding",
+        name="MiniLM L6 v2 (Local)",
+        description="Fast, lightweight local embedding model (384D)",
+        dimensions=384,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Fast inference",
+            "Low memory usage",
+        ),
+        notes="Smallest model (~25MB). Run: lms load all-minilm-l6-v2",
+        optimal_chunk_lines=30,  # Tuned: performs best with small chunks (96% at 30 lines)
+    ),
 }
 
 # Model aliases for convenience
@@ -148,6 +163,7 @@ MODEL_ALIASES: dict[str, str] = {
     # Local model aliases
     "bge": "bge-base-en-v1.5",
     "nomic": "nomic-embed-text-v1.5",
+    "minilm": "text-embedding-all-minilm-l6-v2-embedding",
     "local": "nomic-embed-text-v1.5",  # Default local model
 }
 

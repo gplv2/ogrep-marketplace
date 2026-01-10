@@ -151,8 +151,9 @@ See [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) for detaile
 
 | Model | Alias | Dimensions | Optimal Chunks | Notes |
 |-------|-------|------------|----------------|-------|
-| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | 90 lines | Recommended local model |
+| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | 90 lines | Best accuracy, larger context |
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | Smaller chunks work better |
+| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | Smallest, fastest (~25MB) |
 
 ```bash
 # Use model alias

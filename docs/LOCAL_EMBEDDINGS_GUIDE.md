@@ -96,6 +96,7 @@ LM Studio can download models directly from HuggingFace.
 |-------|---------|------|------------|-------|
 | **nomic-embed-text-v1.5** | `lms get nomic-embed-text-v1.5` | 84 MB (Q4) | 768 | Good general-purpose, prefers larger chunks |
 | **bge-base-en-v1.5** | `lms get bge-base-en-v1.5` | 118 MB (Q8) | 768 | Higher quality quantization, prefers smaller chunks |
+| **all-MiniLM-L6-v2** | `lms get all-MiniLM-L6-v2` | 25 MB (Q8) | 384 | Smallest, fastest, excellent accuracy with small chunks |
 
 ### Download Commands
 
@@ -106,17 +107,21 @@ lms get nomic-embed-text-v1.5 -y
 # Download BGE
 lms get bge-base-en-v1.5 -y
 
+# Download MiniLM (smallest, fastest)
+lms get all-MiniLM-L6-v2 -y
+
 # List downloaded models
 lms ls
 ```
 
 **Example output:**
 ```
-You have 2 models, taking up 202.08 MB of disk space.
+You have 3 models, taking up 227.09 MB of disk space.
 
-EMBEDDING                               PARAMS    ARCH          SIZE
-text-embedding-bge-base-en-v1.5         109M      BERT          117.97 MB
-text-embedding-nomic-embed-text-v1.5              Nomic BERT    84.11 MB
+EMBEDDING                                    PARAMS    ARCH          SIZE
+text-embedding-all-minilm-l6-v2-embedding    22M       BERT          25.01 MB
+text-embedding-bge-base-en-v1.5              109M      BERT          117.97 MB
+text-embedding-nomic-embed-text-v1.5                   Nomic BERT    84.11 MB
 ```
 
 ### Loading Models
@@ -128,6 +133,9 @@ lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
 # Load BGE
 lms load bge-base-en-v1.5 -y
 
+# Load MiniLM
+lms load all-minilm-l6-v2 -y
+
 # Check what's loaded
 lms status
 ```
@@ -136,20 +144,20 @@ lms status
 
 ---
 
-## Model Comparison: Nomic vs BGE
+## Model Comparison
 
-We tested both models on the ogrep codebase (29 source files, ~52-79 chunks depending on chunk size).
+We tested three local models on the ogrep codebase (29 source files, ~52-79 chunks depending on chunk size).
 
 ### Key Differences
 
-| Characteristic | nomic-embed-text-v1.5 | bge-base-en-v1.5 |
-|----------------|----------------------|------------------|
-| **Architecture** | Nomic BERT | BERT |
-| **Size** | 84 MB (Q4_K_M) | 118 MB (Q8_0) |
-| **Quantization** | 4-bit | 8-bit (higher quality) |
-| **Optimal chunk size** | 90 lines | 30 lines |
-| **Peak accuracy** | 72% | 52% |
-| **Best for** | Larger context windows | Focused, small chunks |
+| Characteristic | nomic-embed-text-v1.5 | bge-base-en-v1.5 | all-MiniLM-L6-v2 |
+|----------------|----------------------|------------------|------------------|
+| **Architecture** | Nomic BERT | BERT | BERT |
+| **Size** | 84 MB (Q4_K_M) | 118 MB (Q8_0) | 25 MB (Q8_0) |
+| **Dimensions** | 768 | 768 | 384 |
+| **Optimal chunk size** | 90 lines | 30 lines | 30 lines |
+| **Peak accuracy** | 72% | 52% | 96% |
+| **Best for** | Larger context windows | Focused, small chunks | Speed + accuracy |
 
 ### Performance Observations
 
@@ -164,6 +172,12 @@ We tested both models on the ogrep codebase (29 source files, ~52-79 chunks depe
 - **Completely fails at larger chunk sizes** (0% accuracy at 90+ lines)
 - Higher raw similarity scores but doesn't always find the most relevant content
 - More sensitive to exact text matching
+
+**all-MiniLM-L6-v2:**
+- Smallest model (~25MB), fastest inference
+- Excellent accuracy with small chunks (96% at 30 lines)
+- Lower dimensions (384) but still very effective
+- Great choice when speed and size matter
 
 ---
 
@@ -198,6 +212,20 @@ Chunk Size   Accuracy   Hits
 ```
 
 **Observation:** BGE degrades rapidly as chunk size increases. At 90+ lines, it finds **zero** correct results. This is a critical failure mode to be aware of.
+
+### Tuning Results: all-MiniLM-L6-v2
+
+```
+Chunk Size   Accuracy   Hits
+------------------------------
+30           0.96       5/5     <-- OPTIMAL
+45           0.84       5/5
+60           0.56       4/5
+90           0.68       4/5
+120          0.36       2/5
+```
+
+**Observation:** MiniLM achieves the highest peak accuracy (96%) of all tested local models at 30-line chunks. Despite having smaller dimensions (384 vs 768), it outperforms both nomic and bge on this codebase. It degrades at larger chunk sizes but less catastrophically than BGE.
 
 ### Why This Happens
 
@@ -327,10 +355,18 @@ We tested identical queries on both models to compare result quality.
 
 ## Recommendations
 
+### Choosing a Model
+
+| Priority | Model | Alias | When to Use |
+|----------|-------|-------|-------------|
+| **Speed + Size** | all-MiniLM-L6-v2 | `minilm` | Limited resources, fast iteration, 96% accuracy |
+| **Conceptual** | nomic-embed-text-v1.5 | `nomic` | Broad context queries, conceptual understanding |
+| **Fallback** | bge-base-en-v1.5 | `bge` | If others don't work well for your codebase |
+
 ### For Most Codebases
 
-1. **Start with nomic-embed-text-v1.5** - More forgiving, better conceptual understanding
-2. **Use 90-line chunks** - Optimal for nomic on typical codebases
+1. **Try minilm first** - Smallest, fastest, best tested accuracy (96%)
+2. **Use 30-line chunks** for minilm/bge, **90-line chunks** for nomic
 3. **Always run `ogrep tune`** when changing models or for new codebases
 
 ### Configuration
