@@ -6,7 +6,7 @@ This file provides guidance for Claude Code when working in this repository.
 
 **ogrep** is a local semantic grep tool with:
 - SQLite-based local index (no external vector DB)
-- OpenAI embeddings for semantic search
+- OpenAI embeddings for semantic search (configurable model)
 - Claude Code plugin/skill integration
 - Multi-repo scope fencing
 
@@ -17,7 +17,19 @@ ogrep-marketplace/
 ├── .claude-plugin/           # Marketplace config
 │   └── marketplace.json
 ├── ogrep/                    # Python package
-│   ├── cli.py                # CLI commands
+│   ├── __init__.py           # Public API exports
+│   ├── cli.py                # CLI argument parsing
+│   ├── commands/             # CLI command implementations
+│   │   ├── __init__.py
+│   │   ├── _common.py        # Shared utilities (scope resolution)
+│   │   ├── index.py
+│   │   ├── query.py
+│   │   ├── reset.py
+│   │   ├── reindex.py
+│   │   ├── clean.py
+│   │   ├── status.py
+│   │   └── models.py
+│   ├── models.py             # Embedding model definitions
 │   ├── db.py                 # SQLite schema/connection
 │   ├── indexer.py            # File indexing logic
 │   ├── search.py             # Query/search logic
@@ -65,7 +77,9 @@ make check       # All checks
 
 | File | Purpose |
 |------|---------|
-| `ogrep/cli.py` | CLI entry point and all commands |
+| `ogrep/cli.py` | CLI argument parsing and dispatch |
+| `ogrep/commands/` | Individual command implementations |
+| `ogrep/models.py` | Embedding model definitions and resolution |
 | `ogrep/indexer.py` | File walking and indexing logic |
 | `ogrep/search.py` | Query execution and scoring |
 | `ogrep/db.py` | SQLite schema and connection |
@@ -73,12 +87,34 @@ make check       # All checks
 
 ## CLI Commands
 
-- `ogrep index .` - Index a directory
-- `ogrep query "text"` - Semantic search
-- `ogrep status` - Show index stats
-- `ogrep reset` - Delete index
-- `ogrep reindex .` - Rebuild index
-- `ogrep clean` - Remove stale entries
+| Command | Description |
+|---------|-------------|
+| `ogrep index .` | Index a directory |
+| `ogrep query "text" -n 10` | Semantic search |
+| `ogrep status` | Show index stats |
+| `ogrep reset -f` | Delete index |
+| `ogrep reindex .` | Rebuild index |
+| `ogrep clean --vacuum` | Remove stale entries |
+| `ogrep models` | List available models |
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | Required. OpenAI API key | - |
+| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OGREP_DIMENSIONS` | Default dimensions | Model default |
+| `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
+
+## Embedding Models
+
+Configured via `-m` flag or `OGREP_MODEL` environment variable:
+
+| Model | Alias | Dimensions | Use Case |
+|-------|-------|------------|----------|
+| text-embedding-3-small | `small` | 1536 | Default, cost-effective |
+| text-embedding-3-large | `large` | 3072 | High accuracy, multi-language |
+| text-embedding-ada-002 | `ada` | 1536 | Legacy compatibility |
 
 ## Scope Fencing
 
@@ -117,10 +153,11 @@ plugins/ogrep/
 
 ### Adding a new CLI command
 
-1. Add function `cmd_<name>` in `cli.py`
-2. Add parser in `main()` function
-3. Add tests in `tests/test_cli.py`
-4. Add command file in `plugins/ogrep/commands/<name>.md`
+1. Create `ogrep/commands/<name>.py` with `cmd_<name>` function
+2. Export from `ogrep/commands/__init__.py`
+3. Add parser in `cli.py` `_build_parser()` function
+4. Add tests in `tests/test_cli.py`
+5. Add command file in `plugins/ogrep/commands/<name>.md`
 
 ### Modifying the database schema
 
@@ -128,16 +165,17 @@ plugins/ogrep/
 2. Consider migration strategy (usually reset + reindex)
 3. Update tests in `tests/test_db.py`
 
+### Adding a new embedding model
+
+1. Add entry to `MODELS` dict in `models.py`
+2. Optionally add alias to `MODEL_ALIASES`
+3. Update documentation
+
 ### Adding a new skill
 
 1. Create `plugins/ogrep/skills/<name>/SKILL.md`
 2. Define frontmatter with `name`, `description`, `allowed-tools`
 3. Document skill behavior in markdown body
-
-## Environment Variables
-
-- `OPENAI_API_KEY` (required) - OpenAI API key for embeddings
-- `OGREP_INTEGRATION_TESTS` - Set to "1" to run real API tests
 
 ## Debugging Tips
 
@@ -145,3 +183,4 @@ plugins/ogrep/
 2. Reset and reindex: `ogrep reindex .`
 3. View database directly: `sqlite3 .ogrep/index.sqlite`
 4. Check for stale files: `ogrep clean --vacuum`
+5. List models: `ogrep models`

@@ -2,7 +2,7 @@
 
 Local semantic grep powered by:
 - **SQLite index** (`.ogrep/index.sqlite` by default)
-- **OpenAI embeddings** (used only for vectorization)
+- **OpenAI embeddings** (configurable model)
 
 Search your codebase by meaning, not just keywords.
 
@@ -49,6 +49,9 @@ ogrep query "where is invoice status handled?" --top 15
 
 # Check index status
 ogrep status
+
+# List available embedding models
+ogrep models
 ```
 
 ## CLI Commands
@@ -56,11 +59,42 @@ ogrep status
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
-| `ogrep query "text" --top N` | Semantic search |
+| `ogrep query "text" -n 10` | Semantic search |
 | `ogrep status` | Show index statistics |
-| `ogrep reset --force` | Delete index |
+| `ogrep reset -f` | Delete index |
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
+| `ogrep models` | List available embedding models |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Required. Your OpenAI API key |
+| `OGREP_MODEL` | Default embedding model (default: `text-embedding-3-small`) |
+| `OGREP_DIMENSIONS` | Default embedding dimensions (optional) |
+
+## Embedding Models
+
+Use `-m` or `--model` flag, or set `OGREP_MODEL` environment variable:
+
+```bash
+# Use model alias
+ogrep index . -m large
+
+# Use full model name
+ogrep index . --model text-embedding-3-large
+
+# Set default via environment
+export OGREP_MODEL=large
+ogrep index .
+```
+
+| Model | Alias | Dimensions | Price | Best For |
+|-------|-------|------------|-------|----------|
+| text-embedding-3-small | `small` | 1536 | $0.02/M | Most use cases (recommended) |
+| text-embedding-3-large | `large` | 3072 | $0.13/M | High-accuracy, multi-language |
+| text-embedding-ada-002 | `ada` | 1536 | $0.10/M | Legacy compatibility |
 
 ## Multi-Repo Scope Management
 

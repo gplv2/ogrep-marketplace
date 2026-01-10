@@ -23,7 +23,20 @@ export OPENAI_API_KEY="sk-your-key-here"
 ```bash
 cd /path/to/your/repo
 ogrep index .
-ogrep query "where is authentication handled?" --top 15
+ogrep query "where is authentication handled?" -n 15
+```
+
+### 4. (Optional) Choose a Model
+
+```bash
+# List available models
+ogrep models
+
+# Use a specific model
+ogrep index . -m large
+
+# Or set default via environment
+export OGREP_MODEL=large
 ```
 
 ---
@@ -60,8 +73,9 @@ source activate.sh
 ```bash
 ogrep --help
 ogrep index .
-ogrep query "semantic search" --top 10
+ogrep query "semantic search" -n 10
 ogrep status
+ogrep models
 ```
 
 ### 4. Run Tests
@@ -103,17 +117,29 @@ make check          # All checks
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
-| `ogrep query "text" --top N` | Semantic search |
+| `ogrep query "text" -n N` | Semantic search |
 | `ogrep status` | Show index statistics |
-| `ogrep reset --force` | Delete index |
+| `ogrep reset -f` | Delete index |
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
+| `ogrep models` | List available models |
 
-## Scope Flags
+## Common Flags
 
 | Flag | Description |
 |------|-------------|
+| `-m MODEL` | Embedding model (small, large, ada) |
+| `-d DIM` | Embedding dimensions |
+| `-n N` | Number of results (query) |
+| `-f` | Force/skip confirmation |
 | `--db PATH` | Custom database path |
-| `--profile NAME` | Named profile (`.ogrep/<name>/index.sqlite`) |
-| `--global-cache` | Use `~/.cache/ogrep/<hash>/index.sqlite` |
-| `--repo-root PATH` | Explicit repo root |
+| `--profile NAME` | Named profile |
+| `--global-cache` | Use global cache |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Required. Your OpenAI API key |
+| `OGREP_MODEL` | Default model (default: text-embedding-3-small) |
+| `OGREP_DIMENSIONS` | Default dimensions (optional) |

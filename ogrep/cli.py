@@ -12,6 +12,12 @@ Usage:
     ogrep reset --force        # Delete index
     ogrep reindex .            # Rebuild from scratch
     ogrep clean --vacuum       # Remove stale entries
+    ogrep models               # List available models
+
+Environment Variables:
+    OPENAI_API_KEY: Required for embedding generation.
+    OGREP_MODEL: Default embedding model (default: text-embedding-3-small).
+    OGREP_DIMENSIONS: Default embedding dimensions.
 """
 
 from __future__ import annotations
@@ -22,14 +28,37 @@ import sys
 from .commands import (
     cmd_clean,
     cmd_index,
+    cmd_models,
     cmd_query,
     cmd_reindex,
     cmd_reset,
     cmd_status,
 )
 from .commands._common import add_scope_args
+from .models import DEFAULT_MODEL
 
 __version__ = "0.1.0"
+
+
+def _add_model_args(parser: argparse.ArgumentParser, for_query: bool = False) -> None:
+    """Add model-related arguments to a parser."""
+    match_note = " (must match indexed model)" if for_query else ""
+    parser.add_argument(
+        "--model",
+        "-m",
+        default=None,
+        metavar="MODEL",
+        help=f"Embedding model or alias: small, large, ada{match_note}. "
+        f"Default: $OGREP_MODEL or {DEFAULT_MODEL}",
+    )
+    parser.add_argument(
+        "--dimensions",
+        "-d",
+        type=int,
+        default=None,
+        metavar="DIM",
+        help="Embedding dimensions. Default: $OGREP_DIMENSIONS or model default",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -42,25 +71,20 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ogrep",
         description="Local semantic grep powered by SQLite and OpenAI embeddings",
+        epilog="Run 'ogrep models' to see available embedding models.",
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="command")
 
     # index command
-    p_index = sub.add_parser("index", help="Index a directory for semantic search")
+    p_index = sub.add_parser(
+        "index",
+        help="Index a directory for semantic search",
+        description="Scan files, generate embeddings, and store in local SQLite database.",
+    )
     p_index.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
     add_scope_args(p_index)
-    p_index.add_argument(
-        "--model",
-        default="text-embedding-3-small",
-        help="OpenAI embedding model (default: text-embedding-3-small)",
-    )
-    p_index.add_argument(
-        "--dimensions",
-        type=int,
-        default=None,
-        help="Embedding dimensions (default: model default)",
-    )
+    _add_model_args(p_index)
     p_index.add_argument(
         "--chunk-lines",
         type=int,
@@ -82,30 +106,29 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.set_defaults(func=cmd_index)
 
     # query command
-    p_query = sub.add_parser("query", help="Semantic search against the index")
+    p_query = sub.add_parser(
+        "query",
+        help="Semantic search against the index",
+        description="Search indexed code by meaning using natural language queries.",
+    )
     p_query.add_argument("query", help="Natural language search query")
     add_scope_args(p_query)
     p_query.add_argument(
         "--top",
+        "-n",
         type=int,
         default=10,
         help="Number of results (default: 10)",
     )
-    p_query.add_argument(
-        "--model",
-        default="text-embedding-3-small",
-        help="OpenAI embedding model (must match indexed model)",
-    )
-    p_query.add_argument(
-        "--dimensions",
-        type=int,
-        default=None,
-        help="Embedding dimensions (must match indexed dimensions)",
-    )
+    _add_model_args(p_query, for_query=True)
     p_query.set_defaults(func=cmd_query)
 
     # reset command
-    p_reset = sub.add_parser("reset", help="Remove the index database")
+    p_reset = sub.add_parser(
+        "reset",
+        help="Remove the index database",
+        description="Delete the index database for the current scope.",
+    )
     add_scope_args(p_reset)
     p_reset.add_argument(
         "--force",
@@ -116,20 +139,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reset.set_defaults(func=cmd_reset)
 
     # reindex command
-    p_reindex = sub.add_parser("reindex", help="Force rebuild index from scratch")
+    p_reindex = sub.add_parser(
+        "reindex",
+        help="Force rebuild index from scratch",
+        description="Remove existing index and rebuild completely.",
+    )
     p_reindex.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
     add_scope_args(p_reindex)
-    p_reindex.add_argument(
-        "--model",
-        default="text-embedding-3-small",
-        help="OpenAI embedding model",
-    )
-    p_reindex.add_argument(
-        "--dimensions",
-        type=int,
-        default=None,
-        help="Embedding dimensions",
-    )
+    _add_model_args(p_reindex)
     p_reindex.add_argument(
         "--chunk-lines",
         type=int,
@@ -151,7 +168,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reindex.set_defaults(func=cmd_reindex)
 
     # clean command
-    p_clean = sub.add_parser("clean", help="Remove stale entries from index")
+    p_clean = sub.add_parser(
+        "clean",
+        help="Remove stale entries from index",
+        description="Remove entries for files that no longer exist.",
+    )
     add_scope_args(p_clean)
     p_clean.add_argument(
         "--vacuum",
@@ -161,9 +182,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_clean.set_defaults(func=cmd_clean)
 
     # status command
-    p_status = sub.add_parser("status", help="Show index status and statistics")
+    p_status = sub.add_parser(
+        "status",
+        help="Show index status and statistics",
+        description="Display index location, file count, chunk count, and model info.",
+    )
     add_scope_args(p_status)
     p_status.set_defaults(func=cmd_status)
+
+    # models command
+    p_models = sub.add_parser(
+        "models",
+        help="List available embedding models",
+        description="Show available OpenAI embedding models with pricing and use cases.",
+    )
+    p_models.set_defaults(func=cmd_models)
 
     return p
 

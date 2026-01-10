@@ -7,6 +7,10 @@ stored as compact float32 binary blobs.
 
 Requires:
     OPENAI_API_KEY environment variable to be set.
+
+Configuration:
+    OGREP_MODEL: Override default embedding model.
+    OGREP_DIMENSIONS: Override default embedding dimensions.
 """
 
 from __future__ import annotations
@@ -15,6 +19,8 @@ import array
 import math
 
 from openai import OpenAI
+
+from .models import resolve_dimensions, resolve_model
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -39,7 +45,7 @@ def _l2_normalize(vec: list[float]) -> list[float]:
 
 def embed_texts(
     texts: list[str],
-    model: str = "text-embedding-3-small",
+    model: str | None = None,
     dimensions: int | None = None,
 ) -> tuple[list[bytes], int]:
     """
@@ -50,19 +56,20 @@ def embed_texts(
 
     Args:
         texts: List of text strings to embed.
-        model: OpenAI embedding model name.
-            Default is "text-embedding-3-small" which offers a good
-            balance of quality and cost.
+        model: OpenAI embedding model name or alias.
+            Defaults to OGREP_MODEL env var or "text-embedding-3-small".
+            Accepts aliases: "small", "large", "ada".
         dimensions: Optional dimension override for models that support it.
-            If None, uses the model's default dimensions.
+            Defaults to OGREP_DIMENSIONS env var or model default.
 
     Returns:
         A tuple of (embeddings, dimension) where:
             - embeddings: List of float32 binary blobs (one per input text)
-            - dimension: The embedding dimension (e.g., 1536 for ada-002)
+            - dimension: The embedding dimension (e.g., 1536 for small model)
 
     Raises:
         openai.OpenAIError: If the API call fails.
+        ValueError: If model is not recognized.
 
     Example:
         >>> blobs, dim = embed_texts(["Hello world", "Goodbye"])
@@ -70,12 +77,21 @@ def embed_texts(
         2
         >>> dim
         1536
+
+        >>> # Using model alias
+        >>> blobs, dim = embed_texts(["test"], model="large")
+        >>> dim
+        3072
     """
+    # Resolve model and dimensions from args, env, or defaults
+    resolved_model = resolve_model(model)
+    resolved_dimensions = resolve_dimensions(dimensions, resolved_model)
+
     client = OpenAI()
 
-    kwargs: dict = {"input": texts, "model": model}
-    if dimensions is not None:
-        kwargs["dimensions"] = dimensions
+    kwargs: dict = {"input": texts, "model": resolved_model}
+    if resolved_dimensions is not None:
+        kwargs["dimensions"] = resolved_dimensions
 
     resp = client.embeddings.create(**kwargs)
 

@@ -91,3 +91,28 @@ def test_cli_status_help() -> None:
         text=True,
     )
     assert result.returncode == 0
+
+
+def test_cli_models() -> None:
+    """Test that ogrep models works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ogrep", "models"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "text-embedding-3-small" in result.stdout
+    assert "text-embedding-3-large" in result.stdout
+    assert "OGREP_MODEL" in result.stdout
+
+
+def test_cli_model_flag_in_help() -> None:
+    """Test that -m flag is documented in help."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ogrep", "index", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "-m" in result.stdout or "--model" in result.stdout
+    assert "small" in result.stdout.lower() or "large" in result.stdout.lower()
