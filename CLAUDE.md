@@ -65,6 +65,10 @@ ogrep-marketplace/
 | `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) |
 | `ogrep chunk "path:N" -C 1` | Get chunk by ref with context |
 | `ogrep status` | Show index stats |
+| `ogrep health` | Full database diagnostics |
+| `ogrep health --vacuum` | Reclaim space, defragment |
+| `ogrep health --rebuild-fts` | Rebuild FTS5 index |
+| `ogrep health --integrity` | Full integrity check |
 | `ogrep reset -f` | Delete index |
 | `ogrep reindex .` | Rebuild index (enables FTS5) |
 | `ogrep clean --vacuum` | Remove stale entries |
@@ -420,7 +424,7 @@ ogrep tune . -s 10     # Use 10 test samples
 
 | Model | Alias | Dimensions | Optimal Chunk | Accuracy | Use Case |
 |-------|-------|------------|---------------|----------|----------|
-| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Default local model |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 30 lines | 72% | Default local model |
 | all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | 96% | Fastest, highest accuracy |
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
 | bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
@@ -551,7 +555,7 @@ OGREP_MODEL=nomic-embed-text-v1.5
 | Model | Optimal Chunk | Optimal Overlap | Notes |
 |-------|---------------|-----------------|-------|
 | minilm | 30 lines | 5 lines | Best accuracy (96%), small chunks |
-| nomic | 90 lines | 15 lines | Better with larger context |
+| nomic | 30 lines | 15 lines | Large context window (8192 tokens) benefits from more overlap |
 | bge | 30 lines | 10 lines | Fails at 90+ lines |
 | bge-m3 | 60 lines | 10 lines | Multi-lingual support |
 

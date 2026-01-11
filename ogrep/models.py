@@ -331,7 +331,7 @@ def get_optimal_chunk_lines(model: str | None = None) -> int:
 
         >>> # Without env var, uses model default
         >>> get_optimal_chunk_lines("nomic")
-        90
+        30
         >>> get_optimal_chunk_lines("bge")
         30
         >>> get_optimal_chunk_lines("small")

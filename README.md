@@ -206,6 +206,9 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 | `ogrep query "text" --json` | JSON output for AI tools |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index statistics |
+| `ogrep health` | Full database diagnostics |
+| `ogrep health --vacuum` | Reclaim space and defragment |
+| `ogrep health --full` | Vacuum + rebuild FTS5 + integrity check |
 | `ogrep reset -f` | Delete index |
 | `ogrep reindex .` | Rebuild from scratch (enables FTS5) |
 | `ogrep clean --vacuum` | Remove stale entries |
@@ -373,7 +376,7 @@ Patterns are loaded automatically. Use `-i` to override any exclusion.
 | Model | Alias | Dimensions | Optimal Chunks | Accuracy | Notes |
 |-------|-------|------------|----------------|----------|-------|
 | all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | **96%** | Best accuracy, smallest (~25MB) |
-| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Larger context windows |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 30 lines | 72% | Large context window (8192 tokens) |
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
 | bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
 

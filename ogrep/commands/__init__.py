@@ -21,6 +21,7 @@ from __future__ import annotations
 from .benchmark import cmd_benchmark
 from .chunk import cmd_chunk
 from .clean import cmd_clean
+from .health import cmd_health
 from .index import cmd_index
 from .models import cmd_models
 from .query import cmd_query
@@ -33,6 +34,7 @@ __all__ = [
     "cmd_benchmark",
     "cmd_chunk",
     "cmd_clean",
+    "cmd_health",
     "cmd_index",
     "cmd_models",
     "cmd_query",

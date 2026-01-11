@@ -116,3 +116,17 @@ def test_cli_model_flag_in_help() -> None:
     assert result.returncode == 0
     assert "-m" in result.stdout or "--model" in result.stdout
     assert "small" in result.stdout.lower() or "large" in result.stdout.lower()
+
+
+def test_cli_health_help() -> None:
+    """Test that ogrep health --help works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ogrep", "health", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "--vacuum" in result.stdout
+    assert "--rebuild-fts" in result.stdout
+    assert "--integrity" in result.stdout
+    assert "--full" in result.stdout

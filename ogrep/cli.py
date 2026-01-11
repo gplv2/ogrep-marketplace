@@ -41,6 +41,7 @@ from .commands import (
     cmd_benchmark,
     cmd_chunk,
     cmd_clean,
+    cmd_health,
     cmd_index,
     cmd_models,
     cmd_query,
@@ -107,7 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunk-lines",
         type=int,
         default=None,
-        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 30 for nomic/bge)",
     )
     p_index.add_argument(
         "--overlap",
@@ -258,7 +259,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunk-lines",
         type=int,
         default=None,
-        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 30 for nomic/bge)",
     )
     p_reindex.add_argument(
         "--overlap",
@@ -312,6 +313,42 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     add_scope_args(p_status)
     p_status.set_defaults(func=cmd_status)
+
+    # health command
+    p_health = sub.add_parser(
+        "health",
+        help="Show database health and diagnostics",
+        description="Display comprehensive database diagnostics including table sizes, "
+        "indexes, SQLite info, FTS5 stats, and integrity checks. "
+        "Supports repair operations via flags.",
+    )
+    add_scope_args(p_health)
+    p_health.add_argument(
+        "--vacuum",
+        action="store_true",
+        help="Run VACUUM to reclaim space and defragment database",
+    )
+    p_health.add_argument(
+        "--rebuild-fts",
+        action="store_true",
+        help="Drop and rebuild FTS5 index from chunks table",
+    )
+    p_health.add_argument(
+        "--reindex",
+        action="store_true",
+        help="Show reindex command (does not run automatically - requires re-embedding)",
+    )
+    p_health.add_argument(
+        "--integrity",
+        action="store_true",
+        help="Run full PRAGMA integrity_check (slow on large databases)",
+    )
+    p_health.add_argument(
+        "--full",
+        action="store_true",
+        help="Run vacuum + rebuild-fts + integrity (not reindex)",
+    )
+    p_health.set_defaults(func=cmd_health)
 
     # models command
     p_models = sub.add_parser(
