@@ -26,6 +26,42 @@ def _format_size(size: int) -> str:
         return f"{size / (1024 * 1024):.1f}MB"
 
 
+# Extensions that suggest non-code content (logs, data, dumps)
+_REVIEW_EXTENSIONS = frozenset({
+    ".log", ".log_save", ".old", ".bak", ".backup", ".tmp",
+    ".dump", ".sql", ".sqlt", ".csv", ".tsv", ".dat",
+    ".out", ".err", ".trace", ".prof",
+})
+
+# Size threshold for review suggestion (500KB)
+_REVIEW_SIZE_THRESHOLD = 500 * 1024
+
+
+def _should_review(path: Path, size: int) -> str | None:
+    """
+    Check if a file should be flagged for manual review.
+
+    Returns a reason string if the file should be reviewed, None otherwise.
+    """
+    name = path.name.lower()
+    ext = path.suffix.lower()
+
+    # Check extension
+    if ext in _REVIEW_EXTENSIONS:
+        return f"extension '{ext}'"
+
+    # Check for common non-code patterns in filename
+    if any(pattern in name for pattern in (".log", "_log", "-log", ".old", ".bak")):
+        return "filename suggests log/backup"
+
+    # Large files with suspicious extensions
+    if size > _REVIEW_SIZE_THRESHOLD:
+        if ext in {".txt", ".text", ""} or not ext:
+            return f"large file ({_format_size(size)}) without code extension"
+
+    return None
+
+
 def _list_files(
     root: Path, exclude: list[str], include: list[str], detect: bool = True
 ) -> int:
@@ -93,6 +129,21 @@ def _list_files(
         count, total = ext_stats[ext]
         ext_stats[ext] = (count + 1, total + size)
 
+    # Count files per directory
+    dir_counts: dict[Path, int] = {}
+    for p, _, _ in indexable:
+        try:
+            rel = p.relative_to(root)
+            # Get top-level directory or parent
+            parts = rel.parts
+            if len(parts) > 1:
+                dir_key = root / parts[0]
+            else:
+                dir_key = root
+            dir_counts[dir_key] = dir_counts.get(dir_key, 0) + 1
+        except ValueError:
+            pass
+
     # Print file list grouped by extension
     current_ext = None
     for p, ext, size in file_info:
@@ -131,6 +182,14 @@ def _list_files(
     elif not has_file_command():
         print("(file command not available, using null-byte detection only)")
 
+    # Show top 10 directories by file count
+    if dir_counts:
+        sorted_dirs = sorted(dir_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        print("\nTop directories by file count:")
+        for dir_path, count in sorted_dirs:
+            rel_dir = dir_path.relative_to(root) if dir_path != root else Path(".")
+            print(f"  {count:>6} files  {rel_dir}/")
+
     # Show top 5 largest indexable files
     largest_indexable = sorted(indexable, key=lambda x: x[2], reverse=True)[:5]
     if largest_indexable:
@@ -146,6 +205,26 @@ def _list_files(
         for p, _ext, size, mime in largest_excluded:
             rel_path = p.relative_to(root) if p.is_relative_to(root) else p
             print(f"  {_format_size(size):>8}  {rel_path} ({mime})")
+
+    # Show files that should be reviewed (pass MIME but may not be code)
+    review_files: list[tuple[Path, int, str]] = []  # (path, size, reason)
+    for p, _ext, size in indexable:
+        reason = _should_review(p, size)
+        if reason:
+            review_files.append((p, size, reason))
+
+    if review_files:
+        # Sort by size descending, show top 10
+        review_files.sort(key=lambda x: x[1], reverse=True)
+        print("\n⚠ Review suggested (may distort search results):")
+        print("  These files pass MIME detection but may not be useful code.")
+        print("  Consider adding patterns to .ogrepignore:")
+        for p, size, reason in review_files[:10]:
+            rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+            print(f"  {_format_size(size):>8}  {rel_path}")
+            print(f"           └─ {reason}")
+        if len(review_files) > 10:
+            print(f"  ... and {len(review_files) - 10} more")
 
     return 0
 
