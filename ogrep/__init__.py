@@ -48,7 +48,7 @@ from .models import (
 )
 from .search import Hit, query
 
-__version__ = "0.4.2"
+__version__ = "0.4.4"
 
 __all__ = [
     "__version__",
