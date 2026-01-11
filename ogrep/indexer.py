@@ -129,6 +129,7 @@ DEFAULT_EXCLUDES = (
     "*.tsv",
     "*.sqlt",
     "*.dat",
+    "*.xml",
     # Images (also filtered by binary detection, but skip early)
     "*.png",
     "*.jpg",

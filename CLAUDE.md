@@ -171,7 +171,7 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Databases** | `*.sqlite`, `*.sqlite3`, `*.db`, `*.sql`, `*.dump` |
 | **Logs/temp** | `*.log`, `logs/*`, `*.tmp`, `*.temp` |
 | **Backups** | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*.swp`, `*~` |
-| **Data files** | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat` |
+| **Data files** | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat`, `*.xml` |
 | **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
 
 **Skipped directories** (in `DEFAULT_SKIP_DIRS`):
