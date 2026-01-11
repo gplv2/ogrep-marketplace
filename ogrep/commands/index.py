@@ -27,11 +27,26 @@ def _format_size(size: int) -> str:
 
 
 # Extensions that suggest non-code content (logs, data, dumps)
-_REVIEW_EXTENSIONS = frozenset({
-    ".log", ".log_save", ".old", ".bak", ".backup", ".tmp",
-    ".dump", ".sql", ".sqlt", ".csv", ".tsv", ".dat",
-    ".out", ".err", ".trace", ".prof",
-})
+_REVIEW_EXTENSIONS = frozenset(
+    {
+        ".log",
+        ".log_save",
+        ".old",
+        ".bak",
+        ".backup",
+        ".tmp",
+        ".dump",
+        ".sql",
+        ".sqlt",
+        ".csv",
+        ".tsv",
+        ".dat",
+        ".out",
+        ".err",
+        ".trace",
+        ".prof",
+    }
+)
 
 # Size threshold for review suggestion (500KB)
 _REVIEW_SIZE_THRESHOLD = 500 * 1024
@@ -62,9 +77,7 @@ def _should_review(path: Path, size: int) -> str | None:
     return None
 
 
-def _list_files(
-    root: Path, exclude: list[str], include: list[str], detect: bool = True
-) -> int:
+def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool = True) -> int:
     """
     List files that would be indexed, sorted by extension then size.
 

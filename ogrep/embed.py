@@ -56,7 +56,8 @@ def embed_texts(
     dimensions: int | None = None,
     *,
     return_timing: Literal[False] = False,
-) -> tuple[list[bytes], int]: ...
+) -> tuple[list[bytes], int]:
+    ...
 
 
 @overload
@@ -66,7 +67,8 @@ def embed_texts(
     dimensions: int | None = None,
     *,
     return_timing: Literal[True],
-) -> tuple[list[bytes], int, float]: ...
+) -> tuple[list[bytes], int, float]:
+    ...
 
 
 def embed_texts(

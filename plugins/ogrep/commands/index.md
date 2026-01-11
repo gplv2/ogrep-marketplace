@@ -35,4 +35,3 @@ ogrep index ${1:-.} --no-detect
 - Binary files are auto-detected and excluded
 
 If `ogrep` is not installed, run: `pip install ogrep`
-

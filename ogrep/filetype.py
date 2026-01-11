@@ -16,47 +16,49 @@ from pathlib import Path
 _FILE_CMD: str | None = shutil.which("file")
 
 # MIME type prefixes that indicate text content
-TEXT_MIME_PREFIXES = (
-    "text/",
-)
+TEXT_MIME_PREFIXES = ("text/",)
 
 # Specific application/* and inode/* types that are actually text-based
-TEXT_APPLICATION_TYPES = frozenset({
-    "application/javascript",
-    "application/json",
-    "application/xml",
-    "application/x-sh",
-    "application/x-shellscript",
-    "application/x-perl",
-    "application/x-ruby",
-    "application/x-python",
-    "application/x-php",
-    "application/x-httpd-php",
-    "application/x-awk",
-    "application/x-ndjson",
-    "application/sql",
-    "application/x-empty",  # Empty files are fine
-    "inode/x-empty",  # Empty files (Linux)
-})
+TEXT_APPLICATION_TYPES = frozenset(
+    {
+        "application/javascript",
+        "application/json",
+        "application/xml",
+        "application/x-sh",
+        "application/x-shellscript",
+        "application/x-perl",
+        "application/x-ruby",
+        "application/x-python",
+        "application/x-php",
+        "application/x-httpd-php",
+        "application/x-awk",
+        "application/x-ndjson",
+        "application/sql",
+        "application/x-empty",  # Empty files are fine
+        "inode/x-empty",  # Empty files (Linux)
+    }
+)
 
 # Types to explicitly block even if they might pass other checks
-BLOCKED_MIME_TYPES = frozenset({
-    "application/x-sqlite3",
-    "application/x-executable",
-    "application/x-sharedlib",
-    "application/x-mach-binary",
-    "application/x-dosexec",
-    "application/octet-stream",
-    "application/gzip",
-    "application/x-tar",
-    "application/zip",
-    "application/x-bzip2",
-    "application/x-7z-compressed",
-    "application/x-rar",
-    "application/pdf",
-    "application/x-object",
-    "application/x-archive",
-})
+BLOCKED_MIME_TYPES = frozenset(
+    {
+        "application/x-sqlite3",
+        "application/x-executable",
+        "application/x-sharedlib",
+        "application/x-mach-binary",
+        "application/x-dosexec",
+        "application/octet-stream",
+        "application/gzip",
+        "application/x-tar",
+        "application/zip",
+        "application/x-bzip2",
+        "application/x-7z-compressed",
+        "application/x-rar",
+        "application/pdf",
+        "application/x-object",
+        "application/x-archive",
+    }
+)
 
 
 @dataclass(frozen=True)

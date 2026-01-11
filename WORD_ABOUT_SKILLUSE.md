@@ -1,4 +1,4 @@
-# using the skill 
+# using the skill
 doing it yourself is really easy, use the skills command or the executable ...
 
 But asking claude this:
@@ -68,8 +68,3 @@ grep "def generate_invoice"
 ```
 
 ## Make it proactive
-
-
-
-
-

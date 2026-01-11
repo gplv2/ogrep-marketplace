@@ -108,9 +108,7 @@ class TestBatchDetection:
         assert empty_file in results
         assert results[empty_file].is_text is True
 
-    @pytest.mark.skipif(
-        not has_file_command(), reason="file command not available"
-    )
+    @pytest.mark.skipif(not has_file_command(), reason="file command not available")
     def test_detect_sqlite_database(self, temp_dir: Path) -> None:
         """SQLite databases should not be detected as text."""
         db_file = temp_dir / "test.db"
@@ -124,9 +122,7 @@ class TestBatchDetection:
         assert results[db_file].is_text is False
         assert "sqlite" in (results[db_file].mime_type or "").lower()
 
-    @pytest.mark.skipif(
-        not has_file_command(), reason="file command not available"
-    )
+    @pytest.mark.skipif(not has_file_command(), reason="file command not available")
     def test_detect_extensionless_binary(self, temp_dir: Path) -> None:
         """Binary file without extension should not be text."""
         bin_file = temp_dir / "data"
@@ -169,16 +165,14 @@ class TestFileTypeResult:
             is_text=True,
             detection_method="file_cmd",
         )
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(AttributeError):  # Cannot modify frozen dataclass
             result.is_text = False  # type: ignore
 
 
 class TestFileCommandFallback:
     """Test fallback behavior when file command unavailable."""
 
-    def test_fallback_to_null_byte(
-        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_to_null_byte(self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should fall back to null-byte check."""
         monkeypatch.setattr("ogrep.filetype._FILE_CMD", None)
 
@@ -191,9 +185,7 @@ class TestFileCommandFallback:
         assert results[text_file].detection_method == "null_byte"
         assert results[text_file].mime_type is None
 
-    def test_fallback_detects_binary(
-        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_detects_binary(self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Null-byte fallback should detect binary files."""
         monkeypatch.setattr("ogrep.filetype._FILE_CMD", None)
 
