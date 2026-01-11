@@ -1,14 +1,57 @@
 # ogrep
 
-**Semantic grep for codebases** — local-first, SQLite-backed, and built for Claude Code.
+**Semantic grep for codebases** — local-first, SQLite-backed, and built for Claude Code Skills (not MCP).
 
-ogrep lets you search your codebase by meaning, not just keywords.
+ogrep helps you search code by **meaning**, not just keywords. It builds a local semantic index (`.ogrep/index.sqlite` by default) and retrieves the most relevant code chunks for questions like:
 
-It builds a tiny local index (`.ogrep/index.sqlite` by default) and uses embeddings to answer questions like:
+- *“where is authentication handled?”*
+- *“how are API errors mapped to exceptions?”*
+- *“where do we open DB connections and run queries?”*
+- *“what kind of API key mechanism do we use?”*
 
-- *"where is authentication handled?"*
-- *"how are API errors mapped to exceptions?"*
-- *"where do we open DB connections and run queries?"*
+---
+
+## Real-world scenarios (what this is great at)
+
+### 1) Rebuilding legacy systems by behavior (my primary use)
+When you inherit a legacy codebase (PHP spaghetti, mixed triggers/procs, half-documented business logic), “fixing in place” often becomes a trap: every change risks regressions, and understanding intent takes forever.
+
+ogrep supports a different approach:
+
+- **Understand intent → extract behavior → rebuild cleanly**
+- Identify *what the system does* (invoices, device provisioning, auth, state transitions, edge cases)
+- Reconstruct a **behavioral spec** and implement a new, maintainable system that mimics the original outcomes — without dragging the old architecture along.
+
+Think “software archaeology”: you’re not searching for *a string*, you’re searching for *meaning*.
+
+### 2) Turning “token blackholes” into a cheap retrieval step
+The common workflow is painful and expensive:
+
+> grep → copy/paste huge files → LLM reads everything → repeat → burn tokens
+
+ogrep flips that:
+
+- You **index once** (embeddings stored in SQLite).
+- Queries retrieve **top-K relevant snippets** fast.
+- You only send the **small, relevant** results to an LLM *when needed*.
+
+**Validate the claim:** ogrep itself does not need a chat LLM to work. It uses embeddings for indexing + query retrieval.
+
+- With **local embeddings** (LM Studio), embedding cost is effectively **free**.
+- With **OpenAI embeddings**, you still pay *embedding tokens* during indexing (and a tiny amount per query), but you avoid the “paste the repo into a chat model” cost explosion.
+- Any *chat/completion tokens* are only spent when you choose to have an LLM interpret the retrieved snippets (e.g., inside Claude Code via the Skill).
+
+### 3) Fast navigation through unknown repos
+- Find where a feature “really” lives (even if naming is inconsistent)
+- Trace flows like “request → validation → persistence → side effects”
+- Discover the real entry points, glue code, and hidden coupling
+
+### 4) Safer refactors and migrations
+- Locate the real “source of truth” logic before rewriting
+- Identify duplicated or divergent implementations
+- Build a migration plan based on actual code paths, not guesswork
+
+---
 
 ## Embedding Providers
 
@@ -29,8 +72,24 @@ export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
 ```
 
-Both work identically — same CLI, same index format, same queries.
+# using direnv control for autoloading .env
 
+Install **direnv** and follow the common practices, basically, your .bashrc (linux) will have this line somewhere:
+
+```bash
+eval "$(direnv hook bash)"
+```
+
+Create a .envrc file in the base dir:
+```bash
+# Auto-load .env when entering directory
+dotenv
+```
+
+It will complain about permissions. allow it:
+```bash
+direnv allow
+```
 ---
 
 ## Why ogrep?
@@ -40,6 +99,7 @@ Both work identically — same CLI, same index format, same queries.
 - Index lives in **one SQLite file** (per repo, or per profile)
 - Designed to be fast to start and easy to reset
 - No external services required (with local models)
+- I think it's great to have this level of control and learn some AI
 
 ### Built for real dev workflows
 
@@ -51,16 +111,20 @@ Both work identically — same CLI, same index format, same queries.
 
 | Method | Best For |
 |--------|----------|
-| **CLI** (`pip`/`pipx`) | Terminal users, CI/CD, scripts |
+| **CLI** (`pip`/`pipx`) | Terminal users, CI/CD, scripts (pipx install seems faulty, use pip) |
 | **Claude Code Plugin** | If you live in Claude Code (recommended) |
 
 > **Note:** This repo is primarily a Claude Code Skill + Marketplace plugin integration — not an MCP server. If you want MCP for other clients, see [Optional Extras](#optional-extras).
+
+Please check [WORD_ABOUT_SKILLUSE.md](WORD_ABOUT_SKILLUSE.md) for adapting your project CLAUDE.md files in order to influence claude tool choice and bias for this skill. It's not an exact science it seems, I'd love getting suggestions on what works better.
 
 ---
 
 ## Installation
 
 ### Option A: pip / pipx (CLI users)
+
+pipx doesn't work for me, pip does, marketplace install too. I would suggest to use those first.
 
 ```bash
 # Install with pipx (isolated environment)
