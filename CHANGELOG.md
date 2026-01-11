@@ -82,6 +82,27 @@ When `OGREP_BASE_URL` is set (local LM Studio), ogrep now defaults to `nomic` in
 
 MiniLM showed higher accuracy in benchmarks (96% vs 88%), but this was misleading because chunks were being truncated. Nomic provides more reliable results for real-world code.
 
+#### Enhanced `--list` Output with Breakdowns
+
+The `ogrep index --list` command now shows summary tables:
+
+```
+Breakdown by extension:
+  Extension         Files       Size      %
+  --------------- ------- ---------- ------
+  .py                  38    266.7KB  99.7%
+  .sh                   1       809B   0.3%
+
+Breakdown by file type:
+  Type              Files       Size      %
+  --------------- ------- ---------- ------
+  text                 39    267.5KB 100.0%
+  application           2     12.0KB   5.0%
+```
+
+- **By extension**: Count, size, and percentage for each file extension
+- **By file type**: MIME type categories (text, application, etc.) when detection is enabled
+
 #### Enhanced JSON Output
 
 Query JSON output now includes:
