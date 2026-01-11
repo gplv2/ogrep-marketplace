@@ -42,6 +42,36 @@ DEFAULT_SEARCH_MODE: SearchMode = os.environ.get("OGREP_SEARCH_MODE", "hybrid") 
 # Hybrid scoring weight (0.0-1.0, where 1.0 is all semantic, 0.0 is all fulltext)
 HYBRID_ALPHA = float(os.environ.get("OGREP_HYBRID_ALPHA", "0.7"))
 
+# Confidence thresholds (configurable via environment)
+CONFIDENCE_HIGH = float(os.environ.get("OGREP_CONFIDENCE_HIGH", "0.85"))
+CONFIDENCE_MEDIUM = float(os.environ.get("OGREP_CONFIDENCE_MEDIUM", "0.70"))
+CONFIDENCE_LOW = float(os.environ.get("OGREP_CONFIDENCE_LOW", "0.50"))
+
+
+def get_confidence_level(score: float) -> str:
+    """
+    Convert numeric score to human-readable confidence level.
+
+    Uses configurable thresholds from environment variables:
+        OGREP_CONFIDENCE_HIGH: Threshold for "high" (default: 0.85)
+        OGREP_CONFIDENCE_MEDIUM: Threshold for "medium" (default: 0.70)
+        OGREP_CONFIDENCE_LOW: Threshold for "low" (default: 0.50)
+
+    Args:
+        score: Similarity score (0.0 to 1.0).
+
+    Returns:
+        Confidence level: "high", "medium", "low", or "very_low".
+    """
+    if score >= CONFIDENCE_HIGH:
+        return "high"
+    elif score >= CONFIDENCE_MEDIUM:
+        return "medium"
+    elif score >= CONFIDENCE_LOW:
+        return "low"
+    else:
+        return "very_low"
+
 
 @dataclass(frozen=True)
 class Hit:
@@ -56,6 +86,7 @@ class Hit:
         text: The actual text content of the chunk.
         chunk_id: Internal database ID for the chunk.
         chunk_index: Index of this chunk within its file (0-indexed).
+        confidence: Human-readable confidence level based on score.
     """
 
     score: float
@@ -65,6 +96,7 @@ class Hit:
     text: str
     chunk_id: int
     chunk_index: int
+    confidence: str
 
 
 def _dot_py(a: array.array, b: array.array) -> float:
@@ -243,6 +275,7 @@ def query(
                 text=row[5],
                 chunk_id=int(row[0]),
                 chunk_index=int(row[1]),
+                confidence=get_confidence_level(fts_scores[row[0]]),
             )
             for row in rows
         ]
@@ -308,6 +341,7 @@ def query(
                     text=text,
                     chunk_id=int(chunk_id),
                     chunk_index=int(chunk_idx),
+                    confidence=get_confidence_level(score),
                 )
             )
     else:
@@ -333,6 +367,7 @@ def query(
                     text=text,
                     chunk_id=int(chunk_id),
                     chunk_index=int(chunk_idx),
+                    confidence=get_confidence_level(score),
                 )
             )
 

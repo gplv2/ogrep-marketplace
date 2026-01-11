@@ -397,6 +397,9 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
 | `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
+| `OGREP_CONFIDENCE_HIGH` | Threshold for "high" confidence level | `0.85` |
+| `OGREP_CONFIDENCE_MEDIUM` | Threshold for "medium" confidence level | `0.70` |
+| `OGREP_CONFIDENCE_LOW` | Threshold for "low" confidence level | `0.50` |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
 **Smart Model Default:**

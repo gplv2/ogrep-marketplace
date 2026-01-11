@@ -509,6 +509,7 @@ export function handleRequest(req: Request): Response {
         assert "start_line" in first_result
         assert "end_line" in first_result
         assert "score" in first_result
+        assert "confidence" in first_result
         assert "language" in first_result
         assert "text" in first_result
 
@@ -518,6 +519,7 @@ export function handleRequest(req: Request): Response {
         assert isinstance(first_result["end_line"], int)
         assert isinstance(first_result["score"], float)
         assert isinstance(first_result["text"], str)
+        assert first_result["confidence"] in ("high", "medium", "low", "very_low")
 
     def test_json_language_detection(self, indexed_repo, capsys) -> None:
         """Test that language is correctly detected from file extension."""
@@ -611,12 +613,20 @@ export function handleRequest(req: Request): Response {
         assert "index_model" in stats
         assert "index_dimensions" in stats
         assert "refreshed_files" in stats
+        assert "confidence_summary" in stats
 
         # Check types
         assert isinstance(stats["total_results"], int)
         assert isinstance(stats["total_chunks"], int)
         assert isinstance(stats["search_time_ms"], int)
         assert stats["search_time_ms"] >= 0
+
+        # Check confidence_summary structure
+        conf_summary = stats["confidence_summary"]
+        assert "high" in conf_summary
+        assert "medium" in conf_summary
+        assert "low" in conf_summary
+        assert "very_low" in conf_summary
 
     def test_json_full_text_not_truncated(self, indexed_repo, capsys) -> None:
         """Test that JSON output includes full text, not truncated."""

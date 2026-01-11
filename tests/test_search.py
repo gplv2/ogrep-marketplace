@@ -25,6 +25,7 @@ class TestHitDataclass:
             text="def hello():\n    pass",
             chunk_id=42,
             chunk_index=2,
+            confidence="high",
         )
         assert hit.score == 0.95
         assert hit.path == "/path/to/file.py"
@@ -33,12 +34,13 @@ class TestHitDataclass:
         assert "hello" in hit.text
         assert hit.chunk_id == 42
         assert hit.chunk_index == 2
+        assert hit.confidence == "high"
 
     def test_hit_is_frozen(self) -> None:
         """Test that Hit is immutable."""
         hit = Hit(
             score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0
+            chunk_id=1, chunk_index=0, confidence="low"
         )
         with pytest.raises(AttributeError):  # Frozen dataclass
             hit.score = 0.9  # type: ignore[misc]
@@ -47,11 +49,11 @@ class TestHitDataclass:
         """Test that hits with same values are equal."""
         hit1 = Hit(
             score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0
+            chunk_id=1, chunk_index=0, confidence="low"
         )
         hit2 = Hit(
             score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0
+            chunk_id=1, chunk_index=0, confidence="low"
         )
         assert hit1 == hit2
 
@@ -59,11 +61,11 @@ class TestHitDataclass:
         """Test that hits with different scores are not equal."""
         hit1 = Hit(
             score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0
+            chunk_id=1, chunk_index=0, confidence="low"
         )
         hit2 = Hit(
             score=0.6, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0
+            chunk_id=1, chunk_index=0, confidence="low"
         )
         assert hit1 != hit2
 
@@ -339,3 +341,70 @@ class TestQueryScoring:
         assert len(hits) == 1
         # Score should be positive for related concepts
         assert hits[0].score > 0
+
+
+class TestConfidenceLevels:
+    """Tests for confidence level calculation."""
+
+    def test_get_confidence_level_high(self) -> None:
+        """Test that high scores return 'high' confidence."""
+        from ogrep.search import get_confidence_level
+
+        assert get_confidence_level(0.95) == "high"
+        assert get_confidence_level(0.85) == "high"
+        assert get_confidence_level(1.0) == "high"
+
+    def test_get_confidence_level_medium(self) -> None:
+        """Test that medium scores return 'medium' confidence."""
+        from ogrep.search import get_confidence_level
+
+        assert get_confidence_level(0.84) == "medium"
+        assert get_confidence_level(0.75) == "medium"
+        assert get_confidence_level(0.70) == "medium"
+
+    def test_get_confidence_level_low(self) -> None:
+        """Test that low scores return 'low' confidence."""
+        from ogrep.search import get_confidence_level
+
+        assert get_confidence_level(0.69) == "low"
+        assert get_confidence_level(0.55) == "low"
+        assert get_confidence_level(0.50) == "low"
+
+    def test_get_confidence_level_very_low(self) -> None:
+        """Test that very low scores return 'very_low' confidence."""
+        from ogrep.search import get_confidence_level
+
+        assert get_confidence_level(0.49) == "very_low"
+        assert get_confidence_level(0.25) == "very_low"
+        assert get_confidence_level(0.0) == "very_low"
+
+    def test_query_returns_confidence(self, temp_dir: Path) -> None:
+        """Test that query results include confidence level."""
+        db_path = temp_dir / "index.sqlite"
+        connect(db_path).close()
+        con = connect(db_path)
+
+        # Insert a test file and chunk
+        con.execute(
+            "INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
+            ("/test/file.py", 0, 100, "abc123"),
+        )
+        file_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Create embedding for test chunk
+        text = "def authenticate_user(username, password):"
+        blobs, dim = embed_texts([text])
+
+        con.execute(
+            """INSERT INTO chunks
+               (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, 0, 1, 5, text, "hash123", blobs[0], dim, "text-embedding-3-small"),
+        )
+        con.commit()
+
+        # Query
+        hits, _ = query(db_path, "user authentication", top_k=5)
+        assert len(hits) == 1
+        assert hasattr(hits[0], "confidence")
+        assert hits[0].confidence in ("high", "medium", "low", "very_low")

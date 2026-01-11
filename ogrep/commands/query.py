@@ -206,9 +206,15 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "start_line": h.start_line,
                 "end_line": h.end_line,
                 "score": round(h.score, 4),
+                "confidence": h.confidence,
                 "language": detect_language(h.path),
                 "text": h.text,
             })
+
+        # Calculate confidence distribution
+        confidence_summary = {"high": 0, "medium": 0, "low": 0, "very_low": 0}
+        for h in hits:
+            confidence_summary[h.confidence] += 1
 
         output = {
             "query": args.query,
@@ -222,13 +228,14 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "index_model": index_model,
                 "index_dimensions": index_dim,
                 "refreshed_files": refreshed_files,
+                "confidence_summary": confidence_summary,
             },
         }
         print(json.dumps(output, indent=2))
     else:
         # Human-readable output (truncated snippets)
         for h in hits:
-            print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f}")
+            print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f} ({h.confidence})")
             snippet = h.text.strip().replace("\n", "\\n")
             print(f"  {snippet[:240]}")
 

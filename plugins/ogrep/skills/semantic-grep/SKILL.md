@@ -100,6 +100,25 @@ ogrep chunk "auth.py:4" --context 1
 ogrep query "def process_request" --mode fulltext --json
 ```
 
+## Confidence Levels
+
+Each result includes a `confidence` level to help you decide how much to trust it:
+
+| Confidence | Score Range | What It Means |
+|------------|-------------|---------------|
+| `high` | 0.85+ | Trust and use directly |
+| `medium` | 0.70-0.84 | Use but verify with context |
+| `low` | 0.50-0.69 | Consider alternative queries |
+| `very_low` | < 0.50 | Likely not relevant |
+
+**Using confidence effectively:**
+- High confidence results: Use directly in your response
+- Medium confidence: Read the chunk, maybe expand context with `ogrep chunk --context 1`
+- Low confidence: The query might need refinement, or the code doesn't exist
+- Mixed results (some high, some low): The high confidence ones are likely correct
+
+The `confidence_summary` in stats shows the distribution across all results.
+
 ## JSON Output Format
 
 The `--json` flag returns structured data:
@@ -117,6 +136,7 @@ The `--json` flag returns structured data:
       "start_line": 61,
       "end_line": 120,
       "score": 0.8523,
+      "confidence": "high",
       "language": "python",
       "text": "def authenticate_user(username, password):\n    ..."
     }
@@ -129,7 +149,13 @@ The `--json` flag returns structured data:
     "fts_available": true,
     "index_model": "text-embedding-3-small",
     "index_dimensions": 1536,
-    "refreshed_files": 0
+    "refreshed_files": 0,
+    "confidence_summary": {
+      "high": 3,
+      "medium": 7,
+      "low": 5,
+      "very_low": 0
+    }
   }
 }
 ```
@@ -137,10 +163,12 @@ The `--json` flag returns structured data:
 **Key fields:**
 - `chunk_ref`: Primary reference for `ogrep chunk` command
 - `chunk_id`: Internal ID (also works with `ogrep chunk`)
+- `confidence`: Human-readable confidence level (high, medium, low, very_low)
 - `relative_path`: Easier to read than absolute paths
 - `language`: Programming language detected from extension
 - `text`: **Full chunk content** (not truncated)
 - `fts_available`: Whether hybrid/fulltext search was possible
+- `confidence_summary`: Distribution of confidence levels across results
 
 ## Commands Reference
 
@@ -194,6 +222,9 @@ between queries. The `--refresh` operation is fast due to smart embedding reuse.
 |----------|---------|-------------|
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
 | `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight in hybrid (0.0-1.0) |
+| `OGREP_CONFIDENCE_HIGH` | `0.85` | Threshold for "high" confidence |
+| `OGREP_CONFIDENCE_MEDIUM` | `0.70` | Threshold for "medium" confidence |
+| `OGREP_CONFIDENCE_LOW` | `0.50` | Threshold for "low" confidence |
 | `OPENAI_API_KEY` | - | Required for embeddings |
 | `OGREP_MODEL` | `text-embedding-3-small` | Default embedding model |
 | `OGREP_BASE_URL` | - | Local server URL (e.g., LM Studio) |

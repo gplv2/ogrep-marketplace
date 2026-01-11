@@ -31,6 +31,7 @@ Run:
       "start_line": 10,
       "end_line": 70,
       "score": 0.85,
+      "confidence": "high",
       "language": "python",
       "text": "full chunk content..."
     }
@@ -43,7 +44,8 @@ Run:
     "fts_available": true,
     "index_model": "text-embedding-3-small",
     "index_dimensions": 1536,
-    "refreshed_files": 0
+    "refreshed_files": 0,
+    "confidence_summary": {"high": 3, "medium": 5, "low": 2, "very_low": 0}
   }
 }
 ```
