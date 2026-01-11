@@ -31,7 +31,8 @@ ogrep-marketplace/
 │   │   ├── clean.py          # Clean command
 │   │   ├── status.py         # Status command
 │   │   ├── models.py         # Models command
-│   │   └── tune.py           # Tune command (auto-tuning)
+│   │   ├── tune.py           # Tune command (auto-tuning)
+│   │   └── benchmark.py      # Benchmark command (model comparison)
 │   ├── models.py             # Embedding model definitions
 │   ├── db.py                 # SQLite schema/connection
 │   ├── indexer.py            # File indexing logic + DEFAULT_EXCLUDES
@@ -65,6 +66,7 @@ ogrep-marketplace/
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
 | `ogrep tune .` | Auto-tune chunk size |
+| `ogrep benchmark .` | Compare all models |
 
 ## AI Tool Integration (IMPORTANT)
 

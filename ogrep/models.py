@@ -172,6 +172,36 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Smallest model (~25MB). Run: lms load all-minilm-l6-v2",
         optimal_chunk_lines=30,  # Tuned: performs best with small chunks (96% at 30 lines)
     ),
+    "text-embedding-bge-m3": EmbeddingModel(
+        id="text-embedding-bge-m3",
+        name="BGE-M3 (Local)",
+        description="Multi-lingual, multi-functionality embedding model (1024D)",
+        dimensions=1024,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Multi-lingual code search",
+            "Dense + sparse retrieval",
+            "100+ languages",
+        ),
+        notes="Supports dense, multi-vector, and sparse retrieval. Run: lms load bge-m3",
+        optimal_chunk_lines=60,
+    ),
+    "text-embedding-gemma-2b": EmbeddingModel(
+        id="text-embedding-gemma-2b",
+        name="EmbeddingGemma 2B (Local)",
+        description="Google's code-optimized embedding model (768D, 2K context)",
+        dimensions=768,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Code search",
+            "Large context windows",
+            "Multi-lingual",
+        ),
+        notes="2K context window (4x larger than others). Run: lms load gemma-2b-embedding",
+        optimal_chunk_lines=90,  # Larger context = benefits from larger chunks
+    ),
 }
 
 # Model aliases for convenience
@@ -183,8 +213,10 @@ MODEL_ALIASES: dict[str, str] = {
     "3-large": "text-embedding-3-large",
     # Local model aliases
     "bge": "bge-base-en-v1.5",
+    "bge-m3": "text-embedding-bge-m3",
     "nomic": "nomic-embed-text-v1.5",
     "minilm": "text-embedding-all-minilm-l6-v2-embedding",
+    "gemma": "text-embedding-gemma-2b",
     "local": "nomic-embed-text-v1.5",  # Default local model
 }
 
@@ -359,12 +391,15 @@ def format_models_table() -> str:
             f"  Set {ENV_DIMENSIONS} environment variable to change default dimensions",
             "",
             "Aliases:",
-            "  small -> text-embedding-3-small",
-            "  large -> text-embedding-3-large",
-            "  ada   -> text-embedding-ada-002",
-            "  bge   -> bge-base-en-v1.5 (local)",
-            "  nomic -> nomic-embed-text-v1.5 (local)",
-            "  local -> nomic-embed-text-v1.5",
+            "  small  -> text-embedding-3-small",
+            "  large  -> text-embedding-3-large",
+            "  ada    -> text-embedding-ada-002",
+            "  bge    -> bge-base-en-v1.5 (local)",
+            "  bge-m3 -> text-embedding-bge-m3 (local)",
+            "  nomic  -> nomic-embed-text-v1.5 (local)",
+            "  minilm -> all-minilm-l6-v2 (local)",
+            "  gemma  -> text-embedding-gemma-2b (local)",
+            "  local  -> nomic-embed-text-v1.5",
             "",
             "Local Models (via LM Studio):",
             "=" * 60,

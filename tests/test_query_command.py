@@ -5,15 +5,12 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import time
-from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from ogrep.commands.query import _check_stale_files, cmd_query
 from ogrep.db import connect
-from ogrep.embed import embed_texts
 from ogrep.indexer import index_path
 
 
@@ -226,7 +223,7 @@ def execute_query(sql: str):
 
         captured = capsys.readouterr()
         # Count result lines (each result has path line + snippet line)
-        lines = [l for l in captured.out.strip().split("\n") if l]
+        lines = [line for line in captured.out.strip().split("\n") if line]
         # With top=1, we should have 2 lines (1 result with path + snippet)
         assert len(lines) <= 2
 

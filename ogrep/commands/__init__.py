@@ -13,10 +13,12 @@ Commands:
     - status: Show index status and statistics
     - models: List available embedding models
     - tune: Auto-tune chunk size for optimal relevance
+    - benchmark: Compare all embedding models
 """
 
 from __future__ import annotations
 
+from .benchmark import cmd_benchmark
 from .clean import cmd_clean
 from .index import cmd_index
 from .models import cmd_models
@@ -27,6 +29,7 @@ from .status import cmd_status
 from .tune import cmd_tune
 
 __all__ = [
+    "cmd_benchmark",
     "cmd_index",
     "cmd_query",
     "cmd_reset",

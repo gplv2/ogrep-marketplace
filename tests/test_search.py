@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import array
-import math
 from pathlib import Path
 
 import pytest
@@ -34,7 +33,7 @@ class TestHitDataclass:
     def test_hit_is_frozen(self) -> None:
         """Test that Hit is immutable."""
         hit = Hit(score=0.5, path="/test.py", start_line=1, end_line=5, text="test")
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(AttributeError):  # Frozen dataclass
             hit.score = 0.9  # type: ignore[misc]
 
     def test_hit_comparison(self) -> None:
@@ -158,7 +157,7 @@ class TestQuery:
         ]
         blobs, dim = embed_texts(texts)
 
-        for i, (text, blob) in enumerate(zip(texts, blobs)):
+        for i, (text, blob) in enumerate(zip(texts, blobs, strict=True)):
             con.execute(
                 """INSERT INTO chunks
                    (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
@@ -196,7 +195,7 @@ class TestQuery:
         ]
         blobs, dim = embed_texts(texts)
 
-        for i, (text, blob) in enumerate(zip(texts, blobs)):
+        for i, (text, blob) in enumerate(zip(texts, blobs, strict=True)):
             con.execute(
                 """INSERT INTO chunks
                    (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)

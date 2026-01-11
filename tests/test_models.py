@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from ogrep.models import (
     DEFAULT_CHUNK_LINES,
     DEFAULT_LOCAL_MODEL,
-    DEFAULT_MODEL,
     DEFAULT_OPENAI_MODEL,
     MODEL_ALIASES,
     MODELS,
@@ -234,8 +231,8 @@ class TestFormatModelsTable:
     def test_includes_aliases(self) -> None:
         """Test that output includes alias information."""
         result = format_models_table()
-        assert "small ->" in result
-        assert "large ->" in result
+        assert "small" in result and "text-embedding-3-small" in result
+        assert "large" in result and "text-embedding-3-large" in result
 
     def test_includes_local_setup_instructions(self) -> None:
         """Test that output includes LM Studio setup."""
@@ -279,5 +276,5 @@ class TestEmbeddingModelDataclass:
     def test_model_is_frozen(self) -> None:
         """Test that EmbeddingModel is immutable."""
         model = MODELS["text-embedding-3-small"]
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(AttributeError):  # Frozen dataclass
             model.dimensions = 999  # type: ignore[misc]

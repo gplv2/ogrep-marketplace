@@ -134,6 +134,7 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available embedding models |
 | `ogrep tune .` | Auto-tune chunk size for your codebase |
+| `ogrep benchmark .` | Compare all models (accuracy, speed, settings) |
 
 ---
 
@@ -153,7 +154,9 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 |-------|-------|------------|----------------|-------|
 | nomic-embed-text-v1.5 | `nomic`, `local` | 768 | 90 lines | Best accuracy, larger context |
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | Smaller chunks work better |
+| bge-m3 | `bge-m3` | 1024 | 60 lines | Multi-lingual, 100+ languages |
 | all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | Smallest, fastest (~25MB) |
+| gemma-2b-embedding | `gemma` | 768 | 90 lines | 2K context, code-optimized |
 
 ```bash
 # Use model alias
@@ -237,6 +240,44 @@ ogrep tune . -m nomic --save --apply
 ```
 
 The `OGREP_CHUNK_LINES` environment variable persists your tuned value.
+
+---
+
+## Model Benchmarking
+
+Compare all available models to find the best one for your codebase:
+
+```bash
+ogrep benchmark . -s 10
+```
+
+```
+RESULTS BY MODEL
+--------------------------------------------------------------------------------
+Model                   Dims  Chunk/Overlap  Accuracy  Index    Query
+--------------------------------------------------------------------------------
+minilm                   384       30 / 5       0.96    0.89s   0.01s  *
+small                   1536       60 / 10      0.92    2.34s   0.02s
+gemma                    768       90 / 15      0.88    1.42s   0.01s
+nomic                    768       90 / 15      0.72    1.87s   0.01s
+--------------------------------------------------------------------------------
+
+RECOMMENDATIONS
+================================================================================
+* BEST OVERALL: minilm
+  Accuracy: 96% | Speed: 0.89s | Cost: FREE
+  Optimal: 30-line chunks, 5-line overlap
+```
+
+### Benchmark Options
+
+```bash
+ogrep benchmark . --local-only     # Only test local models
+ogrep benchmark . --cloud-only     # Only test OpenAI models
+ogrep benchmark . --save           # Save optimal settings to .env
+ogrep benchmark . --json           # Output as JSON
+ogrep benchmark . -v               # Verbose per-configuration results
+```
 
 ---
 
@@ -330,7 +371,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-make test    # Run tests (42 tests)
+make test    # Run tests (151 tests)
 make lint    # Run linters
 make check   # All checks
 ```

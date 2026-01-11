@@ -241,7 +241,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
         print(f"  export OGREP_CHUNK_LINES={best_chunk}")
         print(f"  # Or add to .env: OGREP_CHUNK_LINES={best_chunk}")
         print(f"  # Or use: ogrep index . --chunk-lines {best_chunk}")
-        print(f"\n  Tip: Use --save to automatically save to .env")
+        print("\n  Tip: Use --save to automatically save to .env")
 
     # Offer to reindex with optimal settings
     if args.apply:

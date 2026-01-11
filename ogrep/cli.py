@@ -26,6 +26,7 @@ import argparse
 import sys
 
 from .commands import (
+    cmd_benchmark,
     cmd_clean,
     cmd_index,
     cmd_models,
@@ -267,6 +268,65 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Save optimal chunk size to .env file as OGREP_CHUNK_LINES",
     )
     p_tune.set_defaults(func=cmd_tune)
+
+    # benchmark command
+    p_bench = sub.add_parser(
+        "benchmark",
+        help="Compare all embedding models",
+        description="Comprehensive benchmark comparing accuracy, speed, and optimal settings across all available models.",
+    )
+    p_bench.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
+    p_bench.add_argument(
+        "--samples",
+        "-s",
+        type=int,
+        default=10,
+        help="Number of code patterns to test (default: 10)",
+    )
+    p_bench.add_argument(
+        "--models",
+        "-m",
+        nargs="+",
+        metavar="MODEL",
+        help="Specific models to test (default: all available)",
+    )
+    p_bench.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Only test local models (via OGREP_BASE_URL)",
+    )
+    p_bench.add_argument(
+        "--cloud-only",
+        action="store_true",
+        help="Only test cloud models (OpenAI)",
+    )
+    p_bench.add_argument(
+        "--chunks",
+        default="30,45,60,90,120",
+        help="Chunk sizes to test (comma-separated, default: 30,45,60,90,120)",
+    )
+    p_bench.add_argument(
+        "--overlaps",
+        default="5,10,15,20",
+        help="Overlap values to test (comma-separated, default: 5,10,15,20)",
+    )
+    p_bench.add_argument(
+        "--save",
+        action="store_true",
+        help="Save optimal settings to .env file",
+    )
+    p_bench.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+    p_bench.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed per-configuration results",
+    )
+    p_bench.set_defaults(func=cmd_benchmark)
 
     return p
 
