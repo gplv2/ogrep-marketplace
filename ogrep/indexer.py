@@ -112,9 +112,23 @@ DEFAULT_EXCLUDES = (
     "Makefile",
     "Dockerfile",
     "*.dockerfile",
-    # Logs
+    # Logs and temp files
     "*.log",
     "logs/*",
+    "*.tmp",
+    "*.temp",
+    # Backup files
+    "*.old",
+    "*.bak",
+    "*.backup",
+    "*.orig",
+    "*.swp",
+    "*~",
+    # Data files
+    "*.csv",
+    "*.tsv",
+    "*.sqlt",
+    "*.dat",
     # Images (also filtered by binary detection, but skip early)
     "*.png",
     "*.jpg",
