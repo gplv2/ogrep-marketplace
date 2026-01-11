@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-01-11
+
+### 🐛 Fixes
+
+- **Clear error when API not configured**: Commands now fail immediately with helpful guidance when neither `OPENAI_API_KEY` nor `OGREP_BASE_URL` is set, instead of silently producing misleading output like "285 files skipped"
+
+- **Fixed PyPI installation**: Removed invalid classifier that was blocking `pip install` from source
+
 ## [0.4.0] - 2026-01-11 — Local Embeddings
 
 **Run semantic code search completely offline. Zero API costs. Total privacy.**
