@@ -302,13 +302,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_bench.add_argument(
         "--chunks",
-        default="30,45,60,90,120",
-        help="Chunk sizes to test (comma-separated, default: 30,45,60,90,120)",
+        default="30,60,90",
+        help="Chunk sizes to test (comma-separated, default: 30,60,90)",
     )
     p_bench.add_argument(
         "--overlaps",
-        default="5,10,15,20",
-        help="Overlap values to test (comma-separated, default: 5,10,15,20)",
+        default="5,10,15",
+        help="Overlap values to test (comma-separated, default: 5,10,15)",
     )
     p_bench.add_argument(
         "--save",

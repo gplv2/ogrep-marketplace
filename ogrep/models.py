@@ -155,7 +155,7 @@ MODELS: dict[str, EmbeddingModel] = {
             "Cost-free",
         ),
         notes="Requires: lms load nomic-ai/nomic-embed-text-v1.5 && lms server start",
-        optimal_chunk_lines=90,  # Tuned: performs best with larger context
+        optimal_chunk_lines=30,  # Tuned: benchmark shows 30 lines optimal
     ),
     "text-embedding-all-minilm-l6-v2-embedding": EmbeddingModel(
         id="text-embedding-all-minilm-l6-v2-embedding",

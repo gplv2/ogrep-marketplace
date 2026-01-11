@@ -189,7 +189,7 @@ class TestGetOptimalChunkLines:
     def test_model_specific_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test model-specific chunk size defaults."""
         monkeypatch.delenv("OGREP_CHUNK_LINES", raising=False)
-        assert get_optimal_chunk_lines("nomic") == 90
+        assert get_optimal_chunk_lines("nomic") == 30  # Updated per benchmark results
         assert get_optimal_chunk_lines("bge") == 30
         assert get_optimal_chunk_lines("minilm") == 30
         assert get_optimal_chunk_lines("small") == DEFAULT_CHUNK_LINES
@@ -197,8 +197,8 @@ class TestGetOptimalChunkLines:
     def test_uses_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that aliases work correctly."""
         monkeypatch.delenv("OGREP_CHUNK_LINES", raising=False)
-        # "local" is an alias for nomic
-        assert get_optimal_chunk_lines("local") == 90
+        # "local" is an alias for nomic (30-line chunks per benchmark)
+        assert get_optimal_chunk_lines("local") == 30
 
     def test_default_model_chunk_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test default chunk lines when no model specified."""
@@ -271,7 +271,7 @@ class TestEmbeddingModelDataclass:
         """Test local model specific attributes."""
         model = MODELS["nomic-embed-text-v1.5"]
         assert model.price_per_million == 0.0
-        assert model.optimal_chunk_lines == 90
+        assert model.optimal_chunk_lines == 30  # Updated per benchmark results
         assert "Local" in model.name
 
     def test_model_is_frozen(self) -> None:
