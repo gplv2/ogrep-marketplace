@@ -1,23 +1,35 @@
 """
 Command-line interface for ogrep.
 
-This module provides the main entry point and argument parsing for the
-ogrep semantic search tool. Individual command implementations are
-located in the `ogrep.commands` subpackage.
+Semantic grep for codebases — search by meaning, not just keywords.
+Supports hybrid (semantic + keyword), pure semantic, or FTS5 fulltext modes.
 
 Usage:
-    ogrep index .              # Index current directory
-    ogrep query "search text"  # Semantic search
-    ogrep status               # Show index statistics
-    ogrep reset --force        # Delete index
-    ogrep reindex .            # Rebuild from scratch
-    ogrep clean --vacuum       # Remove stale entries
-    ogrep models               # List available models
+    ogrep index .                           # Index current directory
+    ogrep query "search text"               # Search (hybrid mode)
+    ogrep query "text" --mode semantic      # Pure semantic search
+    ogrep query "text" --mode fulltext      # Keyword search (FTS5)
+    ogrep query "text" --json               # JSON output for AI tools
+    ogrep chunk "path:N" -C 1               # Get chunk with context
+    ogrep status                            # Show index statistics
+    ogrep reset --force                     # Delete index
+    ogrep reindex .                         # Rebuild (enables FTS5)
+    ogrep clean --vacuum                    # Remove stale entries
+    ogrep models                            # List available models
+    ogrep tune .                            # Auto-tune chunk size
+    ogrep benchmark .                       # Compare all models
+
+Search Modes:
+    hybrid   - Combines semantic + keyword (default, best for most queries)
+    semantic - Embeddings only (conceptual questions)
+    fulltext - FTS5 keywords (exact identifiers)
 
 Environment Variables:
-    OPENAI_API_KEY: Required for embedding generation.
-    OGREP_MODEL: Default embedding model (default: text-embedding-3-small).
-    OGREP_DIMENSIONS: Default embedding dimensions.
+    OPENAI_API_KEY: Required for OpenAI embeddings.
+    OGREP_BASE_URL: Local server URL (e.g., LM Studio).
+    OGREP_MODEL: Default embedding model.
+    OGREP_SEARCH_MODE: Default search mode (hybrid/semantic/fulltext).
+    OGREP_HYBRID_ALPHA: Semantic weight in hybrid mode (0.0-1.0).
 """
 
 from __future__ import annotations
@@ -73,8 +85,11 @@ def _build_parser() -> argparse.ArgumentParser:
     """
     p = argparse.ArgumentParser(
         prog="ogrep",
-        description="Local semantic grep powered by SQLite and OpenAI embeddings",
-        epilog="Run 'ogrep models' to see available embedding models.",
+        description="Semantic grep for codebases. Search by meaning, not just keywords. "
+        "Supports hybrid (semantic + keyword), pure semantic, or FTS5 fulltext modes.",
+        epilog="Search modes: --mode hybrid (default), semantic, fulltext. "
+        "Run 'ogrep models' to see embedding models. "
+        "Use --json for AI tool integration.",
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="command")

@@ -4,10 +4,17 @@
 
 ogrep helps you search code by **meaning**, not just keywords. It builds a local semantic index (`.ogrep/index.sqlite` by default) and retrieves the most relevant code chunks for questions like:
 
-- *“where is authentication handled?”*
-- *“how are API errors mapped to exceptions?”*
-- *“where do we open DB connections and run queries?”*
-- *“what kind of API key mechanism do we use?”*
+- *"where is authentication handled?"*
+- *"how are API errors mapped to exceptions?"*
+- *"where do we open DB connections and run queries?"*
+- *"what kind of API key mechanism do we use?"*
+
+## What's New in v0.5.0
+
+- **Hybrid Search** — Combines semantic understanding with keyword matching for superior results
+- **Confidence Scores** — Know how much to trust each result (high/medium/low)
+- **Chunk Navigation** — Expand context around any search result with `ogrep chunk`
+- **JSON Output** — Structured output for AI tools and automation
 
 ---
 
@@ -193,14 +200,96 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 |---------|-------------|
 | `ogrep index .` | Index current directory |
 | `ogrep index . --list` | Preview files before indexing (with MIME detection) |
-| `ogrep query "text" -n 10` | Semantic search |
+| `ogrep query "text" -n 10` | Search (hybrid mode by default) |
+| `ogrep query "text" --mode semantic` | Pure semantic search |
+| `ogrep query "text" --mode fulltext` | Keyword search (FTS5) |
+| `ogrep query "text" --json` | JSON output for AI tools |
+| `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index statistics |
 | `ogrep reset -f` | Delete index |
-| `ogrep reindex .` | Rebuild from scratch |
+| `ogrep reindex .` | Rebuild from scratch (enables FTS5) |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available embedding models |
 | `ogrep tune .` | Auto-tune chunk size for your codebase |
 | `ogrep benchmark .` | Compare all models (accuracy, speed, settings) |
+
+---
+
+## Search Modes
+
+ogrep supports three search modes via `--mode` (or `-M`):
+
+| Mode | Best For | How It Works |
+|------|----------|--------------|
+| `hybrid` | General use (default) | Combines semantic + keyword scores |
+| `semantic` | Conceptual questions | Embeddings only — "where is auth handled?" |
+| `fulltext` | Exact identifiers | FTS5 keywords — "def validate_token" |
+
+```bash
+# Default: hybrid (best of both worlds)
+ogrep query "user authentication" -n 10
+
+# Pure semantic (meaning-based)
+ogrep query "how are errors handled" --mode semantic
+
+# Pure keyword (exact matches)
+ogrep query "class AuthMiddleware" --mode fulltext
+```
+
+**Environment variable:** Set `OGREP_SEARCH_MODE=hybrid` (or `semantic`/`fulltext`) as default.
+
+**Hybrid weighting:** `OGREP_HYBRID_ALPHA=0.7` controls semantic vs keyword balance (0.0-1.0).
+
+---
+
+## Confidence Scores
+
+Results include confidence levels to help you decide how much to trust them:
+
+| Confidence | Score | Guidance |
+|------------|-------|----------|
+| `high` | 0.85+ | Trust and use directly |
+| `medium` | 0.70-0.84 | Use but verify context |
+| `low` | 0.50-0.69 | Consider alternative queries |
+| `very_low` | <0.50 | Likely not relevant |
+
+```bash
+ogrep query "database connections" --json
+```
+
+```json
+{
+  "results": [
+    {
+      "file": "src/db.py",
+      "score": 0.89,
+      "confidence": "high",
+      "chunk_ref": "src/db.py:2"
+    }
+  ],
+  "stats": {
+    "confidence_summary": {"high": 3, "medium": 5, "low": 2}
+  }
+}
+```
+
+---
+
+## Chunk Navigation
+
+Found something interesting? Expand the context:
+
+```bash
+# Get chunk by reference (from query results)
+ogrep chunk "src/auth.py:2"
+
+# Include surrounding chunks
+ogrep chunk "src/auth.py:2" --before 1    # 1 chunk before
+ogrep chunk "src/auth.py:2" --after 1     # 1 chunk after
+ogrep chunk "src/auth.py:2" --context 1   # 1 before AND after
+```
+
+This is useful when a search result looks promising but you need more context to understand it fully.
 
 ---
 
@@ -459,9 +548,14 @@ ogrep index . -e 'fixtures/*' -e 'mocks/*'
 | `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_CHUNK_LINES` | Tuned chunk size | Model default |
 | `OGREP_DIMENSIONS` | Embedding dimensions | Model default |
+| `OGREP_SEARCH_MODE` | Default search mode | `hybrid` |
+| `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
+| `OGREP_CONFIDENCE_HIGH` | Threshold for "high" confidence | `0.85` |
+| `OGREP_CONFIDENCE_MEDIUM` | Threshold for "medium" confidence | `0.70` |
+| `OGREP_CONFIDENCE_LOW` | Threshold for "low" confidence | `0.50` |
 
 **Smart Model Default:**
-- If `OGREP_BASE_URL` is set → defaults to `minilm` (local)
+- If `OGREP_BASE_URL` is set → defaults to `nomic` (local)
 - Otherwise → defaults to `text-embedding-3-small` (OpenAI)
 
 This means you can just set `OGREP_BASE_URL` and ogrep will automatically use the best local model.

@@ -60,7 +60,7 @@ class TestResolveModel:
         assert resolve_model(None) == DEFAULT_OPENAI_MODEL
 
     def test_resolve_model_default_local(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test default model is local (minilm) when OGREP_BASE_URL is set."""
+        """Test default model is local (nomic) when OGREP_BASE_URL is set."""
         monkeypatch.delenv("OGREP_MODEL", raising=False)
         monkeypatch.setenv("OGREP_BASE_URL", "http://localhost:1234/v1")
         assert resolve_model(None) == DEFAULT_LOCAL_MODEL
@@ -99,10 +99,10 @@ class TestGetDefaultModel:
         monkeypatch.setenv("OGREP_BASE_URL", "http://localhost:1234/v1")
         assert _get_default_model() == DEFAULT_LOCAL_MODEL
 
-    def test_default_local_model_is_minilm(self) -> None:
-        """Test that the default local model is minilm."""
-        assert DEFAULT_LOCAL_MODEL == "text-embedding-all-minilm-l6-v2-embedding"
-        assert MODEL_ALIASES["minilm"] == DEFAULT_LOCAL_MODEL
+    def test_default_local_model_is_nomic(self) -> None:
+        """Test that the default local model is nomic."""
+        assert DEFAULT_LOCAL_MODEL == "nomic-embed-text-v1.5"
+        assert MODEL_ALIASES["nomic"] == DEFAULT_LOCAL_MODEL
 
 
 class TestResolveDimensions:

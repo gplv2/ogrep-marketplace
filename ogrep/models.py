@@ -23,14 +23,14 @@ ENV_BASE_URL = "OGREP_BASE_URL"
 
 # Default models
 DEFAULT_OPENAI_MODEL = "text-embedding-3-small"
-DEFAULT_LOCAL_MODEL = "text-embedding-all-minilm-l6-v2-embedding"  # minilm alias
+DEFAULT_LOCAL_MODEL = "nomic-embed-text-v1.5"  # nomic - best balance of accuracy and speed
 
 
 def _get_default_model() -> str:
     """
     Get the default model based on environment configuration.
 
-    If OGREP_BASE_URL is set (local server), defaults to minilm.
+    If OGREP_BASE_URL is set (local server), defaults to nomic.
     Otherwise, defaults to OpenAI's text-embedding-3-small.
 
     Returns:
@@ -213,7 +213,7 @@ def resolve_model(model: str | None = None) -> str:
         1. Explicit model argument
         2. OGREP_MODEL environment variable
         3. Smart default based on environment:
-           - If OGREP_BASE_URL is set: minilm (local model)
+           - If OGREP_BASE_URL is set: nomic (local model)
            - Otherwise: text-embedding-3-small (OpenAI)
 
     Args:
@@ -231,7 +231,7 @@ def resolve_model(model: str | None = None) -> str:
         >>> resolve_model("text-embedding-3-large")
         'text-embedding-3-large'
         >>> resolve_model(None)  # Uses env or smart default
-        'text-embedding-3-small'  # or 'minilm' if OGREP_BASE_URL is set
+        'text-embedding-3-small'  # or 'nomic' if OGREP_BASE_URL is set
     """
     # Use explicit argument, env var, or smart default
     model_input = model or os.environ.get(ENV_MODEL) or _get_default_model()

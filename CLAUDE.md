@@ -420,12 +420,12 @@ ogrep tune . -s 10     # Use 10 test samples
 
 | Model | Alias | Dimensions | Optimal Chunk | Accuracy | Use Case |
 |-------|-------|------------|---------------|----------|----------|
-| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | **96%** | Best overall (default) |
-| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Large context queries |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Default local model |
+| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | 96% | Fastest, highest accuracy |
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
 | bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
 
-**Smart Default:** When `OGREP_BASE_URL` is set, ogrep auto-selects `minilm` (best accuracy).
+**Smart Default:** When `OGREP_BASE_URL` is set, ogrep auto-selects `nomic` (best balance of accuracy and context).
 
 **Important:** Query model must match index model.
 
