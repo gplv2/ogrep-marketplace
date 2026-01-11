@@ -43,6 +43,7 @@ def _save_chunk_lines_to_env(env_file: Path, chunk_lines: int) -> None:
     else:
         env_file.write_text(env_var + "\n")
 
+
 # Patterns to identify significant code lines
 SIGNIFICANT_PATTERNS = [
     # Python

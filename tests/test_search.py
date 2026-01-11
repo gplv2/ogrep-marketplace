@@ -162,7 +162,17 @@ class TestQuery:
                 """INSERT INTO chunks
                    (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (file_id, i, i * 10, i * 10 + 5, text, f"hash{i}", blob, dim, "text-embedding-3-small"),
+                (
+                    file_id,
+                    i,
+                    i * 10,
+                    i * 10 + 5,
+                    text,
+                    f"hash{i}",
+                    blob,
+                    dim,
+                    "text-embedding-3-small",
+                ),
             )
         con.commit()
 
@@ -200,7 +210,17 @@ class TestQuery:
                 """INSERT INTO chunks
                    (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (file_id, i, i * 10, i * 10 + 5, text, f"hash{i}", blob, dim, "text-embedding-3-small"),
+                (
+                    file_id,
+                    i,
+                    i * 10,
+                    i * 10 + 5,
+                    text,
+                    f"hash{i}",
+                    blob,
+                    dim,
+                    "text-embedding-3-small",
+                ),
             )
         con.commit()
 

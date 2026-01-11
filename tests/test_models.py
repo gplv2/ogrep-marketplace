@@ -48,9 +48,7 @@ class TestResolveModel:
         monkeypatch.setenv("OGREP_MODEL", "large")
         assert resolve_model(None) == "text-embedding-3-large"
 
-    def test_resolve_model_explicit_overrides_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_resolve_model_explicit_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that explicit model overrides environment variable."""
         monkeypatch.setenv("OGREP_MODEL", "large")
         assert resolve_model("small") == "text-embedding-3-small"
@@ -125,9 +123,7 @@ class TestResolveDimensions:
         monkeypatch.setenv("OGREP_DIMENSIONS", "768")
         assert resolve_dimensions(512) == 512
 
-    def test_returns_none_when_no_value(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_none_when_no_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test returning None when no dimension specified."""
         monkeypatch.delenv("OGREP_DIMENSIONS", raising=False)
         assert resolve_dimensions(None) is None

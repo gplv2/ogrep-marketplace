@@ -221,8 +221,7 @@ def _format_results_table(reports: list[ModelReport], verbose: bool = False) -> 
     lines.append("RESULTS BY MODEL")
     lines.append("-" * 80)
     lines.append(
-        f"{'Model':<25} {'Dims':>5} {'Chunk/Overlap':>14} "
-        f"{'Accuracy':>9} {'Index':>8} {'Query':>8}"
+        f"{'Model':<25} {'Dims':>5} {'Chunk/Overlap':>14} {'Accuracy':>9} {'Index':>8} {'Query':>8}"
     )
     lines.append("-" * 80)
 
@@ -276,10 +275,16 @@ def _generate_recommendations(reports: list[ModelReport]) -> str:
     # Best overall
     best = max(reports, key=lambda r: r.best_accuracy)
     model_info = get_model(best.model)
-    cost = "FREE" if model_info.price_per_million == 0 else f"${model_info.price_per_million:.2f}/M tokens"
+    cost = (
+        "FREE"
+        if model_info.price_per_million == 0
+        else f"${model_info.price_per_million:.2f}/M tokens"
+    )
 
     lines.append(f"* BEST OVERALL: {best.model_alias}")
-    lines.append(f"  Accuracy: {best.best_accuracy:.0%} | Speed: {best.avg_index_time:.2f}s | Cost: {cost}")
+    lines.append(
+        f"  Accuracy: {best.best_accuracy:.0%} | Speed: {best.avg_index_time:.2f}s | Cost: {cost}"
+    )
     lines.append(f"  Optimal: {best.best_chunk_size}-line chunks, {best.best_overlap}-line overlap")
     lines.append("")
 
@@ -346,7 +351,9 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     print("=" * 80)
     print("OGREP MODEL BENCHMARK")
     print("=" * 80)
-    print(f"Testing {args.samples} code patterns | Chunks: {args.chunks} | Overlaps: {args.overlaps}")
+    print(
+        f"Testing {args.samples} code patterns | Chunks: {args.chunks} | Overlaps: {args.overlaps}"
+    )
     print()
 
     # Detect available models
@@ -448,7 +455,9 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
                 )
                 reports.append(report)
 
-                print(f"  Best: accuracy={best.accuracy:.2f} at chunk={best.chunk_size}/overlap={best.overlap}")
+                print(
+                    f"  Best: accuracy={best.accuracy:.2f} at chunk={best.chunk_size}/overlap={best.overlap}"
+                )
 
     print()
 
