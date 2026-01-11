@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 
 from ..indexer import index_path
-from ..models import get_optimal_chunk_lines
+from ..models import get_optimal_chunk_lines, get_optimal_overlap
 from ._common import require_embedding_config, resolve_db_path
 
 
@@ -30,7 +30,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             - model: OpenAI embedding model name
             - dimensions: Embedding dimensions
             - chunk_lines: Lines per chunk (None = model-specific default)
-            - overlap: Overlapping lines between chunks
+            - overlap: Overlapping lines between chunks (None = model-specific default)
             - max_bytes: Maximum file size to index
             - exclude: Additional glob patterns to exclude
             - include: Glob patterns to include (override excludes)
@@ -45,10 +45,14 @@ def cmd_reindex(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve() if args.repo_root else root
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
-    # Use model-specific optimal chunk size if not explicitly specified
+    # Use model-specific optimal settings if not explicitly specified
     chunk_lines = args.chunk_lines
     if chunk_lines is None:
         chunk_lines = get_optimal_chunk_lines(args.model)
+
+    overlap = args.overlap
+    if overlap is None:
+        overlap = get_optimal_overlap(args.model)
 
     # Remove existing database
     if db.exists():
@@ -62,7 +66,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         model=args.model,
         dimensions=args.dimensions,
         chunk_lines=chunk_lines,
-        overlap=args.overlap,
+        overlap=overlap,
         max_bytes=args.max_bytes,
         exclude=args.exclude,
         include=args.include,

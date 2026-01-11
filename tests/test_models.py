@@ -8,6 +8,7 @@ from ogrep.models import (
     DEFAULT_CHUNK_LINES,
     DEFAULT_LOCAL_MODEL,
     DEFAULT_OPENAI_MODEL,
+    DEFAULT_OVERLAP_LINES,
     MODEL_ALIASES,
     MODELS,
     EmbeddingModel,
@@ -15,6 +16,7 @@ from ogrep.models import (
     format_models_table,
     get_model,
     get_optimal_chunk_lines,
+    get_optimal_overlap,
     list_models,
     resolve_dimensions,
     resolve_model,
@@ -202,6 +204,38 @@ class TestGetOptimalChunkLines:
         monkeypatch.delenv("OGREP_MODEL", raising=False)
         monkeypatch.delenv("OGREP_BASE_URL", raising=False)
         assert get_optimal_chunk_lines(None) == DEFAULT_CHUNK_LINES
+
+
+class TestGetOptimalOverlap:
+    """Tests for get_optimal_overlap function."""
+
+    def test_env_var_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that OGREP_OVERLAP_LINES environment variable takes precedence."""
+        monkeypatch.setenv("OGREP_OVERLAP_LINES", "20")
+        assert get_optimal_overlap("nomic") == 20
+        assert get_optimal_overlap("bge") == 20
+        assert get_optimal_overlap("small") == 20
+
+    def test_model_specific_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test model-specific overlap defaults."""
+        monkeypatch.delenv("OGREP_OVERLAP_LINES", raising=False)
+        assert get_optimal_overlap("nomic") == 15  # Nomic benefits from more overlap
+        assert get_optimal_overlap("bge") == 5  # BGE prefers minimal overlap
+        assert get_optimal_overlap("minilm") == 15  # MiniLM benefits from more overlap
+        assert get_optimal_overlap("small") == DEFAULT_OVERLAP_LINES  # OpenAI uses default
+
+    def test_uses_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that aliases work correctly."""
+        monkeypatch.delenv("OGREP_OVERLAP_LINES", raising=False)
+        # "local" is an alias for nomic (15-line overlap per benchmark)
+        assert get_optimal_overlap("local") == 15
+
+    def test_default_model_overlap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test default overlap when no model specified."""
+        monkeypatch.delenv("OGREP_OVERLAP_LINES", raising=False)
+        monkeypatch.delenv("OGREP_MODEL", raising=False)
+        monkeypatch.delenv("OGREP_BASE_URL", raising=False)
+        assert get_optimal_overlap(None) == DEFAULT_OVERLAP_LINES
 
 
 class TestFormatModelsTable:

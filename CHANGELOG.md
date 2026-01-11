@@ -57,6 +57,31 @@ Human-readable confidence levels help Claude decide how much to trust results:
 
 ### 🔧 Improvements
 
+#### Model-Specific Overlap Defaults
+
+Each embedding model now has its own optimal overlap setting based on benchmark results:
+
+| Model | Chunk Size | Overlap | Why |
+|-------|------------|---------|-----|
+| nomic | 30 lines | **15 lines** | Large context window (8192 tokens) benefits from more overlap |
+| minilm | 30 lines | **15 lines** | Small context needs overlap to preserve boundaries |
+| bge | 30 lines | **5 lines** | Prefers minimal overlap |
+| bge-m3 | 60 lines | **10 lines** | Moderate overlap for larger chunks |
+| OpenAI | 60 lines | **10 lines** | Default for cloud models |
+
+- **New env var**: `OGREP_OVERLAP_LINES` to override model defaults
+- **New function**: `get_optimal_overlap(model)` returns tuned overlap
+- **CLI updated**: `--overlap` now shows model-specific defaults in help
+
+#### Default Local Model Changed to Nomic
+
+When `OGREP_BASE_URL` is set (local LM Studio), ogrep now defaults to `nomic` instead of `minilm`:
+
+- **nomic**: 768D embeddings, 8192 token context window — no truncation
+- **minilm**: 384D embeddings, 256 token limit — truncates longer chunks
+
+MiniLM showed higher accuracy in benchmarks (96% vs 88%), but this was misleading because chunks were being truncated. Nomic provides more reliable results for real-world code.
+
 #### Enhanced JSON Output
 
 Query JSON output now includes:

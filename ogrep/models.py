@@ -19,6 +19,7 @@ from dataclasses import dataclass
 ENV_MODEL = "OGREP_MODEL"
 ENV_DIMENSIONS = "OGREP_DIMENSIONS"
 ENV_CHUNK_LINES = "OGREP_CHUNK_LINES"
+ENV_OVERLAP_LINES = "OGREP_OVERLAP_LINES"
 ENV_BASE_URL = "OGREP_BASE_URL"
 
 # Default models
@@ -44,9 +45,10 @@ def _get_default_model() -> str:
 # Legacy alias for backwards compatibility
 DEFAULT_MODEL = DEFAULT_OPENAI_MODEL
 
-# Default chunk size for models without specific tuning
+# Default chunk size and overlap for models without specific tuning
 # These are starting points - run `ogrep tune` on your codebase for best results
 DEFAULT_CHUNK_LINES = 60
+DEFAULT_OVERLAP_LINES = 10
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ class EmbeddingModel:
         use_cases: Recommended use cases for this model.
         notes: Additional notes or caveats.
         optimal_chunk_lines: Tuned chunk size for best accuracy (model-specific).
+        optimal_overlap_lines: Tuned overlap between chunks (model-specific).
     """
 
     id: str
@@ -75,6 +78,7 @@ class EmbeddingModel:
     use_cases: tuple[str, ...]
     notes: str | None = None
     optimal_chunk_lines: int = DEFAULT_CHUNK_LINES
+    optimal_overlap_lines: int = DEFAULT_OVERLAP_LINES
 
 
 # Available OpenAI embedding models
@@ -141,11 +145,12 @@ MODELS: dict[str, EmbeddingModel] = {
         ),
         notes="Requires: lms server start. Set OGREP_BASE_URL=http://localhost:1234/v1",
         optimal_chunk_lines=30,  # Tuned: performs best with smaller chunks
+        optimal_overlap_lines=5,  # Tuned: BGE prefers minimal overlap
     ),
     "nomic-embed-text-v1.5": EmbeddingModel(
         id="nomic-embed-text-v1.5",
         name="Nomic Embed Text v1.5 (Local)",
-        description="Local embedding model via LM Studio (768D)",
+        description="Local embedding model via LM Studio (768D, 8192 token context)",
         dimensions=768,
         max_dimensions=None,
         price_per_million=0.0,
@@ -154,13 +159,14 @@ MODELS: dict[str, EmbeddingModel] = {
             "Privacy-sensitive",
             "Cost-free",
         ),
-        notes="Requires: lms load nomic-ai/nomic-embed-text-v1.5 && lms server start",
+        notes="Large context window (8192 tokens). Run: lms load nomic-ai/nomic-embed-text-v1.5",
         optimal_chunk_lines=30,  # Tuned: benchmark shows 30 lines optimal
+        optimal_overlap_lines=15,  # Tuned: nomic benefits from more overlap
     ),
     "text-embedding-all-minilm-l6-v2-embedding": EmbeddingModel(
         id="text-embedding-all-minilm-l6-v2-embedding",
         name="MiniLM L6 v2 (Local)",
-        description="Fast, lightweight local embedding model (384D)",
+        description="Fast, lightweight local embedding model (384D, 256 token limit)",
         dimensions=384,
         max_dimensions=None,
         price_per_million=0.0,
@@ -169,8 +175,9 @@ MODELS: dict[str, EmbeddingModel] = {
             "Fast inference",
             "Low memory usage",
         ),
-        notes="Smallest model (~25MB). Run: lms load all-minilm-l6-v2",
-        optimal_chunk_lines=30,  # Tuned: performs best with small chunks (96% at 30 lines)
+        notes="Smallest model (~25MB) but truncates >256 tokens. Run: lms load all-minilm-l6-v2",
+        optimal_chunk_lines=30,  # Tuned: small chunks fit context window
+        optimal_overlap_lines=15,  # Tuned: more overlap helps with small context
     ),
     "text-embedding-bge-m3": EmbeddingModel(
         id="text-embedding-bge-m3",
@@ -186,6 +193,7 @@ MODELS: dict[str, EmbeddingModel] = {
         ),
         notes="Supports dense, multi-vector, and sparse retrieval. Run: lms load bge-m3",
         optimal_chunk_lines=60,
+        optimal_overlap_lines=10,  # Tuned: moderate overlap for larger chunks
     ),
 }
 
@@ -337,6 +345,50 @@ def get_optimal_chunk_lines(model: str | None = None) -> int:
     # Fall back to model-specific default
     resolved = resolve_model(model)
     return MODELS[resolved].optimal_chunk_lines
+
+
+def get_optimal_overlap(model: str | None = None) -> int:
+    """
+    Get the optimal overlap size for a model.
+
+    Priority:
+        1. OGREP_OVERLAP_LINES environment variable (user's tuned value)
+        2. Model-specific default from tuning tests
+        3. Global default (10 lines)
+
+    The model-specific defaults are based on benchmarking results. Different
+    models perform best with different overlap sizes:
+        - nomic/minilm: 15 lines (benefits from more context)
+        - bge: 5 lines (prefers minimal overlap)
+        - OpenAI/bge-m3: 10 lines (moderate overlap)
+
+    Args:
+        model: Model ID, alias, or None to use default/env.
+
+    Returns:
+        Overlap size in lines.
+
+    Examples:
+        >>> # With OGREP_OVERLAP_LINES=15 set in environment
+        >>> get_optimal_overlap("bge")
+        15
+
+        >>> # Without env var, uses model default
+        >>> get_optimal_overlap("nomic")
+        15
+        >>> get_optimal_overlap("bge")
+        5
+        >>> get_optimal_overlap("small")
+        10
+    """
+    # User's tuned value takes precedence
+    env_overlap = os.environ.get(ENV_OVERLAP_LINES)
+    if env_overlap:
+        return int(env_overlap)
+
+    # Fall back to model-specific default
+    resolved = resolve_model(model)
+    return MODELS[resolved].optimal_overlap_lines
 
 
 def format_models_table() -> str:

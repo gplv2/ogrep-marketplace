@@ -112,8 +112,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.add_argument(
         "--overlap",
         type=int,
-        default=10,
-        help="Overlapping lines between chunks (default: 10)",
+        default=None,
+        help="Overlapping lines between chunks (default: model-specific, e.g., 15 for nomic, 5 for bge)",
     )
     p_index.add_argument(
         "--max-bytes",
@@ -263,8 +263,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reindex.add_argument(
         "--overlap",
         type=int,
-        default=10,
-        help="Overlapping lines between chunks (default: 10)",
+        default=None,
+        help="Overlapping lines between chunks (default: model-specific, e.g., 15 for nomic, 5 for bge)",
     )
     p_reindex.add_argument(
         "--max-bytes",

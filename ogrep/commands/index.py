@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ..filetype import FileTypeResult, detect_file_types_batch, has_file_command
 from ..indexer import IndexStats, index_path, iter_files, load_ogrepignore
-from ..models import get_optimal_chunk_lines
+from ..models import get_optimal_chunk_lines, get_optimal_overlap
 from ._common import require_embedding_config, resolve_db_path
 
 
@@ -257,6 +257,21 @@ def _resolve_chunk_lines(args: argparse.Namespace) -> int:
     return get_optimal_chunk_lines(args.model)
 
 
+def _resolve_overlap(args: argparse.Namespace) -> int:
+    """
+    Resolve overlap size from args or model-specific default.
+
+    Args:
+        args: Parsed command-line arguments with overlap and model.
+
+    Returns:
+        Overlap size in lines.
+    """
+    if args.overlap is not None:
+        return args.overlap
+    return get_optimal_overlap(args.model)
+
+
 def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     """
     Resolve root directory and database path from arguments.
@@ -341,6 +356,7 @@ def cmd_index(args: argparse.Namespace) -> int:
 
     root, db = _resolve_paths(args)
     chunk_lines = _resolve_chunk_lines(args)
+    overlap = _resolve_overlap(args)
 
     stats = index_path(
         root=root,
@@ -348,7 +364,7 @@ def cmd_index(args: argparse.Namespace) -> int:
         model=args.model,
         dimensions=args.dimensions,
         chunk_lines=chunk_lines,
-        overlap=args.overlap,
+        overlap=overlap,
         max_bytes=args.max_bytes,
         exclude=args.exclude,
         include=args.include,

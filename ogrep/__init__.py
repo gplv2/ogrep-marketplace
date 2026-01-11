@@ -39,10 +39,12 @@ from .indexer import DEFAULT_EXCLUDES, index_path, iter_files, load_ogrepignore
 from .models import (
     DEFAULT_CHUNK_LINES,
     DEFAULT_MODEL,
+    DEFAULT_OVERLAP_LINES,
     MODELS,
     EmbeddingModel,
     get_model,
     get_optimal_chunk_lines,
+    get_optimal_overlap,
     list_models,
     resolve_model,
 )
@@ -70,10 +72,12 @@ __all__ = [
     "resolve_model",
     "get_model",
     "get_optimal_chunk_lines",
+    "get_optimal_overlap",
     "list_models",
     "MODELS",
     "DEFAULT_MODEL",
     "DEFAULT_CHUNK_LINES",
+    "DEFAULT_OVERLAP_LINES",
     # Data classes
     "Hit",
     "Chunk",
