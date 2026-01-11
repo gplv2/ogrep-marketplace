@@ -62,6 +62,7 @@ ogrep flips that:
 | **OpenAI API** | $0.02/M tokens | Cloud | Just add `OPENAI_API_KEY` |
 | **LM Studio** (local) | Free | 100% local | Run `lms server start` |
 
+### setting up environment
 ```bash
 # OpenAI (cloud)
 export OPENAI_API_KEY="sk-..."
@@ -72,7 +73,7 @@ export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
 ```
 
-# using direnv control for autoloading .env
+### using direnv control for autoloading .env (optional)
 
 Install **direnv** and follow the common practices, basically, your .bashrc (linux) will have this line somewhere:
 
