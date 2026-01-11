@@ -512,6 +512,43 @@ Update ALL these files when releasing a new version:
 | `tests/test_cli.py` | Version assertion (search for old version) |
 | `LOCAL_EMBEDDINGS_GUIDE.md` | Environment section `**ogrep:**` |
 
+#### CRITICAL: Marketplace JSON Structure
+
+**DO NOT modify the structure of these files. Only change version numbers.**
+
+The marketplace breaks if you add fields like `metadata`, `category`, `tags`, or version inside `plugins[]`.
+
+**`.claude-plugin/marketplace.json` - EXACT working structure:**
+```json
+{
+  "name": "ogrep-marketplace",
+  "version": "X.Y.Z",
+  "description": "Claude Code marketplace for ogrep - semantic grep with local models (LM Studio) or OpenAI",
+  "owner": {
+    "name": "gplv2",
+    "url": "https://github.com/gplv2"
+  },
+  "plugins": [
+    {
+      "name": "ogrep",
+      "source": "./plugins/ogrep",
+      "description": "Semantic grep with local embedding models (offline, free) or OpenAI embeddings"
+    }
+  ]
+}
+```
+
+**`plugins/ogrep/.claude-plugin/plugin.json` - EXACT working structure:**
+```json
+{
+  "name": "ogrep",
+  "version": "X.Y.Z",
+  "description": "Semantic grep with local embedding models (LM Studio) or OpenAI",
+  "skills": "./skills/",
+  "commands": ["./commands/"]
+}
+```
+
 **Verification command:**
 ```bash
 grep -rn "X\.Y\.Z\|OLD_VERSION" --include="*.py" --include="*.json" --include="*.toml" --include="*.md" | grep -v CHANGELOG | grep -v RELEASE_NOTES
