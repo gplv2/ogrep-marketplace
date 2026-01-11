@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ..filetype import FileTypeResult, detect_file_types_batch, has_file_command
 from ..indexer import IndexStats, index_path, iter_files, load_ogrepignore
 from ..models import get_optimal_chunk_lines
 from ._common import require_embedding_config, resolve_db_path
@@ -25,14 +26,20 @@ def _format_size(size: int) -> str:
         return f"{size / (1024 * 1024):.1f}MB"
 
 
-def _list_files(root: Path, exclude: list[str], include: list[str]) -> int:
+def _list_files(
+    root: Path, exclude: list[str], include: list[str], detect: bool = True
+) -> int:
     """
     List files that would be indexed, sorted by extension then size.
+
+    Shows file type detection results when detect=True, marking binary
+    files with [BINARY: mime/type] prefix.
 
     Args:
         root: Root directory to scan.
         exclude: Additional exclude patterns.
         include: Include patterns (override excludes).
+        detect: If True, run file type detection and show results.
 
     Returns:
         Exit code (0 for success).
@@ -58,41 +65,87 @@ def _list_files(root: Path, exclude: list[str], include: list[str]) -> int:
         print("No files would be indexed.")
         return 0
 
+    # Run file type detection if enabled
+    detection_results: dict[Path, FileTypeResult] = {}
+    if detect and has_file_command():
+        paths = [p for p, _, _ in file_info]
+        detection_results = detect_file_types_batch(paths)
+
     # Sort by extension, then by size (ascending, so biggest last)
     file_info.sort(key=lambda x: (x[1], x[2]))
 
-    # Group by extension for summary
+    # Separate indexable and excluded files
+    indexable: list[tuple[Path, str, int]] = []
+    excluded: list[tuple[Path, str, int, str]] = []  # + mime_type
+
+    for p, ext, size in file_info:
+        result = detection_results.get(p)
+        if result and not result.is_text:
+            excluded.append((p, ext, size, result.mime_type or "unknown"))
+        else:
+            indexable.append((p, ext, size))
+
+    # Group by extension for summary (indexable only)
     ext_stats: dict[str, tuple[int, int]] = {}  # ext -> (count, total_size)
-    for _, ext, size in file_info:
+    for _, ext, size in indexable:
         if ext not in ext_stats:
             ext_stats[ext] = (0, 0)
         count, total = ext_stats[ext]
         ext_stats[ext] = (count + 1, total + size)
 
-    # Print file list
+    # Print file list grouped by extension
     current_ext = None
     for p, ext, size in file_info:
         if ext != current_ext:
             current_ext = ext
-            ext_count, ext_total = ext_stats[ext]
-            print(f"\n── {ext} ({ext_count} files, {_format_size(ext_total)}) ──")
+            # Count total files in this extension (including excluded)
+            ext_files = [(fp, fs) for fp, fe, fs in file_info if fe == ext]
+            ext_total_size = sum(s for _, s in ext_files)
+            print(f"\n── {ext} ({len(ext_files)} files, {_format_size(ext_total_size)}) ──")
+
         rel_path = p.relative_to(root) if p.is_relative_to(root) else p
-        print(f"  {_format_size(size):>8}  {rel_path}")
+        result = detection_results.get(p)
+
+        if result and not result.is_text:
+            # Show binary marker
+            mime_short = result.mime_type or "unknown"
+            # Truncate long mime types
+            if len(mime_short) > 30:
+                mime_short = mime_short[:27] + "..."
+            print(f"  [BINARY: {mime_short}] {_format_size(size):>8}  {rel_path}")
+        else:
+            print(f"  {_format_size(size):>8}  {rel_path}")
 
     # Print summary
-    total_files = len(file_info)
-    total_size = sum(size for _, _, size in file_info)
-    print(f"\n{'─' * 40}")
-    print(f"Total: {total_files} files, {_format_size(total_size)}")
-    print(f"Extensions: {len(ext_stats)}")
+    indexable_size = sum(size for _, _, size in indexable)
+    excluded_size = sum(size for _, _, size, _ in excluded)
 
-    # Show top 5 largest files
-    largest = sorted(file_info, key=lambda x: x[2], reverse=True)[:5]
-    if largest:
-        print("\nLargest files:")
-        for p, _ext, size in largest:
+    print(f"\n{'─' * 50}")
+    print(f"Would index: {len(indexable)} files, {_format_size(indexable_size)}")
+
+    if excluded:
+        print(f"Excluded by detection: {len(excluded)} files, {_format_size(excluded_size)}")
+
+    if not detect:
+        print("(Detection disabled, use without --no-detect for MIME checking)")
+    elif not has_file_command():
+        print("(file command not available, using null-byte detection only)")
+
+    # Show top 5 largest indexable files
+    largest_indexable = sorted(indexable, key=lambda x: x[2], reverse=True)[:5]
+    if largest_indexable:
+        print("\nLargest indexable:")
+        for p, _ext, size in largest_indexable:
             rel_path = p.relative_to(root) if p.is_relative_to(root) else p
             print(f"  {_format_size(size):>8}  {rel_path}")
+
+    # Show largest excluded files (binary)
+    if excluded:
+        largest_excluded = sorted(excluded, key=lambda x: x[2], reverse=True)[:5]
+        print("\nLargest excluded (binary):")
+        for p, _ext, size, mime in largest_excluded:
+            rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+            print(f"  {_format_size(size):>8}  {rel_path} ({mime})")
 
     return 0
 
@@ -185,10 +238,11 @@ def cmd_index(args: argparse.Namespace) -> int:
         Exit code (0 for success, 1 for configuration error).
     """
     root = Path(args.path).resolve()
+    detect = not getattr(args, "no_detect", False)
 
     # Handle --list flag (doesn't require embedding config)
     if getattr(args, "list", False):
-        return _list_files(root, args.exclude, args.include)
+        return _list_files(root, args.exclude, args.include, detect=detect)
 
     if not require_embedding_config():
         return 1
@@ -206,6 +260,7 @@ def cmd_index(args: argparse.Namespace) -> int:
         max_bytes=args.max_bytes,
         exclude=args.exclude,
         include=args.include,
+        detect=detect,
     )
 
     _print_stats(db, stats)

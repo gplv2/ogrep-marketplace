@@ -129,6 +129,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List files that would be indexed (sorted by extension, biggest last). "
         "Does not actually index.",
     )
+    p_index.add_argument(
+        "--no-detect",
+        action="store_true",
+        help="Disable file type detection (use fast null-byte check only). "
+        "By default, uses 'file' command for accurate MIME type detection.",
+    )
     p_index.set_defaults(func=cmd_index)
 
     # query command

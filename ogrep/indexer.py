@@ -20,6 +20,7 @@ from tqdm import tqdm
 from .chunking import chunk_lines as chunk_text
 from .db import connect
 from .embed import embed_texts
+from .filetype import detect_file_types_batch, has_file_command
 from .models import resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
@@ -341,6 +342,7 @@ def index_path(
     max_bytes: int = 2_000_000,
     exclude: Sequence[str] = (),
     include: Sequence[str] = (),
+    detect: bool = True,
 ) -> IndexStats:
     """
     Index a directory for semantic search.
@@ -367,6 +369,7 @@ def index_path(
         max_bytes: Maximum file size to index (larger files are skipped).
         exclude: Additional glob patterns to exclude.
         include: Glob patterns to include (overrides default excludes).
+        detect: Use file command for MIME type detection (default True).
 
     Returns:
         IndexStats with counts of files/chunks processed and reused.
@@ -376,6 +379,7 @@ def index_path(
         - They match an exclude pattern (unless overridden by include)
         - They exceed max_bytes in size
         - They appear to be binary (contain null bytes)
+        - They fail MIME type detection (if detect=True)
         - They haven't changed since last indexing (same mtime, size, hash)
 
     Example:
@@ -397,6 +401,11 @@ def index_path(
 
     files = list(iter_files(root, exclude=all_exclude, include=include))
     stats.files_scanned = len(files)
+
+    # Batch file type detection (if enabled and file command available)
+    detection_results = {}
+    if detect and has_file_command() and files:
+        detection_results = detect_file_types_batch(files)
 
     for p in tqdm(files, desc="Indexing"):
         if not p.is_file():
@@ -420,8 +429,13 @@ def index_path(
             stats.files_skipped += 1
             continue
 
-        # Skip binary files
+        # Skip binary files (null-byte check)
         if not _is_probably_text(b):
+            stats.files_skipped += 1
+            continue
+
+        # Skip files that failed MIME type detection
+        if p in detection_results and not detection_results[p].is_text:
             stats.files_skipped += 1
             continue
 

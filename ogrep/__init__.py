@@ -30,6 +30,11 @@ Modules:
 from .chunking import Chunk, chunk_lines
 from .db import connect
 from .embed import embed_texts
+from .filetype import (
+    FileTypeResult,
+    detect_file_types_batch,
+    has_file_command,
+)
 from .indexer import DEFAULT_EXCLUDES, index_path, iter_files, load_ogrepignore
 from .models import (
     DEFAULT_CHUNK_LINES,
@@ -55,6 +60,10 @@ __all__ = [
     "embed_texts",
     "connect",
     "chunk_lines",
+    # File type detection
+    "detect_file_types_batch",
+    "has_file_command",
+    "FileTypeResult",
     # Constants
     "DEFAULT_EXCLUDES",
     # Model utilities

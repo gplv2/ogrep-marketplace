@@ -222,44 +222,60 @@ else:
 |------|-------------|
 | `-e`, `--exclude PATTERN` | Add patterns to exclude |
 | `-i`, `--include PATTERN` | Override default excludes |
-| `-l`, `--list` | Preview files (dry run, no indexing) |
+| `-l`, `--list` | Preview files with detection (dry run) |
+| `--no-detect` | Disable MIME detection (fast null-byte only) |
 
 Examples:
 ```bash
 ogrep index . -e 'test_*'      # Exclude test files
 ogrep index . -i '*.md'        # Include markdown (normally excluded)
-ogrep index . --list           # Preview what would be indexed
+ogrep index . --list           # Preview with file type detection
+ogrep index . --no-detect      # Skip MIME detection (faster)
 ```
+
+### File Type Detection
+
+By default, ogrep uses the `file` command for accurate MIME type detection. This catches:
+- Binary files without extensions (SQLite databases, etc.)
+- Files with misleading extensions
+- Data files that pass simple null-byte checks
+
+Use `--no-detect` to disable MIME detection and use only the fast null-byte check.
 
 ### Previewing Files with --list
 
-Use `--list` to see what files would be indexed before actually indexing:
+Use `--list` to see what files would be indexed, with detection results:
 
 ```bash
 ogrep index . --list
 ```
 
-Output is sorted by extension, then by size (biggest last):
+Output shows files sorted by extension, with binary files marked:
 
 ```
 ── .py (34 files, 179.6KB) ──
        24B  tests/__init__.py
       101B  ogrep/__main__.py
-      ...
     17.0KB  ogrep/commands/benchmark.py
 
-────────────────────────────────────────
-Total: 35 files, 180.4KB
-Extensions: 2
+── (no extension) (3 files, 45.2KB) ──
+  [BINARY: application/x-sqlite3]   12.0KB  data
+      25.2KB  Makefile
 
-Largest files:
+──────────────────────────────────────────────────
+Would index: 35 files, 180.4KB
+Excluded by detection: 1 files, 12.0KB
+
+Largest indexable:
     17.0KB  ogrep/commands/benchmark.py
-    14.1KB  ogrep/indexer.py
+
+Largest excluded (binary):
+   12.0KB  data (application/x-sqlite3)
 ```
 
 This helps identify:
-- Large data files that should be excluded
-- Unexpected file types being indexed
+- Binary files that would be excluded
+- Large data files slowing down indexing
 - Files to add to `.ogrepignore`
 
 ## .ogrepignore File

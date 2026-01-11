@@ -1,0 +1,229 @@
+"""
+File type detection module for ogrep.
+
+Uses the `file` command for robust MIME-type detection with
+fallback to heuristic null-byte detection on unsupported platforms.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+# Cache file command availability at module load
+_FILE_CMD: str | None = shutil.which("file")
+
+# MIME type prefixes that indicate text content
+TEXT_MIME_PREFIXES = (
+    "text/",
+)
+
+# Specific application/* and inode/* types that are actually text-based
+TEXT_APPLICATION_TYPES = frozenset({
+    "application/javascript",
+    "application/json",
+    "application/xml",
+    "application/x-sh",
+    "application/x-shellscript",
+    "application/x-perl",
+    "application/x-ruby",
+    "application/x-python",
+    "application/x-php",
+    "application/x-httpd-php",
+    "application/x-awk",
+    "application/x-ndjson",
+    "application/sql",
+    "application/x-empty",  # Empty files are fine
+    "inode/x-empty",  # Empty files (Linux)
+})
+
+# Types to explicitly block even if they might pass other checks
+BLOCKED_MIME_TYPES = frozenset({
+    "application/x-sqlite3",
+    "application/x-executable",
+    "application/x-sharedlib",
+    "application/x-mach-binary",
+    "application/x-dosexec",
+    "application/octet-stream",
+    "application/gzip",
+    "application/x-tar",
+    "application/zip",
+    "application/x-bzip2",
+    "application/x-7z-compressed",
+    "application/x-rar",
+    "application/pdf",
+    "application/x-object",
+    "application/x-archive",
+})
+
+
+@dataclass(frozen=True)
+class FileTypeResult:
+    """Result of file type detection."""
+
+    path: Path
+    mime_type: str | None
+    is_text: bool
+    detection_method: str  # "file_cmd" or "null_byte"
+
+
+def has_file_command() -> bool:
+    """Check if the file command is available."""
+    return _FILE_CMD is not None
+
+
+def _is_text_mime(mime_type: str) -> bool:
+    """
+    Check if a MIME type indicates text content.
+
+    Args:
+        mime_type: MIME type string (e.g., "text/plain", "application/x-sqlite3").
+
+    Returns:
+        True if the MIME type indicates indexable text content.
+    """
+    # Explicitly blocked types take priority
+    if mime_type in BLOCKED_MIME_TYPES:
+        return False
+
+    # Binary types by prefix
+    if mime_type.startswith(("image/", "audio/", "video/", "font/")):
+        return False
+
+    # Text types by prefix
+    if mime_type.startswith(TEXT_MIME_PREFIXES):
+        return True
+
+    # Known text application types
+    if mime_type in TEXT_APPLICATION_TYPES:
+        return True
+
+    # Default: unknown types are assumed binary for safety
+    return False
+
+
+def _null_byte_check(content: bytes) -> bool:
+    """
+    Fast heuristic: text files don't contain null bytes.
+
+    Args:
+        content: File content as bytes.
+
+    Returns:
+        True if no null bytes found (likely text), False otherwise.
+    """
+    return content.find(b"\x00") == -1
+
+
+def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
+    """
+    Detect file types for multiple files in a single batch call.
+
+    Uses `file --mime-type -b` for efficiency. Falls back to null-byte
+    detection if file command is unavailable or fails.
+
+    Args:
+        paths: List of file paths to check.
+
+    Returns:
+        Dict mapping paths to FileTypeResult objects.
+    """
+    results: dict[Path, FileTypeResult] = {}
+
+    if not paths:
+        return results
+
+    if not has_file_command():
+        # Fallback: read each file and check for null bytes
+        return _fallback_null_byte_detection(paths)
+
+    # Batch call to file command
+    try:
+        proc = subprocess.run(
+            [_FILE_CMD, "--mime-type", "-b", "--"] + [str(p) for p in paths],
+            capture_output=True,
+            text=True,
+            timeout=30,  # Safety timeout for large batches
+        )
+        if proc.returncode == 0:
+            mime_types = proc.stdout.strip().split("\n")
+            for path, mime in zip(paths, mime_types, strict=False):
+                mime = mime.strip()
+                results[path] = FileTypeResult(
+                    path=path,
+                    mime_type=mime,
+                    is_text=_is_text_mime(mime),
+                    detection_method="file_cmd",
+                )
+            return results
+    except (subprocess.TimeoutExpired, OSError):
+        pass  # Fall through to null-byte fallback
+
+    # Fallback for failed batch
+    return _fallback_null_byte_detection(paths)
+
+
+def _fallback_null_byte_detection(paths: list[Path]) -> dict[Path, FileTypeResult]:
+    """
+    Fallback detection using null-byte check.
+
+    Args:
+        paths: List of file paths to check.
+
+    Returns:
+        Dict mapping paths to FileTypeResult objects.
+    """
+    results: dict[Path, FileTypeResult] = {}
+    for p in paths:
+        try:
+            content = p.read_bytes()
+            is_text = _null_byte_check(content)
+        except Exception:
+            is_text = False
+        results[p] = FileTypeResult(
+            path=p,
+            mime_type=None,
+            is_text=is_text,
+            detection_method="null_byte",
+        )
+    return results
+
+
+def is_text_file(path: Path, content: bytes | None = None) -> FileTypeResult:
+    """
+    Check if a file is a text file.
+
+    Uses file command if available, otherwise falls back to null-byte check.
+
+    Args:
+        path: Path to the file.
+        content: Optional pre-read content (avoids re-reading for null-byte check).
+
+    Returns:
+        FileTypeResult with detection details.
+    """
+    if has_file_command():
+        results = detect_file_types_batch([path])
+        if path in results:
+            return results[path]
+
+    # Fallback
+    if content is None:
+        try:
+            content = path.read_bytes()
+        except Exception:
+            return FileTypeResult(
+                path=path,
+                mime_type=None,
+                is_text=False,
+                detection_method="null_byte",
+            )
+
+    return FileTypeResult(
+        path=path,
+        mime_type=None,
+        is_text=_null_byte_check(content),
+        detection_method="null_byte",
+    )
