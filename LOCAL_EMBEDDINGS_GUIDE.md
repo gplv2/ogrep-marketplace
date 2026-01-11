@@ -350,6 +350,30 @@ We tested identical queries on all models to compare result quality.
 
 **Winner: Nomic & MiniLM** - Found the database schema.
 
+#### Detail of cli test
+
+The query "how does the CLI parse arguments" is asking: where in the code is command-line argument parsing handled?
+
+For ogrep, the correct answer is ogrep/cli.py where build_parser() uses argparse to define all the flags:
+
+```
+  # cli.py:65-78
+  def _build_parser() -> argparse.ArgumentParser:
+      p = argparse.ArgumentParser(
+          prog="ogrep",
+          description="Local semantic grep powered by SQLite and OpenAI embeddings",
+      )
+      p.add_argument("--version", action="version", ...)
+      # ... all subcommands and flags defined here
+```
+Results:
+  - OpenAI → cli.py:51 (argument parsing code) ✅
+  - BGE → cli.py:241 (main CLI parser) ✅
+  - Nomic → commands/_common.py:81 (helper utilities, not main parser) ⚠️
+  - MiniLM → commands/_common.py:1 (shared utilities, not main parser) ⚠️
+
+Nomic and MiniLM found a related file (_common.py has add_scope_args() helper) but not the main argument parser in cli.py. That's why they're marked "Partial"
+
 ### Summary
 
 | Metric | OpenAI | Nomic | BGE | MiniLM |

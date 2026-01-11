@@ -118,7 +118,7 @@ ogrep index . -m nomic
 ogrep query "database connection handling" -m nomic
 ```
 
-See [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup and tuning.
+See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup and tuning.
 
 ---
 
@@ -309,7 +309,7 @@ ogrep query "recursive file scanning" -n 5
 
 ## Documentation
 
-- [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) — Local model setup, tuning, and troubleshooting
+- [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) — Local model setup, tuning, and troubleshooting
 - [QUICKSTART.md](QUICKSTART.md) — Quick start guide
 - [CLAUDE.md](CLAUDE.md) — Developer guide for Claude Code
 

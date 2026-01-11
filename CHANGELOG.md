@@ -5,66 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-01-10
+## [0.4.0] - 2026-01-10 — Local Embeddings
 
-### Added
+**Run semantic code search completely offline. Zero API costs. Total privacy.**
 
-- **Local Embedding Models**: Run semantic search completely offline using LM Studio. No API keys required, zero cost.
-  ```bash
-  # Set up local server
-  lms get nomic-embed-text-v1.5 -y
-  lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
-  lms server start
+### ✨ New Features
 
-  # Index with local model
-  export OGREP_BASE_URL=http://localhost:1234/v1
-  ogrep index . -m nomic
-  ```
+#### Run Locally with LM Studio
 
-- **Supported Local Models**:
-  - `nomic-embed-text-v1.5` (alias: `nomic`, `local`) - 768D, 90-line chunks
-  - `bge-base-en-v1.5` (alias: `bge`) - 768D, 30-line chunks
-  - `all-MiniLM-L6-v2` (alias: `minilm`) - 384D, 30-line chunks, **96% accuracy** (best tested)
+No more API keys required! ogrep now works with local embedding models through LM Studio's OpenAI-compatible API.
 
-- **Model-Specific Chunk Size Defaults**: The CLI provides sensible starting defaults per model:
-  - `minilm`: 30 lines (smallest model, highest accuracy)
-  - `nomic`: 90 lines (best for larger context)
-  - `bge`: 30 lines
-  - OpenAI models: 60 lines
+```bash
+lms get all-MiniLM-L6-v2 -y
+lms load all-minilm-l6-v2 -y
+lms server start
 
-  These are starting points based on initial testing. **Your codebase may have different optimal settings** - use `ogrep tune` to find what works best for your repository.
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index . -m minilm
+```
 
-- **OGREP_CHUNK_LINES Environment Variable**: Save your tuned chunk size to use it automatically:
-  ```bash
-  # After running: ogrep tune . -m nomic
-  # If tune recommends 75 lines for your codebase:
-  export OGREP_CHUNK_LINES=75
-  ```
+#### Three Local Models to Choose From
 
-- **Tune Command `--save` Flag**: Automatically save optimal chunk size to `.env` file:
-  ```bash
-  ogrep tune . -m nomic --save           # Save to .env
-  ogrep tune . -m nomic --save --apply   # Save and reindex
-  ```
+| Model | Alias | Accuracy | Best For |
+|-------|-------|----------|----------|
+| **MiniLM** | `minilm` | **96%** | Speed + accuracy (recommended) |
+| Nomic | `nomic` | 72% | Larger context windows |
+| BGE | `bge` | 52% | Fallback option |
 
-- **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default).
+#### Smart Tuning with Auto-Save
 
-- **Comprehensive Documentation**: New `docs/LOCAL_EMBEDDINGS_GUIDE.md` with:
-  - Step-by-step LM Studio installation for macOS/Linux/Windows
-  - Model download and loading commands (`lms get`, `lms load`)
-  - Full tuning benchmark data comparing nomic vs bge
-  - Query quality analysis with real test results
-  - Troubleshooting guide
+Different models need different chunk sizes. Now ogrep handles it automatically and remembers your settings:
 
-### Changed
+```bash
+ogrep tune . -m minilm --save --apply
+```
 
-- **CLI Help**: `--chunk-lines` now shows model-specific defaults in help text
-- **EmbeddingModel Dataclass**: Added `optimal_chunk_lines` field for per-model tuning
+The `--save` flag writes optimal settings to `.env` so you don't have to remember.
 
-### Documentation
+### 🔧 Improvements
 
-- Updated CLAUDE.md with local model setup, chunk tuning section, and `lms get` download instructions
-- Added tuning results table showing model performance differences
+- **Model-Specific Defaults**: Each local model now has tuned chunk size defaults based on real-world testing
+- **OGREP_CHUNK_LINES**: New environment variable to persist your tuned chunk size across sessions
+- **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default)
+
+### 📚 Documentation
+
+- Overhauled README with local model quick start and provider comparison
+- New `LOCAL_EMBEDDINGS_GUIDE.md` with step-by-step LM Studio setup for macOS/Linux/Windows
+- Added 4-model query quality comparison (OpenAI, Nomic, BGE, MiniLM)
+- Updated CLAUDE.md with local model setup and chunk tuning section
 
 ## [0.3.4] - 2026-01-10
 

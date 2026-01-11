@@ -423,7 +423,7 @@ Configure LM Studio settings to start the server on login without GUI.
 ### Detailed Tuning Guide
 
 For comprehensive benchmarks, model comparisons, and troubleshooting, see:
-[docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md)
+[LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md)
 
 ## Development Workflow
 

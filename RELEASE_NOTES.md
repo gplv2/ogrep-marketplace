@@ -64,7 +64,7 @@ pip install ogrep
 ## Documentation
 
 - [README.md](README.md) — Quick start and overview
-- [docs/LOCAL_EMBEDDINGS_GUIDE.md](docs/LOCAL_EMBEDDINGS_GUIDE.md) — Detailed local model setup
+- [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) — Detailed local model setup
 - [CHANGELOG.md](CHANGELOG.md) — Full technical changelog
 
 ## Links
