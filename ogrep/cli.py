@@ -26,6 +26,7 @@ import argparse
 import sys
 
 from .commands import (
+    cmd_benchmark,
     cmd_clean,
     cmd_index,
     cmd_models,
@@ -38,7 +39,7 @@ from .commands import (
 from .commands._common import add_scope_args
 from .models import DEFAULT_MODEL
 
-__version__ = "0.1.0"
+__version__ = "0.4.0"
 
 
 def _add_model_args(parser: argparse.ArgumentParser, for_query: bool = False) -> None:
@@ -89,8 +90,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_index.add_argument(
         "--chunk-lines",
         type=int,
-        default=60,
-        help="Lines per chunk (default: 60)",
+        default=None,
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
     )
     p_index.add_argument(
         "--overlap",
@@ -175,8 +176,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reindex.add_argument(
         "--chunk-lines",
         type=int,
-        default=60,
-        help="Lines per chunk (default: 60)",
+        default=None,
+        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 90 for nomic, 30 for bge)",
     )
     p_reindex.add_argument(
         "--overlap",
@@ -261,7 +262,71 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply optimal settings and reindex",
     )
+    p_tune.add_argument(
+        "--save",
+        action="store_true",
+        help="Save optimal chunk size to .env file as OGREP_CHUNK_LINES",
+    )
     p_tune.set_defaults(func=cmd_tune)
+
+    # benchmark command
+    p_bench = sub.add_parser(
+        "benchmark",
+        help="Compare all embedding models",
+        description="Comprehensive benchmark comparing accuracy, speed, and optimal settings across all available models.",
+    )
+    p_bench.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
+    p_bench.add_argument(
+        "--samples",
+        "-s",
+        type=int,
+        default=10,
+        help="Number of code patterns to test (default: 10)",
+    )
+    p_bench.add_argument(
+        "--models",
+        "-m",
+        nargs="+",
+        metavar="MODEL",
+        help="Specific models to test (default: all available)",
+    )
+    p_bench.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Only test local models (via OGREP_BASE_URL)",
+    )
+    p_bench.add_argument(
+        "--cloud-only",
+        action="store_true",
+        help="Only test cloud models (OpenAI)",
+    )
+    p_bench.add_argument(
+        "--chunks",
+        default="30,60,90",
+        help="Chunk sizes to test (comma-separated, default: 30,60,90)",
+    )
+    p_bench.add_argument(
+        "--overlaps",
+        default="5,10,15",
+        help="Overlap values to test (comma-separated, default: 5,10,15)",
+    )
+    p_bench.add_argument(
+        "--save",
+        action="store_true",
+        help="Save optimal settings to .env file",
+    )
+    p_bench.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+    p_bench.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed per-configuration results",
+    )
+    p_bench.set_defaults(func=cmd_benchmark)
 
     return p
 

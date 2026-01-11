@@ -31,7 +31,8 @@ ogrep-marketplace/
 │   │   ├── clean.py          # Clean command
 │   │   ├── status.py         # Status command
 │   │   ├── models.py         # Models command
-│   │   └── tune.py           # Tune command (auto-tuning)
+│   │   ├── tune.py           # Tune command (auto-tuning)
+│   │   └── benchmark.py      # Benchmark command (model comparison)
 │   ├── models.py             # Embedding model definitions
 │   ├── db.py                 # SQLite schema/connection
 │   ├── indexer.py            # File indexing logic + DEFAULT_EXCLUDES
@@ -65,6 +66,7 @@ ogrep-marketplace/
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
 | `ogrep tune .` | Auto-tune chunk size |
+| `ogrep benchmark .` | Compare all models |
 
 ## AI Tool Integration (IMPORTANT)
 
@@ -247,12 +249,20 @@ ogrep tune . -s 10     # Use 10 test samples
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Required. OpenAI API key | - |
-| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OPENAI_API_KEY` | Required for OpenAI models | - |
+| `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
+| `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
+| `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
+**Smart Model Default:**
+- If `OGREP_BASE_URL` is set → `minilm` (local model, best accuracy)
+- Otherwise → `text-embedding-3-small` (OpenAI)
+
 ## Embedding Models
+
+### OpenAI Models (Cloud)
 
 | Model | Alias | Dimensions | Use Case |
 |-------|-------|------------|----------|
@@ -260,7 +270,175 @@ ogrep tune . -s 10     # Use 10 test samples
 | text-embedding-3-large | `large` | 3072 | High accuracy |
 | text-embedding-ada-002 | `ada` | 1536 | Legacy |
 
+### Local Models (via LM Studio)
+
+| Model | Alias | Dimensions | Optimal Chunk | Accuracy | Use Case |
+|-------|-------|------------|---------------|----------|----------|
+| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | **96%** | Best overall (default) |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Large context queries |
+| bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
+| bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
+
+**Smart Default:** When `OGREP_BASE_URL` is set, ogrep auto-selects `minilm` (best accuracy).
+
 **Important:** Query model must match index model.
+
+## Local Embedding Models
+
+Use local embedding models for offline operation, privacy, or cost-free usage.
+
+### Prerequisites
+
+#### Step 1: Install LM Studio
+
+**System Requirements:**
+- 16GB RAM minimum (for embedding models)
+- macOS 13.6+, Windows 10+, or Ubuntu 22.04+
+
+Download LM Studio from [lmstudio.ai](https://lmstudio.ai/):
+
+**macOS:**
+1. Download the DMG from [lmstudio.ai](https://lmstudio.ai/)
+2. Open the DMG and drag LM Studio to Applications
+3. **Launch LM Studio once** - this creates `~/.lmstudio/` directory
+
+**Linux (Ubuntu/Debian):**
+1. Download the AppImage from [lmstudio.ai](https://lmstudio.ai/)
+2. Make executable: `chmod +x LM-Studio-*.AppImage`
+3. **Run it once**: `./LM-Studio-*.AppImage` - this creates `~/.lmstudio/` directory
+4. Close LM Studio after it finishes initializing
+
+**Windows:**
+1. Download the installer from [lmstudio.ai](https://lmstudio.ai/)
+2. Run the EXE installer
+3. **Launch LM Studio once** - this creates the `.lmstudio` directory
+
+> **Important:** You must launch LM Studio at least once before proceeding.
+> The CLI is only available after LM Studio creates the `~/.lmstudio/` directory.
+
+#### Step 2: Add CLI to PATH
+
+After LM Studio has been launched once, add the `lms` CLI to your PATH:
+
+**macOS/Linux:**
+```bash
+~/.lmstudio/bin/lms bootstrap
+lms --version  # Verify: should show version number
+```
+
+**Windows (PowerShell):**
+```powershell
+& "$env:USERPROFILE\.lmstudio\bin\lms.exe" bootstrap
+lms --version
+```
+
+**Troubleshooting:** If you get "command not found" or "directory not found":
+- Ensure LM Studio was launched at least once
+- Check that `~/.lmstudio/bin/lms` exists: `ls ~/.lmstudio/bin/`
+- If using a custom install location, check `~/.lmstudio-home-pointer`:
+  ```bash
+  cat ~/.lmstudio-home-pointer  # Shows actual LM Studio home
+  # Then use that path, e.g.:
+  ~/.cache/lm-studio/bin/lms bootstrap
+  ```
+- If missing, launch LM Studio again and wait for it to fully initialize
+
+### Setup
+
+1. **Download an embedding model:**
+   ```bash
+   # Download nomic (recommended - good balance of speed and quality)
+   lms get nomic-embed-text-v1.5 -y
+
+   # Or download BGE (higher quality quantization)
+   lms get bge-base-en-v1.5 -y
+
+   # List downloaded models
+   lms ls
+   ```
+
+2. **Load the model into memory:**
+   ```bash
+   # Load nomic
+   lms load nomic-ai/nomic-embed-text-v1.5-GGUF -y
+
+   # Or load BGE
+   lms load bge-base-en-v1.5 -y
+   ```
+
+3. **Start the server:**
+   ```bash
+   lms server start --port 1234
+   lms server status  # Verify: "Server: ON (port: 1234)"
+   ```
+
+4. **Configure ogrep:**
+   ```bash
+   export OGREP_BASE_URL=http://localhost:1234/v1
+   ```
+
+### Usage
+
+```bash
+# Index with local model
+ogrep index . -m nomic
+
+# Query with local model
+ogrep query "where is auth handled" -m nomic -r
+
+# Check status
+ogrep status
+```
+
+### Using .env File
+
+```bash
+# .env
+OGREP_BASE_URL=http://localhost:1234/v1
+OGREP_MODEL=nomic-embed-text-v1.5
+```
+
+### Chunk Size and Overlap Tuning
+
+**Critical:** Different models require different chunk sizes and overlap for optimal results.
+
+| Model | Optimal Chunk | Optimal Overlap | Notes |
+|-------|---------------|-----------------|-------|
+| minilm | 30 lines | 5 lines | Best accuracy (96%), small chunks |
+| nomic | 90 lines | 15 lines | Better with larger context |
+| bge | 30 lines | 10 lines | Fails at 90+ lines |
+| bge-m3 | 60 lines | 10 lines | Multi-lingual support |
+
+**Benchmark to find optimal settings for your codebase:**
+
+```bash
+# Comprehensive benchmark of all available models
+ogrep benchmark . --samples 10
+
+# Save optimal settings to .env
+ogrep benchmark . --samples 10 --save
+
+# Or use tune for a specific model
+ogrep tune . -m nomic -s 10 --save --apply
+```
+
+### Dimension Mismatch
+
+OpenAI models use 1536D or 3072D, local models use 768D. You cannot mix models:
+
+```
+Dimension mismatch: query uses 768D (nomic) but index was built with 1536D (small).
+Use -m small or reindex with -m nomic.
+```
+
+### Auto-Start Server on Boot
+
+Configure LM Studio settings to start the server on login without GUI.
+
+### Detailed Tuning Guide
+
+For comprehensive benchmarks, model comparisons, and troubleshooting, see:
+[LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md)
 
 ## Development Workflow
 
@@ -384,6 +562,9 @@ Prevents cross-repo pollution:
 | `tests/test_db.py` | Database schema and connections |
 | `tests/test_roundtrip.py` | End-to-end index/query flow |
 | `tests/test_embedding_reuse.py` | Smart embedding reuse (13 tests) |
+| `tests/test_benchmark.py` | Benchmark command (21 tests) |
+| `tests/test_models.py` | Model resolution and configuration |
+| `tests/test_search.py` | Query execution and scoring |
 
 ### Key Embedding Reuse Tests
 

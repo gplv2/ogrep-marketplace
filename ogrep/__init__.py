@@ -32,16 +32,18 @@ from .db import connect
 from .embed import embed_texts
 from .indexer import index_path, iter_files
 from .models import (
+    DEFAULT_CHUNK_LINES,
     DEFAULT_MODEL,
     MODELS,
     EmbeddingModel,
     get_model,
+    get_optimal_chunk_lines,
     list_models,
     resolve_model,
 )
 from .search import Hit, query
 
-__version__ = "0.1.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "__version__",
@@ -55,9 +57,11 @@ __all__ = [
     # Model utilities
     "resolve_model",
     "get_model",
+    "get_optimal_chunk_lines",
     "list_models",
     "MODELS",
     "DEFAULT_MODEL",
+    "DEFAULT_CHUNK_LINES",
     # Data classes
     "Hit",
     "Chunk",

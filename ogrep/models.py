@@ -18,9 +18,35 @@ from dataclasses import dataclass
 # Environment variable names
 ENV_MODEL = "OGREP_MODEL"
 ENV_DIMENSIONS = "OGREP_DIMENSIONS"
+ENV_CHUNK_LINES = "OGREP_CHUNK_LINES"
+ENV_BASE_URL = "OGREP_BASE_URL"
 
-# Default model if not specified
-DEFAULT_MODEL = "text-embedding-3-small"
+# Default models
+DEFAULT_OPENAI_MODEL = "text-embedding-3-small"
+DEFAULT_LOCAL_MODEL = "text-embedding-all-minilm-l6-v2-embedding"  # minilm alias
+
+
+def _get_default_model() -> str:
+    """
+    Get the default model based on environment configuration.
+
+    If OGREP_BASE_URL is set (local server), defaults to minilm.
+    Otherwise, defaults to OpenAI's text-embedding-3-small.
+
+    Returns:
+        Default model ID.
+    """
+    if os.environ.get(ENV_BASE_URL):
+        return DEFAULT_LOCAL_MODEL
+    return DEFAULT_OPENAI_MODEL
+
+
+# Legacy alias for backwards compatibility
+DEFAULT_MODEL = DEFAULT_OPENAI_MODEL
+
+# Default chunk size for models without specific tuning
+# These are starting points - run `ogrep tune` on your codebase for best results
+DEFAULT_CHUNK_LINES = 60
 
 
 @dataclass(frozen=True)
@@ -37,6 +63,7 @@ class EmbeddingModel:
         price_per_million: Cost per million tokens in USD.
         use_cases: Recommended use cases for this model.
         notes: Additional notes or caveats.
+        optimal_chunk_lines: Tuned chunk size for best accuracy (model-specific).
     """
 
     id: str
@@ -47,6 +74,7 @@ class EmbeddingModel:
     price_per_million: float
     use_cases: tuple[str, ...]
     notes: str | None = None
+    optimal_chunk_lines: int = DEFAULT_CHUNK_LINES
 
 
 # Available OpenAI embedding models
@@ -97,6 +125,68 @@ MODELS: dict[str, EmbeddingModel] = {
         ),
         notes="Legacy model. Consider migrating to text-embedding-3-small for better performance.",
     ),
+    # Local models via LM Studio
+    # Optimal chunk sizes determined by tuning on real codebases
+    "bge-base-en-v1.5": EmbeddingModel(
+        id="bge-base-en-v1.5",
+        name="BGE Base English v1.5 (Local)",
+        description="Local embedding model via LM Studio (768D)",
+        dimensions=768,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Privacy-sensitive",
+            "Cost-free",
+        ),
+        notes="Requires: lms server start. Set OGREP_BASE_URL=http://localhost:1234/v1",
+        optimal_chunk_lines=30,  # Tuned: performs best with smaller chunks
+    ),
+    "nomic-embed-text-v1.5": EmbeddingModel(
+        id="nomic-embed-text-v1.5",
+        name="Nomic Embed Text v1.5 (Local)",
+        description="Local embedding model via LM Studio (768D)",
+        dimensions=768,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Privacy-sensitive",
+            "Cost-free",
+        ),
+        notes="Requires: lms load nomic-ai/nomic-embed-text-v1.5 && lms server start",
+        optimal_chunk_lines=30,  # Tuned: benchmark shows 30 lines optimal
+    ),
+    "text-embedding-all-minilm-l6-v2-embedding": EmbeddingModel(
+        id="text-embedding-all-minilm-l6-v2-embedding",
+        name="MiniLM L6 v2 (Local)",
+        description="Fast, lightweight local embedding model (384D)",
+        dimensions=384,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Local/offline search",
+            "Fast inference",
+            "Low memory usage",
+        ),
+        notes="Smallest model (~25MB). Run: lms load all-minilm-l6-v2",
+        optimal_chunk_lines=30,  # Tuned: performs best with small chunks (96% at 30 lines)
+    ),
+    "text-embedding-bge-m3": EmbeddingModel(
+        id="text-embedding-bge-m3",
+        name="BGE-M3 (Local)",
+        description="Multi-lingual, multi-functionality embedding model (1024D)",
+        dimensions=1024,
+        max_dimensions=None,
+        price_per_million=0.0,
+        use_cases=(
+            "Multi-lingual code search",
+            "Dense + sparse retrieval",
+            "100+ languages",
+        ),
+        notes="Supports dense, multi-vector, and sparse retrieval. Run: lms load bge-m3",
+        optimal_chunk_lines=60,
+    ),
 }
 
 # Model aliases for convenience
@@ -106,6 +196,12 @@ MODEL_ALIASES: dict[str, str] = {
     "ada": "text-embedding-ada-002",
     "3-small": "text-embedding-3-small",
     "3-large": "text-embedding-3-large",
+    # Local model aliases
+    "bge": "bge-base-en-v1.5",
+    "bge-m3": "text-embedding-bge-m3",
+    "nomic": "nomic-embed-text-v1.5",
+    "minilm": "text-embedding-all-minilm-l6-v2-embedding",
+    "local": "nomic-embed-text-v1.5",  # Default local model
 }
 
 
@@ -116,7 +212,9 @@ def resolve_model(model: str | None = None) -> str:
     Priority:
         1. Explicit model argument
         2. OGREP_MODEL environment variable
-        3. Default model (text-embedding-3-small)
+        3. Smart default based on environment:
+           - If OGREP_BASE_URL is set: minilm (local model)
+           - Otherwise: text-embedding-3-small (OpenAI)
 
     Args:
         model: Model ID, alias, or None to use default/env.
@@ -132,11 +230,11 @@ def resolve_model(model: str | None = None) -> str:
         'text-embedding-3-small'
         >>> resolve_model("text-embedding-3-large")
         'text-embedding-3-large'
-        >>> resolve_model(None)  # Uses env or default
-        'text-embedding-3-small'
+        >>> resolve_model(None)  # Uses env or smart default
+        'text-embedding-3-small'  # or 'minilm' if OGREP_BASE_URL is set
     """
-    # Use explicit argument, env var, or default
-    model_input = model or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
+    # Use explicit argument, env var, or smart default
+    model_input = model or os.environ.get(ENV_MODEL) or _get_default_model()
 
     # Resolve alias if applicable
     resolved = MODEL_ALIASES.get(model_input, model_input)
@@ -199,6 +297,48 @@ def list_models() -> list[EmbeddingModel]:
     return sorted(MODELS.values(), key=lambda m: m.price_per_million)
 
 
+def get_optimal_chunk_lines(model: str | None = None) -> int:
+    """
+    Get the optimal chunk size for a model.
+
+    Priority:
+        1. OGREP_CHUNK_LINES environment variable (user's tuned value)
+        2. Model-specific default from tuning tests
+        3. Global default (60 lines)
+
+    The model-specific defaults are starting points based on initial testing.
+    Different codebases may have very different optimal settings - use
+    `ogrep tune` to find the best chunk size for your specific repository.
+
+    Args:
+        model: Model ID, alias, or None to use default/env.
+
+    Returns:
+        Chunk size in lines.
+
+    Examples:
+        >>> # With OGREP_CHUNK_LINES=45 set in environment
+        >>> get_optimal_chunk_lines("nomic")
+        45
+
+        >>> # Without env var, uses model default
+        >>> get_optimal_chunk_lines("nomic")
+        90
+        >>> get_optimal_chunk_lines("bge")
+        30
+        >>> get_optimal_chunk_lines("small")
+        60
+    """
+    # User's tuned value takes precedence
+    env_chunk = os.environ.get(ENV_CHUNK_LINES)
+    if env_chunk:
+        return int(env_chunk)
+
+    # Fall back to model-specific default
+    resolved = resolve_model(model)
+    return MODELS[resolved].optimal_chunk_lines
+
+
 def format_models_table() -> str:
     """
     Format models as a human-readable table.
@@ -235,9 +375,30 @@ def format_models_table() -> str:
             f"  Set {ENV_DIMENSIONS} environment variable to change default dimensions",
             "",
             "Aliases:",
-            "  small -> text-embedding-3-small",
-            "  large -> text-embedding-3-large",
-            "  ada   -> text-embedding-ada-002",
+            "  small  -> text-embedding-3-small",
+            "  large  -> text-embedding-3-large",
+            "  ada    -> text-embedding-ada-002",
+            "  bge    -> bge-base-en-v1.5 (local)",
+            "  bge-m3 -> text-embedding-bge-m3 (local)",
+            "  nomic  -> nomic-embed-text-v1.5 (local)",
+            "  minilm -> all-minilm-l6-v2 (local)",
+            "  local  -> nomic-embed-text-v1.5",
+            "",
+            "Local Models (via LM Studio):",
+            "=" * 60,
+            "",
+            "Install:",
+            "  1. Download LM Studio from https://lmstudio.ai/",
+            "  2. Run: ~/.lmstudio/bin/lms bootstrap",
+            "",
+            "Setup:",
+            "  1. lms load nomic-ai/nomic-embed-text-v1.5 -y",
+            "  2. lms server start",
+            "  3. export OGREP_BASE_URL=http://localhost:1234/v1",
+            "",
+            "Usage:",
+            "  ogrep index . -m nomic",
+            "  ogrep query 'search term' -m nomic",
         ]
     )
 

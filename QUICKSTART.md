@@ -41,6 +41,48 @@ export OGREP_MODEL=large
 
 ---
 
+## For Local Models (Free, Offline)
+
+### 1. Install LM Studio
+
+Download from [lmstudio.ai](https://lmstudio.ai/) and launch it once.
+
+### 2. Setup CLI and Model
+
+```bash
+# Add CLI to PATH
+~/.lmstudio/bin/lms bootstrap
+
+# Download MiniLM (smallest, fastest, best accuracy)
+lms get all-MiniLM-L6-v2 -y
+
+# Load model and start server
+lms load all-minilm-l6-v2 -y
+lms server start
+```
+
+### 3. Configure ogrep
+
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+```
+
+### 4. Index and Query
+
+```bash
+ogrep index .   # Auto-uses minilm (best local model)
+ogrep query "where is auth handled?" -n 15
+```
+
+### 5. (Optional) Benchmark Models
+
+```bash
+# Find optimal settings for your codebase
+ogrep benchmark . --samples 10 --save
+```
+
+---
+
 ## For Developers: Local Development
 
 ### 1. Clone and Setup
@@ -123,23 +165,25 @@ make check          # All checks
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
+| `ogrep tune .` | Auto-tune chunk size |
+| `ogrep benchmark .` | Compare all models |
 
 ## Common Flags
 
 | Flag | Description |
 |------|-------------|
-| `-m MODEL` | Embedding model (small, large, ada) |
-| `-d DIM` | Embedding dimensions |
+| `-m MODEL` | Embedding model (small, large, minilm, nomic, bge, bge-m3) |
 | `-n N` | Number of results (query) |
+| `-r` | Refresh index before query |
 | `-f` | Force/skip confirmation |
 | `--db PATH` | Custom database path |
-| `--profile NAME` | Named profile |
-| `--global-cache` | Use global cache |
+| `--samples N` | Test samples for tune/benchmark |
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | Required. Your OpenAI API key |
-| `OGREP_MODEL` | Default model (default: text-embedding-3-small) |
-| `OGREP_DIMENSIONS` | Default dimensions (optional) |
+| `OPENAI_API_KEY` | Required for OpenAI models |
+| `OGREP_BASE_URL` | Local server URL (enables local models) |
+| `OGREP_MODEL` | Default model (auto-selects based on config) |
+| `OGREP_CHUNK_LINES` | Tuned chunk size (from tune/benchmark) |

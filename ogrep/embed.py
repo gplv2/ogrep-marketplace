@@ -1,22 +1,28 @@
 """
 Embedding module for ogrep.
 
-Provides text embedding functionality using OpenAI's embedding API.
+Provides text embedding functionality using OpenAI's embedding API
+or a local OpenAI-compatible server (like LM Studio).
+
 Embeddings are L2-normalized for cosine similarity calculations and
 stored as compact float32 binary blobs.
 
 Requires:
-    OPENAI_API_KEY environment variable to be set.
+    OPENAI_API_KEY environment variable (not required for local servers).
 
 Configuration:
     OGREP_MODEL: Override default embedding model.
     OGREP_DIMENSIONS: Override default embedding dimensions.
+    OGREP_BASE_URL: Use local OpenAI-compatible server (e.g., http://localhost:1234/v1).
 """
 
 from __future__ import annotations
 
 import array
 import math
+import os
+import time
+from typing import Literal, overload
 
 from openai import OpenAI
 
@@ -43,11 +49,33 @@ def _l2_normalize(vec: list[float]) -> list[float]:
     return [x / n for x in vec]
 
 
+@overload
 def embed_texts(
     texts: list[str],
     model: str | None = None,
     dimensions: int | None = None,
-) -> tuple[list[bytes], int]:
+    *,
+    return_timing: Literal[False] = False,
+) -> tuple[list[bytes], int]: ...
+
+
+@overload
+def embed_texts(
+    texts: list[str],
+    model: str | None = None,
+    dimensions: int | None = None,
+    *,
+    return_timing: Literal[True],
+) -> tuple[list[bytes], int, float]: ...
+
+
+def embed_texts(
+    texts: list[str],
+    model: str | None = None,
+    dimensions: int | None = None,
+    *,
+    return_timing: bool = False,
+) -> tuple[list[bytes], int] | tuple[list[bytes], int, float]:
     """
     Generate embeddings for a list of texts using OpenAI's API.
 
@@ -61,11 +89,13 @@ def embed_texts(
             Accepts aliases: "small", "large", "ada".
         dimensions: Optional dimension override for models that support it.
             Defaults to OGREP_DIMENSIONS env var or model default.
+        return_timing: If True, also returns the elapsed time in seconds.
 
     Returns:
-        A tuple of (embeddings, dimension) where:
+        A tuple of (embeddings, dimension) or (embeddings, dimension, elapsed_s) where:
             - embeddings: List of float32 binary blobs (one per input text)
             - dimension: The embedding dimension (e.g., 1536 for small model)
+            - elapsed_s: Time taken for API call in seconds (if return_timing=True)
 
     Raises:
         openai.OpenAIError: If the API call fails.
@@ -82,12 +112,25 @@ def embed_texts(
         >>> blobs, dim = embed_texts(["test"], model="large")
         >>> dim
         3072
+
+        >>> # With timing
+        >>> blobs, dim, elapsed = embed_texts(["test"], return_timing=True)
+        >>> elapsed  # e.g., 0.234
     """
+    start_time = time.perf_counter()
+
     # Resolve model and dimensions from args, env, or defaults
     resolved_model = resolve_model(model)
     resolved_dimensions = resolve_dimensions(dimensions, resolved_model)
 
-    client = OpenAI()
+    # Support local OpenAI-compatible servers (e.g., LM Studio)
+    base_url = os.environ.get("OGREP_BASE_URL")
+    if base_url:
+        # Local servers don't require a real API key
+        api_key = os.environ.get("OPENAI_API_KEY", "lm-studio")
+        client = OpenAI(base_url=base_url, api_key=api_key)
+    else:
+        client = OpenAI()
 
     kwargs: dict = {"input": texts, "model": resolved_model}
     if resolved_dimensions is not None:
@@ -105,4 +148,9 @@ def embed_texts(
         vectors.append(arr_f.tobytes())
 
     assert dim is not None
+
+    if return_timing:
+        elapsed = time.perf_counter() - start_time
+        return vectors, dim, elapsed
+
     return vectors, dim

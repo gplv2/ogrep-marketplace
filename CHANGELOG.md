@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-10 — Local Embeddings
+
+**Run semantic code search completely offline. Zero API costs. Total privacy.**
+
+### ✨ New Features
+
+#### Run Locally with LM Studio
+
+No more API keys required! ogrep now works with local embedding models through LM Studio's OpenAI-compatible API.
+
+```bash
+lms get all-MiniLM-L6-v2 -y
+lms load all-minilm-l6-v2 -y
+lms server start
+
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index . -m minilm
+```
+
+#### Four Local Models to Choose From
+
+| Model | Alias | Accuracy | Best For |
+|-------|-------|----------|----------|
+| **MiniLM** | `minilm` | **96%** | Speed + accuracy (recommended) |
+| Nomic | `nomic` | 72% | Larger context windows |
+| BGE | `bge` | 52% | Fallback option |
+| BGE-M3 | `bge-m3` | — | Multi-lingual (100+ languages) |
+
+#### Model Benchmarking
+
+Compare all models head-to-head with the new benchmark command:
+
+```bash
+ogrep benchmark . -s 10
+```
+
+Tests accuracy, speed, and optimal chunk/overlap settings across all available models.
+
+#### Smart Tuning with Auto-Save
+
+Different models need different chunk sizes. Now ogrep handles it automatically and remembers your settings:
+
+```bash
+ogrep tune . -m minilm --save --apply
+```
+
+The `--save` flag writes optimal settings to `.env` so you don't have to remember.
+
+### 🔧 Improvements
+
+- **Smart Model Default**: When `OGREP_BASE_URL` is set (local server), ogrep now defaults to `minilm` automatically—no need for `-m` flag on every command
+- **Model-Specific Defaults**: Each local model now has tuned chunk size defaults based on real-world testing
+- **OGREP_CHUNK_LINES**: New environment variable to persist your tuned chunk size across sessions
+- **Timing Infrastructure**: `embed_texts()` now optionally returns elapsed time via `return_timing=True`
+- **Overlap Testing**: Benchmark tests different overlap values (5, 10, 15, 20 lines) alongside chunk sizes
+- **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default)
+
+### 📚 Documentation
+
+- Overhauled README with local model quick start and provider comparison
+- New `LOCAL_EMBEDDINGS_GUIDE.md` with step-by-step LM Studio setup for macOS/Linux/Windows
+- Added 4-model query quality comparison (OpenAI, Nomic, BGE, MiniLM)
+- Updated CLAUDE.md with local model setup and chunk tuning section
+
 ## [0.3.4] - 2026-01-10
 
 ### Added
