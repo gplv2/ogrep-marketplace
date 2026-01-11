@@ -5,6 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-01-11
+
+### ✨ New Features
+
+#### File Type Detection with `file` Command
+
+ogrep now uses the system `file` command for accurate MIME-type detection, catching binary files that slip through extension-based filtering:
+
+```bash
+ogrep index . --list
+```
+
+Output now shows detection results:
+```
+── .py (34 files, 179.6KB) ──
+      101B  ogrep/__main__.py
+    17.0KB  ogrep/commands/benchmark.py
+
+── (no extension) (3 files, 45.2KB) ──
+  [BINARY: application/x-sqlite3]   12.0KB  data
+      25.2KB  Makefile
+
+──────────────────────────────────────────────────
+Would index: 35 files, 180.4KB
+Excluded by detection: 1 files, 12.0KB
+```
+
+- Uses `file --mime-type -b` for robust detection
+- Processes in batches of 500 for large repos (30K+ files)
+- Falls back to null-byte detection if `file` command unavailable
+- Use `--no-detect` to disable MIME detection for faster scans
+
+#### `.ogrepignore` File Support
+
+Create a `.ogrepignore` file in your repo root for persistent exclude patterns:
+
+```bash
+# .ogrepignore
+*.sql
+migrations/*
+legacy/*
+*.generated.ts
+```
+
+Patterns use glob syntax (like `.gitignore`). Loaded automatically on every index operation.
+
+#### Preview Mode with `--list`
+
+See exactly what files will be indexed before committing:
+
+```bash
+ogrep index . --list
+```
+
+Features:
+- Files grouped by extension, sorted by size (biggest last)
+- Binary files marked with `[BINARY: mime/type]`
+- Summary of indexable vs excluded files
+- **Top 10 directories by file count** — helps identify where to focus
+- **Largest indexable files** — spot potential problems
+- **Review suggestions** — flags files that pass MIME detection but may not be useful code
+
+#### Review Suggestions for Non-Code Files
+
+The `--list` output now includes a "Review suggested" section for files that:
+- Have extensions like `.log`, `.old`, `.bak`, `.dump`, `.csv`
+- Have filenames suggesting logs/backups (e.g., `*.log.old`, `*_backup`)
+- Are large (>500KB) without code extensions
+
+These files pass MIME detection but may distort search results. Add patterns to `.ogrepignore` to exclude them.
+
+### 🔧 Improvements
+
+#### Expanded Default Exclusions
+
+New patterns added to `DEFAULT_EXCLUDES`:
+
+| Category | New Patterns |
+|----------|--------------|
+| **Temp files** | `*.tmp`, `*.temp` |
+| **Backups** | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*.swp`, `*~` |
+| **Data files** | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat`, `*.xml` |
+| **Database** | `*.dump` (added to existing `*.sql`, `*.sqlite`, etc.) |
+
+#### Batched File Detection
+
+File type detection now processes files in batches of 500 to handle large repositories (30K+ files) without hitting command-line length limits or timeouts.
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with new features and default excludes
+- Added `.ogrepignore` syntax documentation
+- Documented `--list` and `--no-detect` flags
+
+### 🧪 Testing
+
+- 182 tests passing
+- New tests for file type detection (`test_filetype.py`)
+- Updated version assertion in test suite
+
 ## [0.4.3] - 2026-01-11
 
 ### 🐛 Fixes

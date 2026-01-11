@@ -192,6 +192,7 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
+| `ogrep index . --list` | Preview files before indexing (with MIME detection) |
 | `ogrep query "text" -n 10` | Semantic search |
 | `ogrep status` | Show index statistics |
 | `ogrep reset -f` | Delete index |
@@ -200,6 +201,71 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 | `ogrep models` | List available embedding models |
 | `ogrep tune .` | Auto-tune chunk size for your codebase |
 | `ogrep benchmark .` | Compare all models (accuracy, speed, settings) |
+
+---
+
+## Preview Mode
+
+Before indexing, see exactly what files will be processed:
+
+```bash
+ogrep index . --list
+```
+
+Output includes:
+- Files grouped by extension, sorted by size
+- Binary files marked with `[BINARY: mime/type]`
+- **Top 10 directories** by file count
+- **Review suggestions** for files that may not be useful code
+
+```
+── .py (34 files, 179.6KB) ──
+      101B  ogrep/__main__.py
+    17.0KB  ogrep/commands/benchmark.py
+
+── (no extension) (3 files, 45.2KB) ──
+  [BINARY: application/x-sqlite3]   12.0KB  data
+      25.2KB  Makefile
+
+──────────────────────────────────────────────────
+Would index: 35 files, 180.4KB
+Excluded by detection: 1 files, 12.0KB
+
+Top directories by file count:
+    20 files  src/
+    10 files  tests/
+
+⚠ Review suggested (may distort search results):
+     3.0MB  logs/app.log.old
+           └─ extension '.old'
+```
+
+Use `--no-detect` to skip MIME detection for faster scans.
+
+---
+
+## .ogrepignore File
+
+Create a `.ogrepignore` file for permanent exclusions (per repo):
+
+```bash
+# .ogrepignore - glob patterns like .gitignore
+
+# Database dumps
+*.sql
+*.dump
+migrations/*
+
+# Generated code
+*.generated.ts
+codegen/*
+
+# Legacy code
+legacy/*
+old/*
+```
+
+Patterns are loaded automatically. Use `-i` to override any exclusion.
 
 ---
 
@@ -249,10 +315,18 @@ By default, ogrep indexes only source files and excludes:
 | **Config** | `*.json`, `*.yaml`, `*.toml`, `.editorconfig` |
 | **Secrets** | `.env`, `secrets.*`, `credentials.*` |
 | **Build** | `dist/*`, `build/*`, `*.min.js` |
-| **Binary** | Images, fonts, media, archives, databases |
+| **Binary** | Images, fonts, media, archives |
+| **Databases** | `*.sqlite`, `*.db`, `*.sql`, `*.dump` |
+| **Data files** | `*.csv`, `*.tsv`, `*.xml`, `*.dat` |
+| **Backups** | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*~` |
+| **Temp files** | `*.tmp`, `*.temp`, `*.swp` |
 | **Lock files** | `package-lock.json`, `yarn.lock`, `poetry.lock` |
 
 **Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `__pycache__/`, `.ogrep/`
+
+### File Type Detection
+
+ogrep uses the `file` command for MIME-type detection to catch binary files that slip through extension-based filtering (e.g., SQLite databases without `.sqlite` extension). Use `--no-detect` to disable.
 
 ### Smart Embedding Reuse
 
@@ -440,7 +514,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-make test    # Run tests (151 tests)
+make test    # Run tests (182 tests)
 make lint    # Run linters
 make check   # All checks
 ```
