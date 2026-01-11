@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.1] - 2026-01-11
 
+### 🔧 Improvements
+
+- **Smarter Claude Code integration**: The semantic-grep skill now activates proactively when you ask conceptual questions like "where is X handled?" or "how does Y work?" — no need to explicitly request semantic search
+
 ### 🐛 Fixes
 
 - **Clear error when API not configured**: Commands now fail immediately with helpful guidance when neither `OPENAI_API_KEY` nor `OGREP_BASE_URL` is set, instead of silently producing misleading output like "285 files skipped"
