@@ -823,7 +823,7 @@ lms server start --port 1234
 
 - **OS:** Ubuntu 22.04 (Linux 5.15.0)
 - **LM Studio:** 0.3.x
-- **ogrep:** 0.4.1
+- **ogrep:** 0.4.2
 - **Test codebase:** ogrep repository (29 source files)
 - **Benchmark samples:** 10
 
