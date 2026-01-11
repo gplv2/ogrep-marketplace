@@ -23,29 +23,48 @@ class TestHitDataclass:
             start_line=10,
             end_line=20,
             text="def hello():\n    pass",
+            chunk_id=42,
+            chunk_index=2,
         )
         assert hit.score == 0.95
         assert hit.path == "/path/to/file.py"
         assert hit.start_line == 10
         assert hit.end_line == 20
         assert "hello" in hit.text
+        assert hit.chunk_id == 42
+        assert hit.chunk_index == 2
 
     def test_hit_is_frozen(self) -> None:
         """Test that Hit is immutable."""
-        hit = Hit(score=0.5, path="/test.py", start_line=1, end_line=5, text="test")
+        hit = Hit(
+            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
+            chunk_id=1, chunk_index=0
+        )
         with pytest.raises(AttributeError):  # Frozen dataclass
             hit.score = 0.9  # type: ignore[misc]
 
     def test_hit_comparison(self) -> None:
         """Test that hits with same values are equal."""
-        hit1 = Hit(score=0.5, path="/test.py", start_line=1, end_line=5, text="test")
-        hit2 = Hit(score=0.5, path="/test.py", start_line=1, end_line=5, text="test")
+        hit1 = Hit(
+            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
+            chunk_id=1, chunk_index=0
+        )
+        hit2 = Hit(
+            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
+            chunk_id=1, chunk_index=0
+        )
         assert hit1 == hit2
 
     def test_hit_different_scores(self) -> None:
         """Test that hits with different scores are not equal."""
-        hit1 = Hit(score=0.5, path="/test.py", start_line=1, end_line=5, text="test")
-        hit2 = Hit(score=0.6, path="/test.py", start_line=1, end_line=5, text="test")
+        hit1 = Hit(
+            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
+            chunk_id=1, chunk_index=0
+        )
+        hit2 = Hit(
+            score=0.6, path="/test.py", start_line=1, end_line=5, text="test",
+            chunk_id=1, chunk_index=0
+        )
         assert hit1 != hit2
 
 
@@ -98,7 +117,7 @@ class TestQuery:
         db_path = temp_dir / "index.sqlite"
         connect(db_path).close()
 
-        hits = query(db_path, "test query", top_k=5)
+        hits, fts_available = query(db_path, "test query", top_k=5)
         assert hits == []
 
     def test_query_returns_hits(self, temp_dir: Path) -> None:
@@ -127,7 +146,7 @@ class TestQuery:
         con.commit()
 
         # Query
-        hits = query(db_path, "user authentication", top_k=5)
+        hits, fts_available = query(db_path, "user authentication", top_k=5)
         assert len(hits) == 1
         assert isinstance(hits[0], Hit)
         assert hits[0].path == "/test/file.py"
@@ -177,9 +196,9 @@ class TestQuery:
         con.commit()
 
         # Query with different top_k values
-        hits_2 = query(db_path, "function", top_k=2)
-        hits_3 = query(db_path, "function", top_k=3)
-        hits_10 = query(db_path, "function", top_k=10)
+        hits_2, _ = query(db_path, "function", top_k=2)
+        hits_3, _ = query(db_path, "function", top_k=3)
+        hits_10, _ = query(db_path, "function", top_k=10)
 
         assert len(hits_2) == 2
         assert len(hits_3) == 3
@@ -224,7 +243,7 @@ class TestQuery:
             )
         con.commit()
 
-        hits = query(db_path, "user login authentication", top_k=10)
+        hits, _ = query(db_path, "user login authentication", top_k=10)
 
         # Verify descending order
         scores = [h.score for h in hits]
@@ -286,8 +305,8 @@ class TestQueryScoring:
         )
         con.commit()
 
-        # Query with exact same text
-        hits = query(db_path, text, top_k=1)
+        # Query with exact same text (use semantic mode to avoid FTS5 issues)
+        hits, _ = query(db_path, text, top_k=1, mode="semantic")
         assert len(hits) == 1
         # Score should be very high (close to 1.0) for identical text
         assert hits[0].score > 0.9
@@ -316,7 +335,7 @@ class TestQueryScoring:
         con.commit()
 
         # Query with semantically similar text
-        hits = query(db_path, "database connection", top_k=1)
+        hits, _ = query(db_path, "database connection", top_k=1)
         assert len(hits) == 1
         # Score should be positive for related concepts
         assert hits[0].score > 0

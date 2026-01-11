@@ -11,7 +11,7 @@ allowed-tools: Bash, Read
 
 # Semantic grep workflow (ogrep)
 
-Fast semantic search over local repos using `ogrep` (SQLite index + OpenAI embeddings).
+Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
 
 ## Quick Start
 
@@ -23,21 +23,82 @@ ogrep index .
 ogrep query "where is authentication handled?" -n 15 --refresh --json
 ```
 
-## IMPORTANT: Always Use --refresh and --json
+## Search Modes
 
-**When querying from AI tools, ALWAYS use both flags:**
+ogrep supports three search modes via `--mode` (or `-M`):
+
+| Mode | Best For | Example Query |
+|------|----------|---------------|
+| `semantic` | Conceptual questions | "where is user authentication handled" |
+| `fulltext` | Exact identifiers | "def validate_token" |
+| `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
+
+**Default behavior:**
+- Uses `OGREP_SEARCH_MODE` env var if set
+- Falls back to `hybrid` if not set
+- Gracefully degrades to `semantic` if FTS5 unavailable
 
 ```bash
-ogrep query "your search" --refresh --json
+# Explicit mode selection
+ogrep query "authenticate" --mode semantic --json   # Embeddings only
+ogrep query "def authenticate" --mode fulltext --json  # Keywords only
+ogrep query "user login" --mode hybrid --json       # Combined (default)
 ```
 
-- `--refresh` checks for changed files and reindexes them before searching.
-  Without it, queries may return stale results based on outdated embeddings.
-- `--json` returns structured output with full chunk text, language detection,
-  and metadata. Much better for AI tools than truncated human-readable output.
+### When to Use Each Mode
 
-This is especially critical in AI tool contexts where files are being edited
-between queries. The `--refresh` operation is fast due to smart embedding reuse.
+| Situation | Mode | Why |
+|-----------|------|-----|
+| "How does X work?" | semantic | Conceptual understanding |
+| "Where is X implemented?" | semantic/hybrid | Need related code, not exact match |
+| Looking for exact function name | fulltext | Know the identifier |
+| Found semantic result, want exact matches | fulltext | Refine initial finding |
+| Unsure what terms codebase uses | hybrid | Best of both worlds |
+
+## Chunk Navigation
+
+After a query finds something interesting, use `ogrep chunk` to expand context:
+
+```bash
+# Get chunk by reference (from query results)
+ogrep chunk "src/auth.py:2"
+
+# Get surrounding context
+ogrep chunk "src/auth.py:2" --before 1    # + 1 chunk before
+ogrep chunk "src/auth.py:2" --after 1     # + 1 chunk after
+ogrep chunk "src/auth.py:2" --context 1   # + 1 before AND after
+
+# Also works with raw chunk IDs
+ogrep chunk 42
+```
+
+### Chunk Navigation Patterns
+
+#### Pattern 1: Expand Context After Query
+```bash
+# Query found something in chunk 3, want to see setup above
+ogrep query "database connection" --json
+# Result: chunk_ref: "db.py:3"
+ogrep chunk "db.py:3" --before 1
+```
+
+#### Pattern 2: Trace Function Flow
+```bash
+# Found a function, want to see what comes next
+ogrep chunk "handler.py:2" --after 2
+```
+
+#### Pattern 3: Understand Full Module Section
+```bash
+# Found interesting code, want full surrounding context
+ogrep chunk "auth.py:4" --context 1
+```
+
+#### Pattern 4: Quick Keyword Lookup
+```bash
+# Know exact function name
+ogrep query "def process_request" --mode fulltext --json
+```
 
 ## JSON Output Format
 
@@ -49,10 +110,12 @@ The `--json` flag returns structured data:
   "results": [
     {
       "rank": 1,
-      "path": "/home/user/repo/auth.py",
-      "relative_path": "auth.py",
-      "start_line": 10,
-      "end_line": 70,
+      "chunk_ref": "src/auth.py:2",
+      "chunk_id": 42,
+      "path": "/home/user/repo/src/auth.py",
+      "relative_path": "src/auth.py",
+      "start_line": 61,
+      "end_line": 120,
       "score": 0.8523,
       "language": "python",
       "text": "def authenticate_user(username, password):\n    ..."
@@ -62,89 +125,93 @@ The `--json` flag returns structured data:
     "total_results": 15,
     "total_chunks": 1234,
     "search_time_ms": 45,
-    "index_model": "nomic",
-    "index_dimensions": 768,
+    "search_mode": "hybrid",
+    "fts_available": true,
+    "index_model": "text-embedding-3-small",
+    "index_dimensions": 1536,
     "refreshed_files": 0
   }
 }
 ```
 
 **Key fields:**
+- `chunk_ref`: Primary reference for `ogrep chunk` command
+- `chunk_id`: Internal ID (also works with `ogrep chunk`)
 - `relative_path`: Easier to read than absolute paths
 - `language`: Programming language detected from extension
-- `text`: **Full chunk content** (not truncated like human output)
-- `stats`: Metadata about the search and index
+- `text`: **Full chunk content** (not truncated)
+- `fts_available`: Whether hybrid/fulltext search was possible
 
-## Smart Defaults
-
-**Source-only indexing** - By default, ogrep indexes only source code:
-- Excludes: `*.md`, `*.json`, `*.yaml`, `*.toml`, `docs/*`, `vendor/*`, etc.
-- Skips: `.git/`, `node_modules/`, `.venv/`, `__pycache__/`
-
-**Optimal chunk size** - 60 lines with 10-line overlap (tested for best relevance).
-
-## Commands
+## Commands Reference
 
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
-| `ogrep query "text" -n 15 -r` | Semantic search with refresh |
+| `ogrep query "text" -n 15 -r --json` | Search with refresh (recommended) |
+| `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index info |
+| `ogrep reindex .` | Rebuild index (enables FTS5) |
 | `ogrep reset -f` | Delete index |
 | `ogrep models` | List embedding models |
 
-## Override Defaults
+## Flag Reference
+
+### Query Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--refresh` | `-r` | Reindex changed files before search |
+| `--json` | | Full JSON output (recommended for AI) |
+| `--mode MODE` | `-M` | Search mode: semantic, fulltext, hybrid |
+| `--top N` | `-n` | Number of results (default: 10) |
+| `--model MODEL` | `-m` | Embedding model (must match index) |
+
+### Chunk Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--before N` | `-B` | Include N chunks before |
+| `--after N` | `-A` | Include N chunks after |
+| `--context N` | `-C` | Include N chunks before AND after |
+
+## IMPORTANT: Always Use --refresh and --json
+
+**When querying from AI tools, ALWAYS use both flags:**
 
 ```bash
-# Include markdown files (normally excluded)
-ogrep index . -i '*.md'
-
-# Add extra exclusions
-ogrep index . -e 'test_*' -e 'fixtures/*'
-
-# Use high-accuracy model (slower, more expensive)
-ogrep index . -m large
+ogrep query "your search" --refresh --json
 ```
 
-## Alternative: Claude Code Hooks
+- `--refresh` checks for changed files and reindexes them before searching
+- `--json` returns structured output with full chunk text and metadata
 
-Instead of using `--refresh` on every query, you can configure Claude Code
-to automatically reindex after file edits using hooks.
+This is especially critical in AI tool contexts where files are being edited
+between queries. The `--refresh` operation is fast due to smart embedding reuse.
 
-### Hook Configuration
+## Environment Variables
 
-Create or edit `.claude/settings.json` in your project root:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
+| `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight in hybrid (0.0-1.0) |
+| `OPENAI_API_KEY` | - | Required for embeddings |
+| `OGREP_MODEL` | `text-embedding-3-small` | Default embedding model |
+| `OGREP_BASE_URL` | - | Local server URL (e.g., LM Studio) |
 
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "command": "ogrep index . --quiet 2>/dev/null || true"
-      }
-    ]
-  }
-}
+## FTS5 Availability
+
+Hybrid and fulltext modes require FTS5 index. If missing:
+- Search falls back to semantic mode automatically
+- Warning printed to stderr (not in JSON output)
+- `fts_available: false` in JSON stats
+
+**To enable hybrid search:**
+```bash
+ogrep reindex .   # Rebuilds index with FTS5
 ```
-
-**Hook file locations:**
-- **Project-specific**: `.claude/settings.json` (in your repo root)
-- **User-global**: `~/.claude/settings.json`
-
-### When to Use Hooks vs --refresh
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| `--refresh` flag | Works everywhere, no config needed | Small latency on each query |
-| Claude Code hooks | Zero query latency | Requires Claude Code, hook config |
-
-**Recommendation**: Use `--refresh` as the default approach. Add hooks as an
-optimization if query latency becomes noticeable.
 
 ## Operational Notes
 
-- Requires `OPENAI_API_KEY` in environment
 - Model must match between index and query (use same `-m` flag)
 - Run `ogrep status` to check current index model
-- Without `--refresh`, embeddings may be stale after file edits
+- Use `ogrep reindex .` after upgrading to get FTS5 support

@@ -1,8 +1,13 @@
 """
 Query command for ogrep.
 
-Performs semantic search against an indexed codebase, returning
-the most relevant code chunks ranked by cosine similarity.
+Performs search against an indexed codebase, returning
+the most relevant code chunks ranked by similarity score.
+
+Supports three search modes:
+- semantic: Embedding similarity only (original behavior)
+- fulltext: SQLite FTS5 keyword matching only
+- hybrid: Combined score (default) - best of both worlds
 
 Supports --refresh flag to automatically reindex changed files before
 querying, ensuring search results reflect the current codebase state.
@@ -61,15 +66,18 @@ def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
 
 def cmd_query(args: argparse.Namespace) -> int:
     """
-    Run a semantic query against the index.
+    Run a search query against the index.
 
-    Embeds the query text and searches for similar code chunks
-    in the database using cosine similarity scoring.
+    Supports three search modes:
+    - semantic: Embedding similarity only (original behavior)
+    - fulltext: SQLite FTS5 keyword matching only
+    - hybrid: Combined score (default) - best of both worlds
 
     Args:
         args: Parsed command-line arguments containing:
             - query: Natural language search query
             - top: Number of results to return
+            - mode: Search mode (semantic, fulltext, hybrid)
             - refresh: Whether to check for and reindex changed files
             - json: Whether to output results as JSON
             - db, profile, global_cache, repo_root: Scope options
@@ -90,6 +98,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         IMPORTANT: Without --refresh, queries may return stale results if
         files have been modified since the last index. AI tools and skills
         should always use --refresh to ensure accurate results.
+
+        If FTS5 is unavailable and mode is hybrid/fulltext, falls back
+        to semantic search with a warning.
     """
     if not require_embedding_config():
         return 1
@@ -133,18 +144,34 @@ def cmd_query(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
+    # Get search mode
+    search_mode = getattr(args, "mode", None)
+
     # Time the search
     start_time = time.perf_counter()
 
-    hits = query_db(
+    hits, fts_available = query_db(
         db_path=db,
         q=args.query,
         top_k=args.top,
         model=args.model,
         dimensions=args.dimensions,
+        mode=search_mode,
     )
 
     search_time_ms = int((time.perf_counter() - start_time) * 1000)
+
+    # Warn if FTS5 was requested but not available
+    if search_mode in ("hybrid", "fulltext") and not fts_available:
+        if not use_json:
+            print(
+                "Warning: FTS5 index not available, using semantic search only.",
+                file=sys.stderr,
+            )
+            print(
+                "Run 'ogrep reindex .' to enable hybrid search.",
+                file=sys.stderr,
+            )
 
     # Get index metadata for stats
     con = sqlite3.connect(str(db))
@@ -167,8 +194,13 @@ def cmd_query(args: argparse.Namespace) -> int:
             except ValueError:
                 rel_path = h.path  # Fallback to absolute if not relative to root
 
+            # Build chunk_ref: relative_path:chunk_index (human-readable reference)
+            chunk_ref = f"{rel_path}:{h.chunk_index}"
+
             results.append({
                 "rank": rank,
+                "chunk_ref": chunk_ref,
+                "chunk_id": h.chunk_id,
                 "path": h.path,
                 "relative_path": rel_path,
                 "start_line": h.start_line,
@@ -185,6 +217,8 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "total_results": len(hits),
                 "total_chunks": total_chunks,
                 "search_time_ms": search_time_ms,
+                "search_mode": search_mode or "hybrid",
+                "fts_available": fts_available,
                 "index_model": index_model,
                 "index_dimensions": index_dim,
                 "refreshed_files": refreshed_files,

@@ -27,6 +27,7 @@ import sys
 
 from .commands import (
     cmd_benchmark,
+    cmd_chunk,
     cmd_clean,
     cmd_index,
     cmd_models,
@@ -165,8 +166,54 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output results as JSON (full text, structured metadata). "
         "Recommended for AI tools and programmatic use.",
     )
+    p_query.add_argument(
+        "--mode",
+        "-M",
+        choices=["semantic", "fulltext", "hybrid"],
+        default=None,
+        help="Search mode: semantic (embeddings only), fulltext (FTS5 keywords), "
+        "hybrid (combined, default). Uses OGREP_SEARCH_MODE env var if not specified.",
+    )
     _add_model_args(p_query, for_query=True)
     p_query.set_defaults(func=cmd_query)
+
+    # chunk command
+    p_chunk = sub.add_parser(
+        "chunk",
+        help="Get a chunk by reference with optional context",
+        description="Retrieve chunks by path:index reference or raw ID. "
+        "Useful for expanding context after query finds something interesting.",
+    )
+    p_chunk.add_argument(
+        "ref",
+        help="Chunk reference: 'path/file.py:N' (path:chunk_index) or raw chunk ID",
+    )
+    add_scope_args(p_chunk)
+    p_chunk.add_argument(
+        "--before",
+        "-B",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Include N chunks before the requested chunk",
+    )
+    p_chunk.add_argument(
+        "--after",
+        "-A",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Include N chunks after the requested chunk",
+    )
+    p_chunk.add_argument(
+        "--context",
+        "-C",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Include N chunks before AND after (shorthand for -B N -A N)",
+    )
+    p_chunk.set_defaults(func=cmd_chunk)
 
     # reset command
     p_reset = sub.add_parser(

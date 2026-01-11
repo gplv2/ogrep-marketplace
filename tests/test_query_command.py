@@ -700,3 +700,44 @@ export function handleRequest(req: Request): Response {
         # Check scores are in descending order
         scores = [r["score"] for r in output["results"]]
         assert scores == sorted(scores, reverse=True)
+
+    def test_json_chunk_ref(self, indexed_repo, capsys) -> None:
+        """Test that chunk_ref and chunk_id are included in results."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="authenticate",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        assert len(output["results"]) > 0
+        first_result = output["results"][0]
+
+        # Check chunk_ref and chunk_id are present
+        assert "chunk_ref" in first_result
+        assert "chunk_id" in first_result
+
+        # chunk_ref format: relative_path:chunk_index
+        chunk_ref = first_result["chunk_ref"]
+        assert ":" in chunk_ref
+        parts = chunk_ref.rsplit(":", 1)
+        assert len(parts) == 2
+        assert parts[1].isdigit()  # chunk_index should be a number
+
+        # chunk_id should be a positive integer
+        assert isinstance(first_result["chunk_id"], int)
+        assert first_result["chunk_id"] > 0

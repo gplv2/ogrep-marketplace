@@ -19,6 +19,7 @@ Commands:
 from __future__ import annotations
 
 from .benchmark import cmd_benchmark
+from .chunk import cmd_chunk
 from .clean import cmd_clean
 from .index import cmd_index
 from .models import cmd_models
@@ -30,12 +31,13 @@ from .tune import cmd_tune
 
 __all__ = [
     "cmd_benchmark",
-    "cmd_index",
-    "cmd_query",
-    "cmd_reset",
-    "cmd_reindex",
+    "cmd_chunk",
     "cmd_clean",
-    "cmd_status",
+    "cmd_index",
     "cmd_models",
+    "cmd_query",
+    "cmd_reindex",
+    "cmd_reset",
+    "cmd_status",
     "cmd_tune",
 ]

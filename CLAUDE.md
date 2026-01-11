@@ -24,6 +24,7 @@ ogrep-marketplace/
 │   ├── commands/             # CLI command implementations
 │   │   ├── __init__.py
 │   │   ├── _common.py        # Shared utilities (scope resolution)
+│   │   ├── chunk.py          # Chunk command (navigation)
 │   │   ├── index.py          # Index command
 │   │   ├── query.py          # Query command
 │   │   ├── reset.py          # Reset command
@@ -60,10 +61,12 @@ ogrep-marketplace/
 |---------|-------------|
 | `ogrep index .` | Index a directory (source files only) |
 | `ogrep index . --list` | Preview files that would be indexed (sorted by ext/size) |
-| `ogrep query "text" -n 10 -r` | Semantic search (with refresh) |
+| `ogrep query "text" -n 10 -r --json` | Semantic search (with refresh, JSON output) |
+| `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) |
+| `ogrep chunk "path:N" -C 1` | Get chunk by ref with context |
 | `ogrep status` | Show index stats |
 | `ogrep reset -f` | Delete index |
-| `ogrep reindex .` | Rebuild index |
+| `ogrep reindex .` | Rebuild index (enables FTS5) |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
 | `ogrep tune .` | Auto-tune chunk size |
@@ -87,6 +90,37 @@ The `--refresh` flag:
 **Why this matters**: Without `--refresh`, queries may return stale results
 based on outdated embeddings. This is especially critical in AI tool contexts
 where files are being edited between queries.
+
+### Search Modes
+
+ogrep supports three search modes via `--mode` (or `-M`):
+
+| Mode | Best For | Example |
+|------|----------|---------|
+| `semantic` | Conceptual questions | "where is authentication handled" |
+| `fulltext` | Exact identifiers | "def validate_token" |
+| `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
+
+```bash
+ogrep query "authenticate" --mode semantic --json   # Embeddings only
+ogrep query "def authenticate" --mode fulltext --json  # FTS5 keywords only
+ogrep query "user login" --mode hybrid --json       # Combined (default)
+```
+
+**Default behavior:**
+- Uses `OGREP_SEARCH_MODE` env var if set
+- Falls back to `hybrid` if not set
+- Gracefully degrades to `semantic` if FTS5 unavailable
+
+### Chunk Navigation
+
+After a query finds something interesting, use `ogrep chunk` to expand context:
+
+```bash
+ogrep chunk "src/auth.py:2"              # Get chunk by ref (from query results)
+ogrep chunk "src/auth.py:2" --before 1   # + 1 chunk before
+ogrep chunk "src/auth.py:2" --context 1  # + 1 before AND after
+```
 
 ### Claude Code Hooks (Alternative)
 
@@ -361,6 +395,8 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
 | `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
+| `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
+| `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
 **Smart Model Default:**
@@ -726,12 +762,14 @@ Prevents cross-repo pollution:
 | File | Coverage |
 |------|----------|
 | `tests/test_chunking.py` | Text chunking logic |
+| `tests/test_chunk_command.py` | Chunk navigation command |
 | `tests/test_cli.py` | CLI help and argument parsing |
 | `tests/test_db.py` | Database schema and connections |
 | `tests/test_roundtrip.py` | End-to-end index/query flow |
 | `tests/test_embedding_reuse.py` | Smart embedding reuse (13 tests) |
 | `tests/test_benchmark.py` | Benchmark command (21 tests) |
 | `tests/test_models.py` | Model resolution and configuration |
+| `tests/test_query_command.py` | Query command (JSON output, etc.) |
 | `tests/test_search.py` | Query execution and scoring |
 
 ### Key Embedding Reuse Tests
