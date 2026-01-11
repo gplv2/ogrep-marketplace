@@ -9,6 +9,7 @@
   "plugins": [
     {
       "name": "ogrep",
+      "version": "0.4.2",
       "source": "./plugins/ogrep",
       "description": "Semantic grep with local embedding models (offline, free) or OpenAI embeddings"
     }
