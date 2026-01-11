@@ -153,6 +153,7 @@ DEFAULT_EXCLUDES = (
     "*.sqlite3",
     "*.db",
     "*.sql",
+    "*.dump",
     # Python package metadata
     "*.pth",
     "py.typed",

@@ -168,7 +168,7 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Fonts** | `*.woff`, `*.woff2`, `*.ttf`, `*.otf`, `*.eot` |
 | **Media** | `*.mp3`, `*.mp4`, `*.wav`, `*.avi`, `*.mov`, `*.webm` |
 | **Archives** | `*.zip`, `*.tar`, `*.gz`, `*.rar`, `*.7z` |
-| **Databases** | `*.sqlite`, `*.sqlite3`, `*.db` |
+| **Databases** | `*.sqlite`, `*.sqlite3`, `*.db`, `*.sql`, `*.dump` |
 | **Logs** | `*.log`, `logs/*` |
 | **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
 
