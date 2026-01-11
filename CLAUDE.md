@@ -498,6 +498,30 @@ make check       # All checks
 2. Define frontmatter with `name`, `description`, `allowed-tools`
 3. Document skill behavior in markdown body
 
+### Bumping version
+
+Update ALL these files when releasing a new version:
+
+| File | Field |
+|------|-------|
+| `pyproject.toml` | `version = "X.Y.Z"` |
+| `ogrep/__init__.py` | `__version__ = "X.Y.Z"` |
+| `ogrep/cli.py` | `__version__ = "X.Y.Z"` |
+| `.claude-plugin/marketplace.json` | `"version": "X.Y.Z"` |
+| `plugins/ogrep/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
+| `tests/test_cli.py` | Version assertion (search for old version) |
+| `LOCAL_EMBEDDINGS_GUIDE.md` | Environment section `**ogrep:**` |
+
+**Verification command:**
+```bash
+grep -rn "X\.Y\.Z\|OLD_VERSION" --include="*.py" --include="*.json" --include="*.toml" --include="*.md" | grep -v CHANGELOG | grep -v RELEASE_NOTES
+```
+
+**After updating:**
+1. Commit changes
+2. Create annotated tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z - description"`
+3. Push: `git push && git push --tags`
+
 ## Debugging Tips
 
 ```bash
