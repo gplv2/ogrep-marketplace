@@ -30,7 +30,7 @@ Modules:
 from .chunking import Chunk, chunk_lines
 from .db import connect
 from .embed import embed_texts
-from .indexer import index_path, iter_files
+from .indexer import DEFAULT_EXCLUDES, index_path, iter_files, load_ogrepignore
 from .models import (
     DEFAULT_CHUNK_LINES,
     DEFAULT_MODEL,
@@ -51,9 +51,12 @@ __all__ = [
     "index_path",
     "query",
     "iter_files",
+    "load_ogrepignore",
     "embed_texts",
     "connect",
     "chunk_lines",
+    # Constants
+    "DEFAULT_EXCLUDES",
     # Model utilities
     "resolve_model",
     "get_model",

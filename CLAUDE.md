@@ -59,6 +59,7 @@ ogrep-marketplace/
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index a directory (source files only) |
+| `ogrep index . --list` | Preview files that would be indexed (sorted by ext/size) |
 | `ogrep query "text" -n 10 -r` | Semantic search (with refresh) |
 | `ogrep status` | Show index stats |
 | `ogrep reset -f` | Delete index |
@@ -221,12 +222,93 @@ else:
 |------|-------------|
 | `-e`, `--exclude PATTERN` | Add patterns to exclude |
 | `-i`, `--include PATTERN` | Override default excludes |
+| `-l`, `--list` | Preview files (dry run, no indexing) |
 
 Examples:
 ```bash
 ogrep index . -e 'test_*'      # Exclude test files
 ogrep index . -i '*.md'        # Include markdown (normally excluded)
+ogrep index . --list           # Preview what would be indexed
 ```
+
+### Previewing Files with --list
+
+Use `--list` to see what files would be indexed before actually indexing:
+
+```bash
+ogrep index . --list
+```
+
+Output is sorted by extension, then by size (biggest last):
+
+```
+── .py (34 files, 179.6KB) ──
+       24B  tests/__init__.py
+      101B  ogrep/__main__.py
+      ...
+    17.0KB  ogrep/commands/benchmark.py
+
+────────────────────────────────────────
+Total: 35 files, 180.4KB
+Extensions: 2
+
+Largest files:
+    17.0KB  ogrep/commands/benchmark.py
+    14.1KB  ogrep/indexer.py
+```
+
+This helps identify:
+- Large data files that should be excluded
+- Unexpected file types being indexed
+- Files to add to `.ogrepignore`
+
+## .ogrepignore File
+
+Create a `.ogrepignore` file in your repo root to permanently exclude patterns without passing `-e` every time.
+
+### Syntax
+
+```
+# Comments start with #
+# Empty lines are ignored
+
+# Glob patterns (same as -e flag)
+*.sql
+*.generated.ts
+migrations/*
+
+# Directory patterns
+legacy/*
+experiments/*
+```
+
+### Example .ogrepignore
+
+```
+# Database dumps and migrations
+*.sql
+migrations/*
+
+# Generated code
+*.generated.ts
+*.generated.go
+codegen/*
+
+# Legacy code (not worth indexing)
+legacy/*
+
+# Large vendor files
+third_party/*
+```
+
+### Precedence
+
+1. **DEFAULT_EXCLUDES** (built-in patterns in `indexer.py`)
+2. **`.ogrepignore`** (repo-specific patterns)
+3. **`-e` / `--exclude`** (command-line patterns)
+4. **`-i` / `--include`** (overrides all excludes)
+
+All exclude sources are combined. Use `--include` to override any exclusion.
 
 ## Auto-Tuning
 

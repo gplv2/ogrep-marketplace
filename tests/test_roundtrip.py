@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from ogrep.commands.query import _check_stale_files
-from ogrep.indexer import index_path
+from ogrep.indexer import index_path, load_ogrepignore
 from ogrep.search import query
 
 
@@ -147,3 +147,56 @@ def test_check_stale_files_detects_deletions(temp_dir: Path) -> None:
     stale = _check_stale_files(db_path, temp_dir)
     assert len(stale) == 1
     assert "deletable.py" in str(stale[0])
+
+
+def test_load_ogrepignore_basic(temp_dir: Path) -> None:
+    """Test loading patterns from .ogrepignore file."""
+    # Create .ogrepignore
+    (temp_dir / ".ogrepignore").write_text(
+        """# This is a comment
+*.sql
+migrations/*
+
+# Another comment
+*.generated.ts
+"""
+    )
+
+    patterns = load_ogrepignore(temp_dir)
+
+    assert len(patterns) == 3
+    assert "*.sql" in patterns
+    assert "migrations/*" in patterns
+    assert "*.generated.ts" in patterns
+
+
+def test_load_ogrepignore_missing_file(temp_dir: Path) -> None:
+    """Test that missing .ogrepignore returns empty list."""
+    patterns = load_ogrepignore(temp_dir)
+    assert patterns == []
+
+
+def test_ogrepignore_excludes_files(temp_dir: Path) -> None:
+    """Test that .ogrepignore patterns actually exclude files during indexing."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create .ogrepignore
+    (temp_dir / ".ogrepignore").write_text("*.sql\nignored/*\n")
+
+    # Create files - some should be ignored
+    (temp_dir / "keep.py").write_text("def keep():\n    return 'indexed'\n")
+    (temp_dir / "schema.sql").write_text("CREATE TABLE users (id INT);\n")
+
+    (temp_dir / "ignored").mkdir()
+    (temp_dir / "ignored" / "skip.py").write_text("def skip():\n    pass\n")
+
+    # Index
+    index_path(root=temp_dir, db_path=db_path)
+
+    # Query - should only find keep.py
+    hits = query(db_path=db_path, q="function", top_k=10)
+    paths = [h.path for h in hits]
+
+    assert any("keep.py" in p for p in paths)
+    assert not any("schema.sql" in p for p in paths)
+    assert not any("skip.py" in p for p in paths)

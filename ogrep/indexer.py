@@ -151,10 +151,52 @@ DEFAULT_EXCLUDES = (
     "*.sqlite",
     "*.sqlite3",
     "*.db",
+    "*.sql",
     # Python package metadata
     "*.pth",
     "py.typed",
 )
+
+
+def load_ogrepignore(root: Path) -> list[str]:
+    """
+    Load exclude patterns from .ogrepignore file.
+
+    The file format is similar to .gitignore:
+    - One pattern per line
+    - Lines starting with # are comments
+    - Empty lines are ignored
+    - Patterns use glob syntax (*.sql, vendor/*, etc.)
+
+    Args:
+        root: Directory to look for .ogrepignore file.
+
+    Returns:
+        List of exclude patterns (empty if file doesn't exist).
+
+    Example .ogrepignore file:
+        # Exclude SQL files
+        *.sql
+
+        # Exclude generated code
+        generated/*
+    """
+    ignore_file = root / ".ogrepignore"
+    if not ignore_file.is_file():
+        return []
+
+    patterns = []
+    try:
+        for line in ignore_file.read_text().splitlines():
+            line = line.strip()
+            # Skip empty lines and comments
+            if not line or line.startswith("#"):
+                continue
+            patterns.append(line)
+    except Exception:
+        return []
+
+    return patterns
 
 
 def _sha256_bytes(b: bytes) -> str:
@@ -312,7 +354,8 @@ def index_path(
     This saves API tokens for common edit patterns like appending code.
 
     By default, excludes common non-source files (docs, config, build outputs).
-    Use --include to override specific excludes.
+    Use --include to override specific excludes. Additional patterns can be
+    specified in a .ogrepignore file in the root directory.
 
     Args:
         root: Directory to index.
@@ -346,9 +389,13 @@ def index_path(
     model = resolve_model(model)
     stats = IndexStats()
 
+    # Load .ogrepignore patterns and combine with CLI excludes
+    ignore_patterns = load_ogrepignore(root)
+    all_exclude = list(exclude) + ignore_patterns
+
     con = connect(db_path)
 
-    files = list(iter_files(root, exclude=exclude, include=include))
+    files = list(iter_files(root, exclude=all_exclude, include=include))
     stats.files_scanned = len(files)
 
     for p in tqdm(files, desc="Indexing"):

@@ -122,6 +122,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include patterns (override default excludes). "
         "Example: -i '*.md' to index markdown files",
     )
+    p_index.add_argument(
+        "--list",
+        "-l",
+        action="store_true",
+        help="List files that would be indexed (sorted by extension, biggest last). "
+        "Does not actually index.",
+    )
     p_index.set_defaults(func=cmd_index)
 
     # query command
