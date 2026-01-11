@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-01-11
+
+### 🐛 Fixes
+
+- **CI tests now pass without API keys**: Fixed test suite failing in GitHub Actions due to missing `OPENAI_API_KEY`. The mock fixture now properly sets a fake API key so `require_embedding_config()` passes before the mock client is used
+
+### 📚 Documentation
+
+- Added critical warning to version bump guide about not modifying marketplace JSON structure (only version numbers)
+
 ## [0.4.2] - 2026-01-11
 
 ### 📚 Documentation
