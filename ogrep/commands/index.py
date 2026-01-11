@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ..indexer import IndexStats, index_path
 from ..models import get_optimal_chunk_lines
-from ._common import resolve_db_path
+from ._common import require_embedding_config, resolve_db_path
 
 
 def _resolve_chunk_lines(args: argparse.Namespace) -> int:
@@ -99,8 +99,11 @@ def cmd_index(args: argparse.Namespace) -> int:
             - include: Glob patterns to include (override excludes)
 
     Returns:
-        Exit code (0 for success).
+        Exit code (0 for success, 1 for configuration error).
     """
+    if not require_embedding_config():
+        return 1
+
     root, db = _resolve_paths(args)
     chunk_lines = _resolve_chunk_lines(args)
 

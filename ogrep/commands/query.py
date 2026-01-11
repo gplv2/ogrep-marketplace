@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from ..search import query as query_db
-from ._common import resolve_db_path
+from ._common import require_embedding_config, resolve_db_path
 
 
 def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
@@ -82,6 +82,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         files have been modified since the last index. AI tools and skills
         should always use --refresh to ensure accurate results.
     """
+    if not require_embedding_config():
+        return 1
+
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 

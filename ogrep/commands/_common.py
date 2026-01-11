@@ -9,7 +9,29 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
+import sys
 from pathlib import Path
+
+
+def require_embedding_config() -> bool:
+    """
+    Check if embedding API is configured, print error if not.
+
+    Returns:
+        True if configured, False otherwise (with error printed to stderr).
+    """
+    if os.environ.get("OPENAI_API_KEY") or os.environ.get("OGREP_BASE_URL"):
+        return True
+
+    print(
+        "Error: No embedding API configured.\n"
+        "Set one of:\n"
+        "  - OPENAI_API_KEY for OpenAI embeddings\n"
+        "  - OGREP_BASE_URL for local embeddings (e.g., http://localhost:1234/v1)",
+        file=sys.stderr,
+    )
+    return False
 
 
 def _repo_hash(root: Path) -> str:
