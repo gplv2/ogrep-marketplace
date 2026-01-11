@@ -1,6 +1,11 @@
 ---
 name: semantic-grep
-description: Semantic grep for a repo. Use when the user asks to "search by meaning", "find where this is implemented", "grep semantically", "where is this handled", or when exact grep is not enough.
+description: |
+  Semantic code search for conceptual questions. Proactively use when:
+  - User asks WHERE something is implemented ("where is X handled", "how does Y work")
+  - User needs to understand code behavior vs finding exact names
+  - Exact grep would require knowing the right terms first
+  Use when appropriate context detected. Trigger with conceptual code questions.
 allowed-tools: Bash, Read
 ---
 
