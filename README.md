@@ -322,7 +322,9 @@ By default, ogrep indexes only source files and excludes:
 | **Temp files** | `*.tmp`, `*.temp`, `*.swp` |
 | **Lock files** | `package-lock.json`, `yarn.lock`, `poetry.lock` |
 
-**Skipped directories:** `.git/`, `node_modules/`, `.venv/`, `__pycache__/`, `.ogrep/`
+**Skipped directories:** `.git/`, `.svn/`, `.hg/`, `node_modules/`, `.venv/`, `__pycache__/`, `.ogrep/`
+
+**Also skipped:** Empty files (0 bytes), duplicate symlinks, broken symlinks
 
 ### File Type Detection
 

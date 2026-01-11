@@ -175,9 +175,16 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
 
 **Skipped directories** (in `DEFAULT_SKIP_DIRS`):
-- `.git`, `.venv`, `venv`, `node_modules`, `__pycache__`, `.ogrep`
-- `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tox`
-- `.githooks`, `storage`
+- `.git`, `.svn`, `.hg` (version control)
+- `.venv`, `venv`, `node_modules` (dependencies)
+- `__pycache__`, `.ogrep` (caches)
+- `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tox` (tool caches)
+- `.githooks`, `storage` (misc)
+
+**Additional filtering:**
+- Empty files (0 bytes) are skipped
+- Duplicate symlinks (pointing to same real path) are skipped
+- Broken symlinks are skipped
 
 ### Chunk Size Optimization
 
