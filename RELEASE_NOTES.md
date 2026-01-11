@@ -1,73 +1,92 @@
-# ogrep v0.4.0 — Local Embeddings Release
-
-**Run semantic code search completely offline. Zero API costs. Total privacy.**
+# ogrep v0.4.5 Release Notes
 
 ## What's New
 
-### Run Locally with LM Studio
+### Preview Before You Index
 
-No more API keys required! ogrep now works with local embedding models:
+Ever wondered what files ogrep will actually index? Now you can see exactly what's happening before committing:
 
 ```bash
-# Quick setup
-lms get all-MiniLM-L6-v2 -y
-lms load all-minilm-l6-v2 -y
-lms server start
-
-export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m minilm
+ogrep index . --list
 ```
 
-### Three Local Models to Choose From
+You'll see files grouped by extension, sorted by size, with binary files clearly marked:
 
-| Model | Alias | Size | Accuracy | Best For |
-|-------|-------|------|----------|----------|
-| **MiniLM** | `minilm` | 25 MB | **96%** | Speed + accuracy |
-| Nomic | `nomic` | 84 MB | 72% | Larger context |
-| BGE | `bge` | 118 MB | 52% | Fallback option |
+```
+── .py (34 files, 179.6KB) ──
+      101B  ogrep/__main__.py
+    17.0KB  ogrep/commands/benchmark.py
 
-### Smart Tuning
+── (no extension) (3 files, 45.2KB) ──
+  [BINARY: application/x-sqlite3]   12.0KB  data
+      25.2KB  Makefile
 
-Different models need different chunk sizes. Now ogrep handles it automatically:
-
-```bash
-# Find optimal settings for your codebase
-ogrep tune . -m minilm --save --apply
+──────────────────────────────────────────────────
+Would index: 35 files, 180.4KB
+Excluded by detection: 1 files, 12.0KB
 ```
 
-The `--save` flag writes to `.env` so you don't have to remember.
+Plus helpful extras:
+- **Top 10 directories** by file count - see where your code lives
+- **Largest indexable files** - spot potential problems
+- **Review suggestions** - flags logs, dumps, and other files that might distort search results
 
-## Why Upgrade?
+### Smarter Binary Detection
 
-- **Free**: Local models = $0.00 per million tokens
-- **Private**: Your code never leaves your machine
-- **Offline**: Works without internet
-- **Fast**: No network latency
+ogrep now uses the system `file` command for accurate MIME-type detection. This catches:
 
-## Installation
+- SQLite databases without `.sqlite` extension
+- Binary files masquerading as text
+- Data files that slip through extension filtering
 
-### CLI
+Works automatically. Use `--no-detect` if you need faster scans without MIME checking.
+
+### Persistent Exclusions with .ogrepignore
+
+Tired of passing `-e` flags every time? Create a `.ogrepignore` file in your repo:
 
 ```bash
-pipx install ogrep
+# .ogrepignore
+*.sql
+migrations/*
+legacy/*
+*.generated.ts
+```
+
+Patterns use glob syntax like `.gitignore`. Loaded automatically on every index operation.
+
+### Expanded Default Exclusions
+
+More file types are excluded by default to keep your index focused on actual source code:
+
+| Category | New Patterns |
+|----------|--------------|
+| Temp files | `*.tmp`, `*.temp` |
+| Backups | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*.swp`, `*~` |
+| Data files | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat`, `*.xml` |
+| Database | `*.dump` |
+
+### Cleaner File Handling
+
+- **Empty files** (0 bytes) are now skipped automatically
+- **Duplicate symlinks** pointing to the same file are deduplicated
+- **Broken symlinks** are skipped gracefully
+- **Version control directories** `.svn` and `.hg` (Mercurial) are now skipped alongside `.git`
+
+## Upgrading
+
+```bash
+pip install --upgrade ogrep
 # or
-pip install ogrep
-```
-
-### Claude Code Plugin
-
-```bash
-/plugin marketplace add gplv2/ogrep-marketplace
-/plugin install ogrep@ogrep-marketplace
+pip install --force-reinstall git+https://github.com/gplv2/ogrep.git
 ```
 
 ## Documentation
 
-- [README.md](README.md) — Quick start and overview
-- [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) — Detailed local model setup
-- [CHANGELOG.md](CHANGELOG.md) — Full technical changelog
+- [README.md](README.md) - Quick start and overview
+- [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) - Detailed local model setup
+- [CHANGELOG.md](CHANGELOG.md) - Full technical changelog
 
 ## Links
 
 - GitHub: https://github.com/gplv2/ogrep-marketplace
-- PR: https://github.com/gplv2/ogrep-marketplace/pull/new/feat/local-embeddings
