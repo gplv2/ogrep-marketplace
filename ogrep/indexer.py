@@ -297,6 +297,10 @@ def iter_files(
     contain non-source files. Supports exclude/include patterns for
     fine-grained file filtering.
 
+    Also skips:
+    - Empty files (0 bytes)
+    - Duplicate symlinks (symlinks pointing to already-seen files)
+
     Args:
         root: Root directory to scan.
         exclude: Additional glob patterns to exclude (added to defaults).
@@ -316,11 +320,29 @@ def iter_files(
 
     all_excludes = list(DEFAULT_EXCLUDES) + list(exclude)
 
-    for dirpath, dirnames, filenames in os.walk(root):
+    # Track real paths to avoid duplicate symlinks
+    seen_real_paths: set[Path] = set()
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         # Modify dirnames in-place to skip certain directories
         dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         for fn in filenames:
             p = Path(dirpath) / fn
+
+            # Skip symlinks to already-seen files (dedup)
+            try:
+                real_path = p.resolve()
+                if real_path in seen_real_paths:
+                    continue
+                seen_real_paths.add(real_path)
+
+                # Skip empty files (0 bytes)
+                if p.stat().st_size == 0:
+                    continue
+            except (OSError, FileNotFoundError):
+                # Broken symlink or permission error
+                continue
+
             # Check if explicitly included (overrides excludes)
             if include and _matches_pattern(p, root, include):
                 yield p
