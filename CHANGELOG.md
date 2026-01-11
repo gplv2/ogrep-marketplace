@@ -5,9 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-01-11
+## [0.5.0] - 2026-01-12
 
 ### ✨ New Features
+
+#### Database Health & Repair Command
+
+New `ogrep health` command for comprehensive database diagnostics and repair:
+
+```bash
+ogrep health                 # Full diagnostic output
+ogrep health --vacuum        # Reclaim space and defragment
+ogrep health --rebuild-fts   # Rebuild FTS5 index
+ogrep health --integrity     # Full integrity check
+ogrep health --full          # All repairs (vacuum + rebuild-fts + integrity)
+```
+
+Diagnostic output includes:
+- Table sizes and row counts
+- Index definitions
+- SQLite info (version, journal mode, page stats, freelist)
+- FTS5 statistics (token counts, unique terms)
+- Quick integrity check by default
 
 #### Hybrid Search (Phase 2)
 
@@ -122,8 +141,11 @@ Query JSON output now includes:
 
 ### 📦 New Files
 
+- `ogrep/commands/health.py` - Database health and repair command
 - `ogrep/commands/chunk.py` - Chunk navigation command
+- `plugins/ogrep/commands/health.md` - Health command plugin
 - `plugins/ogrep/commands/chunk.md` - Chunk command plugin
+- `tests/test_health_command.py` - Health command tests (7 tests)
 - `tests/test_chunk_command.py` - Chunk command tests (12 tests)
 - `tests/test_hybrid_search.py` - Hybrid search tests (12 tests)
 

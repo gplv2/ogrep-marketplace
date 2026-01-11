@@ -450,13 +450,13 @@ ogrep tune . -m nomic
 ```
 
 ```
-Testing chunk size 30... accuracy=0.32 (2/5 hits)
+Testing chunk size 30... accuracy=0.72 (5/5 hits)  <-- OPTIMAL
 Testing chunk size 45... accuracy=0.56 (4/5 hits)
 Testing chunk size 60... accuracy=0.36 (3/5 hits)
-Testing chunk size 90... accuracy=0.72 (5/5 hits)  <-- OPTIMAL
-Testing chunk size 120... accuracy=0.68 (5/5 hits)
+Testing chunk size 90... accuracy=0.32 (2/5 hits)
+Testing chunk size 120... accuracy=0.28 (2/5 hits)
 
-Recommended chunk size: 90 lines
+Recommended chunk size: 30 lines
 ```
 
 ### Save & Apply Tuning Results
@@ -489,11 +489,11 @@ RESULTS BY MODEL
 --------------------------------------------------------------------------------
 Model                   Dims  Chunk/Overlap  Accuracy  Index    Query
 --------------------------------------------------------------------------------
-minilm                   384       30 / 5       0.96    0.89s   0.01s  *
-nomic                    768       90 / 15      0.72    1.87s   0.01s
-bge                      768       30 / 10      0.52    1.65s   0.01s
-large                   3072       30 / 15      0.52    3.12s   0.03s
-small                   1536       45 / 15      0.48    2.34s   0.02s
+minilm                   384       30 / 15      0.96    0.89s   0.01s  *
+nomic                    768       30 / 15      0.72    1.87s   0.01s
+bge                      768       30 / 5       0.52    1.65s   0.01s
+large                   3072       60 / 10      0.52    3.12s   0.03s
+small                   1536       60 / 10      0.48    2.34s   0.02s
 --------------------------------------------------------------------------------
 
 RECOMMENDATIONS
