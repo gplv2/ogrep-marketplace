@@ -85,6 +85,9 @@ def mock_openai_api(monkeypatch: pytest.MonkeyPatch) -> None:
     if os.environ.get("OGREP_INTEGRATION_TESTS"):
         return
 
+    # Set a fake API key so require_embedding_config() passes
+    monkeypatch.setenv("OPENAI_API_KEY", "test-fake-key-for-mocking")
+
     class MockEmbedding:
         def __init__(self, embedding: list[float]):
             self.embedding = embedding
