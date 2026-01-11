@@ -1,6 +1,6 @@
 {
   "name": "ogrep",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Semantic grep with local embedding models (LM Studio) or OpenAI",
   "skills": "./skills/",
   "commands": ["./commands/"]

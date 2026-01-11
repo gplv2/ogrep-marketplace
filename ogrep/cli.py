@@ -39,7 +39,7 @@ from .commands import (
 from .commands._common import add_scope_args
 from .models import DEFAULT_MODEL
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def _add_model_args(parser: argparse.ArgumentParser, for_query: bool = False) -> None:
