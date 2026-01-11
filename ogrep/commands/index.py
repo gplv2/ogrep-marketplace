@@ -195,6 +195,50 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
     elif not has_file_command():
         print("(file command not available, using null-byte detection only)")
 
+    # Breakdown by extension (indexable files only)
+    if ext_stats and len(ext_stats) > 1:
+        print("\nBreakdown by extension:")
+        sorted_exts = sorted(ext_stats.items(), key=lambda x: x[1][1], reverse=True)
+        print(f"  {'Extension':<15} {'Files':>7} {'Size':>10} {'%':>6}")
+        print(f"  {'-' * 15} {'-' * 7} {'-' * 10} {'-' * 6}")
+        for ext, (count, total) in sorted_exts:
+            pct = (total / indexable_size * 100) if indexable_size > 0 else 0
+            print(f"  {ext:<15} {count:>7} {_format_size(total):>10} {pct:>5.1f}%")
+
+    # Breakdown by MIME type category (if detection was run)
+    if detection_results:
+        mime_stats: dict[str, tuple[int, int]] = {}  # category -> (count, size)
+        for p, ext, size in indexable:
+            result = detection_results.get(p)
+            if result and result.mime_type:
+                # Extract category (e.g., "text/x-python" -> "text")
+                category = result.mime_type.split("/")[0]
+            else:
+                category = "text"  # Default for files that passed detection
+            if category not in mime_stats:
+                mime_stats[category] = (0, 0)
+            c, s = mime_stats[category]
+            mime_stats[category] = (c + 1, s + size)
+
+        # Add excluded files
+        for p, ext, size, mime in excluded:
+            category = mime.split("/")[0] if "/" in mime else mime
+            if category not in mime_stats:
+                mime_stats[category] = (0, 0)
+            c, s = mime_stats[category]
+            mime_stats[category] = (c + 1, s + size)
+
+        if len(mime_stats) > 1:
+            total_files = len(indexable) + len(excluded)
+            total_size = indexable_size + excluded_size
+            print("\nBreakdown by file type:")
+            sorted_mimes = sorted(mime_stats.items(), key=lambda x: x[1][0], reverse=True)
+            print(f"  {'Type':<15} {'Files':>7} {'Size':>10} {'%':>6}")
+            print(f"  {'-' * 15} {'-' * 7} {'-' * 10} {'-' * 6}")
+            for category, (count, total) in sorted_mimes:
+                pct = (count / total_files * 100) if total_files > 0 else 0
+                print(f"  {category:<15} {count:>7} {_format_size(total):>10} {pct:>5.1f}%")
+
     # Show top 10 directories by file count
     if dir_counts:
         sorted_dirs = sorted(dir_counts.items(), key=lambda x: x[1], reverse=True)[:10]
