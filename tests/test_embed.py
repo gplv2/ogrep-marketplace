@@ -129,11 +129,11 @@ class TestEmbedTexts:
         blobs, dim = embed_texts(["Test"], model="nomic")
         assert len(blobs) == 1
 
-    def test_empty_list_raises(self) -> None:
-        """Test that embedding empty list raises AssertionError."""
-        # Empty input is not a valid use case - API requires at least one text
-        with pytest.raises(AssertionError):
-            embed_texts([])
+    def test_empty_list_returns_empty(self) -> None:
+        """Test that embedding empty list returns empty results."""
+        blobs, dim = embed_texts([])
+        assert blobs == []
+        assert dim == 0
 
     def test_embedding_with_dimensions(self) -> None:
         """Test embedding with explicit dimensions parameter."""
