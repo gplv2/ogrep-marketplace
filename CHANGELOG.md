@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-01-10 — Local Embeddings
+## [0.4.0] - 2026-01-11 — Local Embeddings
 
 **Run semantic code search completely offline. Zero API costs. Total privacy.**
 
@@ -21,17 +21,19 @@ lms load all-minilm-l6-v2 -y
 lms server start
 
 export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m minilm
+ogrep index .   # Auto-uses minilm
 ```
 
 #### Four Local Models to Choose From
 
-| Model | Alias | Accuracy | Best For |
-|-------|-------|----------|----------|
-| **MiniLM** | `minilm` | **96%** | Speed + accuracy (recommended) |
-| Nomic | `nomic` | 72% | Larger context windows |
-| BGE | `bge` | 52% | Fallback option |
-| BGE-M3 | `bge-m3` | — | Multi-lingual (100+ languages) |
+| Model | Alias | Accuracy | Index Time | Best For |
+|-------|-------|----------|------------|----------|
+| Nomic | `nomic` | **88%** | 33.5s | Highest accuracy |
+| BGE | `bge` | **88%** | 21.6s | Accuracy + speed |
+| **MiniLM** | `minilm` | 84% | **5.8s** | Speed (6x faster, recommended) |
+| BGE-M3 | `bge-m3` | 76% | 81.5s | Multi-lingual (100+ languages) |
+
+All local models outperform OpenAI cloud models (48-52%) on code search tasks.
 
 #### Model Benchmarking
 
@@ -41,7 +43,7 @@ Compare all models head-to-head with the new benchmark command:
 ogrep benchmark . -s 10
 ```
 
-Tests accuracy, speed, and optimal chunk/overlap settings across all available models.
+Tests accuracy, speed, and optimal chunk/overlap settings across all available models. Includes warnings about time and API credit consumption for large repos.
 
 #### Smart Tuning with Auto-Save
 
@@ -56,18 +58,25 @@ The `--save` flag writes optimal settings to `.env` so you don't have to remembe
 ### 🔧 Improvements
 
 - **Smart Model Default**: When `OGREP_BASE_URL` is set (local server), ogrep now defaults to `minilm` automatically—no need for `-m` flag on every command
-- **Model-Specific Defaults**: Each local model now has tuned chunk size defaults based on real-world testing
+- **Model-Specific Defaults**: Each local model now has tuned chunk size defaults based on comprehensive benchmarking (all models: 30-line chunks except BGE-M3: 60 lines)
 - **OGREP_CHUNK_LINES**: New environment variable to persist your tuned chunk size across sessions
 - **Timing Infrastructure**: `embed_texts()` now optionally returns elapsed time via `return_timing=True`
-- **Overlap Testing**: Benchmark tests different overlap values (5, 10, 15, 20 lines) alongside chunk sizes
+- **Overlap Testing**: Benchmark tests different overlap values (5, 10, 15 lines) alongside chunk sizes
 - **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default)
+- **Faster Benchmarks**: Reduced default test configurations from 20 to 9 per model
 
 ### 📚 Documentation
 
 - Overhauled README with local model quick start and provider comparison
 - New `LOCAL_EMBEDDINGS_GUIDE.md` with step-by-step LM Studio setup for macOS/Linux/Windows
-- Added 4-model query quality comparison (OpenAI, Nomic, BGE, MiniLM)
+- Comprehensive analysis of why local models outperform cloud models for code retrieval
+- Added 6-model benchmark comparison (MiniLM, Nomic, BGE, BGE-M3, OpenAI small, OpenAI large)
 - Updated CLAUDE.md with local model setup and chunk tuning section
+
+### 🧪 Testing
+
+- 151 tests passing
+- New test files: `test_benchmark.py`, `test_embed.py`, `test_models.py`, `test_search.py`, `test_query_command.py`
 
 ## [0.3.4] - 2026-01-10
 
