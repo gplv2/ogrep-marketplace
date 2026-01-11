@@ -147,22 +147,31 @@ def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
             text=True,
             timeout=30,  # Safety timeout for large batches
         )
-        if proc.returncode == 0:
+        # Parse output even if return code is non-zero (some files may have failed)
+        if proc.stdout:
             mime_types = proc.stdout.strip().split("\n")
             for path, mime in zip(paths, mime_types, strict=False):
                 mime = mime.strip()
+                # Skip error messages from file command
+                if mime.startswith("cannot open") or mime.startswith("ERROR:"):
+                    continue
                 results[path] = FileTypeResult(
                     path=path,
                     mime_type=mime,
                     is_text=_is_text_mime(mime),
                     detection_method="file_cmd",
                 )
-            return results
+        # Fall through to fill in any missing paths with null-byte detection
     except (subprocess.TimeoutExpired, OSError):
         pass  # Fall through to null-byte fallback
 
-    # Fallback for failed batch
-    return _fallback_null_byte_detection(paths)
+    # Fill in any paths not covered by file command with null-byte detection
+    missing_paths = [p for p in paths if p not in results]
+    if missing_paths:
+        fallback_results = _fallback_null_byte_detection(missing_paths)
+        results.update(fallback_results)
+
+    return results
 
 
 def _fallback_null_byte_detection(paths: list[Path]) -> dict[Path, FileTypeResult]:
