@@ -156,7 +156,6 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 | bge-base-en-v1.5 | `bge` | 768 | 30 lines | Smaller chunks work better |
 | bge-m3 | `bge-m3` | 1024 | 60 lines | Multi-lingual, 100+ languages |
 | all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | Smallest, fastest (~25MB) |
-| gemma-2b-embedding | `gemma` | 768 | 90 lines | 2K context, code-optimized |
 
 ```bash
 # Use model alias
@@ -258,8 +257,8 @@ Model                   Dims  Chunk/Overlap  Accuracy  Index    Query
 --------------------------------------------------------------------------------
 minilm                   384       30 / 5       0.96    0.89s   0.01s  *
 small                   1536       60 / 10      0.92    2.34s   0.02s
-gemma                    768       90 / 15      0.88    1.42s   0.01s
 nomic                    768       90 / 15      0.72    1.87s   0.01s
+bge                      768       30 / 10      0.52    1.65s   0.01s
 --------------------------------------------------------------------------------
 
 RECOMMENDATIONS

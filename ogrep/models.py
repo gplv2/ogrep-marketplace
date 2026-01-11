@@ -187,21 +187,6 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Supports dense, multi-vector, and sparse retrieval. Run: lms load bge-m3",
         optimal_chunk_lines=60,
     ),
-    "text-embedding-gemma-2b": EmbeddingModel(
-        id="text-embedding-gemma-2b",
-        name="EmbeddingGemma 2B (Local)",
-        description="Google's code-optimized embedding model (768D, 2K context)",
-        dimensions=768,
-        max_dimensions=None,
-        price_per_million=0.0,
-        use_cases=(
-            "Code search",
-            "Large context windows",
-            "Multi-lingual",
-        ),
-        notes="2K context window (4x larger than others). Run: lms load gemma-2b-embedding",
-        optimal_chunk_lines=90,  # Larger context = benefits from larger chunks
-    ),
 }
 
 # Model aliases for convenience
@@ -216,7 +201,6 @@ MODEL_ALIASES: dict[str, str] = {
     "bge-m3": "text-embedding-bge-m3",
     "nomic": "nomic-embed-text-v1.5",
     "minilm": "text-embedding-all-minilm-l6-v2-embedding",
-    "gemma": "text-embedding-gemma-2b",
     "local": "nomic-embed-text-v1.5",  # Default local model
 }
 
@@ -398,7 +382,6 @@ def format_models_table() -> str:
             "  bge-m3 -> text-embedding-bge-m3 (local)",
             "  nomic  -> nomic-embed-text-v1.5 (local)",
             "  minilm -> all-minilm-l6-v2 (local)",
-            "  gemma  -> text-embedding-gemma-2b (local)",
             "  local  -> nomic-embed-text-v1.5",
             "",
             "Local Models (via LM Studio):",

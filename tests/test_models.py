@@ -204,6 +204,7 @@ class TestGetOptimalChunkLines:
         """Test default chunk lines when no model specified."""
         monkeypatch.delenv("OGREP_CHUNK_LINES", raising=False)
         monkeypatch.delenv("OGREP_MODEL", raising=False)
+        monkeypatch.delenv("OGREP_BASE_URL", raising=False)
         assert get_optimal_chunk_lines(None) == DEFAULT_CHUNK_LINES
 
 

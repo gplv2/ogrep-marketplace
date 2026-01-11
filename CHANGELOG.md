@@ -24,7 +24,7 @@ export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m minilm
 ```
 
-#### Five Local Models to Choose From
+#### Four Local Models to Choose From
 
 | Model | Alias | Accuracy | Best For |
 |-------|-------|----------|----------|
@@ -32,7 +32,6 @@ ogrep index . -m minilm
 | Nomic | `nomic` | 72% | Larger context windows |
 | BGE | `bge` | 52% | Fallback option |
 | BGE-M3 | `bge-m3` | — | Multi-lingual (100+ languages) |
-| Gemma | `gemma` | — | 2K context, code-optimized |
 
 #### Model Benchmarking
 
