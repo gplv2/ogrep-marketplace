@@ -117,9 +117,13 @@ def _null_byte_check(content: bytes) -> bool:
     return content.find(b"\x00") == -1
 
 
+# Batch size for file command to avoid ARG_MAX limits and timeouts
+_BATCH_SIZE = 500
+
+
 def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
     """
-    Detect file types for multiple files in a single batch call.
+    Detect file types for multiple files using batched calls.
 
     Uses `file --mime-type -b` for efficiency. Falls back to null-byte
     detection if file command is unavailable or fails.
@@ -139,13 +143,39 @@ def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
         # Fallback: read each file and check for null bytes
         return _fallback_null_byte_detection(paths)
 
-    # Batch call to file command
+    # Process in batches to avoid ARG_MAX limits and timeouts
+    for i in range(0, len(paths), _BATCH_SIZE):
+        batch = paths[i : i + _BATCH_SIZE]
+        batch_results = _detect_batch(batch)
+        results.update(batch_results)
+
+    # Fill in any paths not covered by file command with null-byte detection
+    missing_paths = [p for p in paths if p not in results]
+    if missing_paths:
+        fallback_results = _fallback_null_byte_detection(missing_paths)
+        results.update(fallback_results)
+
+    return results
+
+
+def _detect_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
+    """
+    Detect file types for a single batch of files.
+
+    Args:
+        paths: List of file paths (should be <= _BATCH_SIZE).
+
+    Returns:
+        Dict mapping paths to FileTypeResult objects.
+    """
+    results: dict[Path, FileTypeResult] = {}
+
     try:
         proc = subprocess.run(
             [_FILE_CMD, "--mime-type", "-b", "--"] + [str(p) for p in paths],
             capture_output=True,
             text=True,
-            timeout=30,  # Safety timeout for large batches
+            timeout=60,  # Allow more time per batch
         )
         # Parse output even if return code is non-zero (some files may have failed)
         if proc.stdout:
@@ -161,15 +191,8 @@ def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
                     is_text=_is_text_mime(mime),
                     detection_method="file_cmd",
                 )
-        # Fall through to fill in any missing paths with null-byte detection
     except (subprocess.TimeoutExpired, OSError):
-        pass  # Fall through to null-byte fallback
-
-    # Fill in any paths not covered by file command with null-byte detection
-    missing_paths = [p for p in paths if p not in results]
-    if missing_paths:
-        fallback_results = _fallback_null_byte_detection(missing_paths)
-        results.update(fallback_results)
+        pass  # Will fall through to null-byte detection for missing paths
 
     return results
 
