@@ -8,10 +8,13 @@ import pytest
 
 from ogrep.models import (
     DEFAULT_CHUNK_LINES,
+    DEFAULT_LOCAL_MODEL,
     DEFAULT_MODEL,
+    DEFAULT_OPENAI_MODEL,
     MODEL_ALIASES,
     MODELS,
     EmbeddingModel,
+    _get_default_model,
     format_models_table,
     get_model,
     get_optimal_chunk_lines,
@@ -55,10 +58,24 @@ class TestResolveModel:
         monkeypatch.setenv("OGREP_MODEL", "large")
         assert resolve_model("small") == "text-embedding-3-small"
 
-    def test_resolve_model_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test default model when no explicit or env value."""
+    def test_resolve_model_default_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test default model is OpenAI when no local server configured."""
         monkeypatch.delenv("OGREP_MODEL", raising=False)
-        assert resolve_model(None) == DEFAULT_MODEL
+        monkeypatch.delenv("OGREP_BASE_URL", raising=False)
+        assert resolve_model(None) == DEFAULT_OPENAI_MODEL
+
+    def test_resolve_model_default_local(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test default model is local (minilm) when OGREP_BASE_URL is set."""
+        monkeypatch.delenv("OGREP_MODEL", raising=False)
+        monkeypatch.setenv("OGREP_BASE_URL", "http://localhost:1234/v1")
+        assert resolve_model(None) == DEFAULT_LOCAL_MODEL
+
+    def test_resolve_model_local_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test local server takes precedence even with OPENAI_API_KEY set."""
+        monkeypatch.delenv("OGREP_MODEL", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+        monkeypatch.setenv("OGREP_BASE_URL", "http://localhost:1234/v1")
+        assert resolve_model(None) == DEFAULT_LOCAL_MODEL
 
     def test_resolve_model_invalid_raises(self) -> None:
         """Test that invalid model raises ValueError."""
@@ -72,6 +89,25 @@ class TestResolveModel:
         error_msg = str(exc_info.value)
         assert "text-embedding-3-small" in error_msg
         assert "small" in error_msg
+
+
+class TestGetDefaultModel:
+    """Tests for _get_default_model function."""
+
+    def test_default_openai_when_no_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test returns OpenAI model when OGREP_BASE_URL is not set."""
+        monkeypatch.delenv("OGREP_BASE_URL", raising=False)
+        assert _get_default_model() == DEFAULT_OPENAI_MODEL
+
+    def test_default_local_when_base_url_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test returns local model when OGREP_BASE_URL is set."""
+        monkeypatch.setenv("OGREP_BASE_URL", "http://localhost:1234/v1")
+        assert _get_default_model() == DEFAULT_LOCAL_MODEL
+
+    def test_default_local_model_is_minilm(self) -> None:
+        """Test that the default local model is minilm."""
+        assert DEFAULT_LOCAL_MODEL == "text-embedding-all-minilm-l6-v2-embedding"
+        assert MODEL_ALIASES["minilm"] == DEFAULT_LOCAL_MODEL
 
 
 class TestResolveDimensions:

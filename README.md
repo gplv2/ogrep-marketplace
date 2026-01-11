@@ -270,9 +270,15 @@ ogrep index . -e 'fixtures/*' -e 'mocks/*'
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | OpenAI API key (required for cloud) | — |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | — |
-| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_CHUNK_LINES` | Tuned chunk size | Model default |
 | `OGREP_DIMENSIONS` | Embedding dimensions | Model default |
+
+**Smart Model Default:**
+- If `OGREP_BASE_URL` is set → defaults to `minilm` (local)
+- Otherwise → defaults to `text-embedding-3-small` (OpenAI)
+
+This means you can just set `OGREP_BASE_URL` and ogrep will automatically use the best local model.
 
 ---
 

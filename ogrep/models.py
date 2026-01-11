@@ -19,9 +19,30 @@ from dataclasses import dataclass
 ENV_MODEL = "OGREP_MODEL"
 ENV_DIMENSIONS = "OGREP_DIMENSIONS"
 ENV_CHUNK_LINES = "OGREP_CHUNK_LINES"
+ENV_BASE_URL = "OGREP_BASE_URL"
 
-# Default model if not specified
-DEFAULT_MODEL = "text-embedding-3-small"
+# Default models
+DEFAULT_OPENAI_MODEL = "text-embedding-3-small"
+DEFAULT_LOCAL_MODEL = "text-embedding-all-minilm-l6-v2-embedding"  # minilm alias
+
+
+def _get_default_model() -> str:
+    """
+    Get the default model based on environment configuration.
+
+    If OGREP_BASE_URL is set (local server), defaults to minilm.
+    Otherwise, defaults to OpenAI's text-embedding-3-small.
+
+    Returns:
+        Default model ID.
+    """
+    if os.environ.get(ENV_BASE_URL):
+        return DEFAULT_LOCAL_MODEL
+    return DEFAULT_OPENAI_MODEL
+
+
+# Legacy alias for backwards compatibility
+DEFAULT_MODEL = DEFAULT_OPENAI_MODEL
 
 # Default chunk size for models without specific tuning
 # These are starting points - run `ogrep tune` on your codebase for best results
@@ -175,7 +196,9 @@ def resolve_model(model: str | None = None) -> str:
     Priority:
         1. Explicit model argument
         2. OGREP_MODEL environment variable
-        3. Default model (text-embedding-3-small)
+        3. Smart default based on environment:
+           - If OGREP_BASE_URL is set: minilm (local model)
+           - Otherwise: text-embedding-3-small (OpenAI)
 
     Args:
         model: Model ID, alias, or None to use default/env.
@@ -191,11 +214,11 @@ def resolve_model(model: str | None = None) -> str:
         'text-embedding-3-small'
         >>> resolve_model("text-embedding-3-large")
         'text-embedding-3-large'
-        >>> resolve_model(None)  # Uses env or default
-        'text-embedding-3-small'
+        >>> resolve_model(None)  # Uses env or smart default
+        'text-embedding-3-small'  # or 'minilm' if OGREP_BASE_URL is set
     """
-    # Use explicit argument, env var, or default
-    model_input = model or os.environ.get(ENV_MODEL) or DEFAULT_MODEL
+    # Use explicit argument, env var, or smart default
+    model_input = model or os.environ.get(ENV_MODEL) or _get_default_model()
 
     # Resolve alias if applicable
     resolved = MODEL_ALIASES.get(model_input, model_input)

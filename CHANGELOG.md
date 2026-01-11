@@ -44,6 +44,7 @@ The `--save` flag writes optimal settings to `.env` so you don't have to remembe
 
 ### 🔧 Improvements
 
+- **Smart Model Default**: When `OGREP_BASE_URL` is set (local server), ogrep now defaults to `minilm` automatically—no need for `-m` flag on every command
 - **Model-Specific Defaults**: Each local model now has tuned chunk size defaults based on real-world testing
 - **OGREP_CHUNK_LINES**: New environment variable to persist your tuned chunk size across sessions
 - **New API Function**: `get_optimal_chunk_lines(model)` returns the chunk size (env var > model default)

@@ -248,11 +248,15 @@ ogrep tune . -s 10     # Use 10 test samples
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Required for OpenAI models | - |
-| `OGREP_MODEL` | Default embedding model | `text-embedding-3-small` |
+| `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
 | `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
+
+**Smart Model Default:**
+- If `OGREP_BASE_URL` is set → `minilm` (local model, best accuracy)
+- Otherwise → `text-embedding-3-small` (OpenAI)
 
 ## Embedding Models
 

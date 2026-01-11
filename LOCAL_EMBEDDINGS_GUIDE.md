@@ -411,19 +411,28 @@ Nomic and MiniLM found a related file (_common.py has add_scope_args() helper) b
 
 ### Configuration
 
-Create a `.env` file in your project root:
+**Smart Default:** When `OGREP_BASE_URL` is set, ogrep automatically defaults to `minilm` (the best local model). You don't need to specify `-m` every time!
+
+```bash
+# Just set the base URL - ogrep will use minilm automatically
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index .   # Uses minilm by default
+ogrep query "search"  # Uses minilm by default
+```
+
+Or create a `.env` file in your project root:
 
 ```bash
 # .env
 OGREP_BASE_URL=http://localhost:1234/v1
-OGREP_MODEL=nomic-embed-text-v1.5
+# OGREP_MODEL=nomic  # Optional: override the default (minilm)
 ```
 
-Or set environment variables:
+To use a different local model, set `OGREP_MODEL`:
 
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
-export OGREP_MODEL=nomic
+export OGREP_MODEL=nomic  # Use nomic instead of minilm
 ```
 
 ### Quick Start Commands
