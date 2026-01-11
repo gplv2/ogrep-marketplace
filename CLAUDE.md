@@ -507,7 +507,7 @@ Update ALL these files when releasing a new version:
 | `pyproject.toml` | `version = "X.Y.Z"` |
 | `ogrep/__init__.py` | `__version__ = "X.Y.Z"` |
 | `ogrep/cli.py` | `__version__ = "X.Y.Z"` |
-| `.claude-plugin/marketplace.json` | `metadata.version` AND `plugins[].version` |
+| `.claude-plugin/marketplace.json` | `"version": "X.Y.Z"` (top-level only) |
 | `plugins/ogrep/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
 | `tests/test_cli.py` | Version assertion (search for old version) |
 | `LOCAL_EMBEDDINGS_GUIDE.md` | Environment section `**ogrep:**` |
