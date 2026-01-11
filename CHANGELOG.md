@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ New Features
+
+#### Hybrid Search (Phase 2)
+
+Combines semantic embeddings with FTS5 keyword matching for superior search results:
+
+```bash
+ogrep query "authenticate user" --mode hybrid --json
+```
+
+- **Three search modes**: `semantic`, `fulltext`, `hybrid` (default)
+- **FTS5 integration**: SQLite full-text search with BM25 scoring
+- **Configurable weighting**: `OGREP_HYBRID_ALPHA` controls semantic vs keyword balance
+- **Graceful fallback**: Falls back to semantic if FTS5 unavailable
+- **New env vars**: `OGREP_SEARCH_MODE`, `OGREP_HYBRID_ALPHA`
+
+#### Chunk Navigation (Phase 2)
+
+New `ogrep chunk` command for expanding context around search results:
+
+```bash
+ogrep chunk "src/auth.py:2"              # Get chunk by reference
+ogrep chunk "src/auth.py:2" --before 1   # + 1 chunk before
+ogrep chunk "src/auth.py:2" --after 1    # + 1 chunk after
+ogrep chunk "src/auth.py:2" --context 1  # + 1 before AND after
+```
+
+- **chunk_ref in results**: Query output now includes `chunk_ref` (e.g., `src/auth.py:2`)
+- **chunk_id exposed**: Internal chunk ID for programmatic access
+- **Context flags**: `-B`, `-A`, `-C` for before/after/context chunks
+- **JSON output**: Structured output with requested chunk and neighbors
+
+#### Confidence Scoring (Phase 3)
+
+Human-readable confidence levels help Claude decide how much to trust results:
+
+| Confidence | Score Range | Guidance |
+|------------|-------------|----------|
+| `high` | 0.85+ | Trust and use directly |
+| `medium` | 0.70-0.84 | Use but verify with context |
+| `low` | 0.50-0.69 | Consider alternative queries |
+| `very_low` | <0.50 | Likely not relevant |
+
+- **confidence field**: Added to each result in JSON output
+- **confidence_summary**: Distribution in stats (`{"high": 3, "medium": 5, ...}`)
+- **Human-readable**: Shows in text output as `score=0.85 (high)`
+- **Configurable thresholds**: `OGREP_CONFIDENCE_HIGH`, `OGREP_CONFIDENCE_MEDIUM`, `OGREP_CONFIDENCE_LOW`
+
+### 🔧 Improvements
+
+#### Enhanced JSON Output
+
+Query JSON output now includes:
+- `chunk_ref`: Human-readable reference (e.g., `src/auth.py:2`)
+- `chunk_id`: Internal database ID
+- `confidence`: Human-readable confidence level
+- `confidence_summary`: Distribution in stats
+- `search_mode`: Active search mode
+- `fts_available`: Whether FTS5 was available
+
+#### Database Schema
+
+- **FTS5 virtual table**: `chunks_fts` for full-text search
+- **Sync triggers**: Automatic FTS index maintenance on insert/update/delete
+- **`rebuild_fts5()` function**: Rebuild FTS index from existing chunks
+- **`has_fts5()` function**: Check FTS5 availability
+
+### 📦 New Files
+
+- `ogrep/commands/chunk.py` - Chunk navigation command
+- `plugins/ogrep/commands/chunk.md` - Chunk command plugin
+- `tests/test_chunk_command.py` - Chunk command tests (12 tests)
+- `tests/test_hybrid_search.py` - Hybrid search tests (12 tests)
+
 ## [0.4.5] - 2026-01-11
 
 ### ✨ New Features

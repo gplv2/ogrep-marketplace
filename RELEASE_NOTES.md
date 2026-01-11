@@ -1,77 +1,112 @@
-# ogrep v0.4.5 Release Notes
+# ogrep v0.5.0 Release Notes
 
 ## What's New
 
-### Preview Before You Index
+### Hybrid Search (Phase 2)
 
-Ever wondered what files ogrep will actually index? Now you can see exactly what's happening before committing:
-
-```bash
-ogrep index . --list
-```
-
-You'll see files grouped by extension, sorted by size, with binary files clearly marked:
-
-```
-── .py (34 files, 179.6KB) ──
-      101B  ogrep/__main__.py
-    17.0KB  ogrep/commands/benchmark.py
-
-── (no extension) (3 files, 45.2KB) ──
-  [BINARY: application/x-sqlite3]   12.0KB  data
-      25.2KB  Makefile
-
-──────────────────────────────────────────────────
-Would index: 35 files, 180.4KB
-Excluded by detection: 1 files, 12.0KB
-```
-
-Plus helpful extras:
-- **Top 10 directories** by file count - see where your code lives
-- **Largest indexable files** - spot potential problems
-- **Review suggestions** - flags logs, dumps, and other files that might distort search results
-
-### Smarter Binary Detection
-
-ogrep now uses the system `file` command for accurate MIME-type detection. This catches:
-
-- SQLite databases without `.sqlite` extension
-- Binary files masquerading as text
-- Data files that slip through extension filtering
-
-Works automatically. Use `--no-detect` if you need faster scans without MIME checking.
-
-### Persistent Exclusions with .ogrepignore
-
-Tired of passing `-e` flags every time? Create a `.ogrepignore` file in your repo:
+ogrep now combines semantic search with keyword matching for the best of both worlds:
 
 ```bash
-# .ogrepignore
-*.sql
-migrations/*
-legacy/*
-*.generated.ts
+ogrep query "authenticate user" --mode hybrid --json
 ```
 
-Patterns use glob syntax like `.gitignore`. Loaded automatically on every index operation.
+| Mode | Best For | Example |
+|------|----------|---------|
+| `semantic` | Conceptual questions | "where is auth handled" |
+| `fulltext` | Exact identifiers | "def validate_token" |
+| `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
 
-### Expanded Default Exclusions
+Set default via environment:
+```bash
+export OGREP_SEARCH_MODE=hybrid  # semantic, fulltext, or hybrid
+export OGREP_HYBRID_ALPHA=0.7    # 70% semantic, 30% keyword weight
+```
 
-More file types are excluded by default to keep your index focused on actual source code:
+### Chunk Navigation (Phase 2)
 
-| Category | New Patterns |
-|----------|--------------|
-| Temp files | `*.tmp`, `*.temp` |
-| Backups | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*.swp`, `*~` |
-| Data files | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat`, `*.xml` |
-| Database | `*.dump` |
+Found something interesting? Expand context without reading entire files:
 
-### Cleaner File Handling
+```bash
+# Get a chunk by reference (from query results)
+ogrep chunk "src/auth.py:2"
 
-- **Empty files** (0 bytes) are now skipped automatically
-- **Duplicate symlinks** pointing to the same file are deduplicated
-- **Broken symlinks** are skipped gracefully
-- **Version control directories** `.svn` and `.hg` (Mercurial) are now skipped alongside `.git`
+# Get surrounding context
+ogrep chunk "src/auth.py:2" --before 1    # + 1 chunk before
+ogrep chunk "src/auth.py:2" --after 1     # + 1 chunk after
+ogrep chunk "src/auth.py:2" --context 1   # + 1 before AND after
+```
+
+Query results now include `chunk_ref` for easy navigation:
+```json
+{
+  "results": [
+    {
+      "chunk_ref": "src/auth.py:2",
+      "chunk_id": 42,
+      ...
+    }
+  ]
+}
+```
+
+### Confidence Scoring (Phase 3)
+
+Each result now tells you how much to trust it:
+
+| Confidence | Score | Guidance |
+|------------|-------|----------|
+| `high` | 0.85+ | Trust and use directly |
+| `medium` | 0.70-0.84 | Use but verify with context |
+| `low` | 0.50-0.69 | Consider alternative queries |
+| `very_low` | <0.50 | Likely not relevant |
+
+JSON output includes confidence for each result:
+```json
+{
+  "results": [
+    {
+      "score": 0.89,
+      "confidence": "high",
+      ...
+    }
+  ],
+  "stats": {
+    "confidence_summary": {"high": 3, "medium": 5, "low": 2, "very_low": 0}
+  }
+}
+```
+
+Human-readable output also shows confidence:
+```
+/path/file.py:10-70  score=0.8523 (high)
+```
+
+Customize thresholds via environment:
+```bash
+export OGREP_CONFIDENCE_HIGH=0.85
+export OGREP_CONFIDENCE_MEDIUM=0.70
+export OGREP_CONFIDENCE_LOW=0.50
+```
+
+### FTS5 Full-Text Search Index
+
+Hybrid and fulltext modes use SQLite FTS5 for fast keyword matching. Enable it by reindexing:
+
+```bash
+ogrep reindex .
+```
+
+If FTS5 isn't available, ogrep gracefully falls back to semantic-only search.
+
+## Environment Variables Summary
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
+| `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight (0.0-1.0) |
+| `OGREP_CONFIDENCE_HIGH` | `0.85` | High confidence threshold |
+| `OGREP_CONFIDENCE_MEDIUM` | `0.70` | Medium confidence threshold |
+| `OGREP_CONFIDENCE_LOW` | `0.50` | Low confidence threshold |
 
 ## Upgrading
 
@@ -79,6 +114,9 @@ More file types are excluded by default to keep your index focused on actual sou
 pip install --upgrade ogrep
 # or
 pip install --force-reinstall git+https://github.com/gplv2/ogrep.git
+
+# Enable hybrid search by rebuilding index
+ogrep reindex .
 ```
 
 ## Documentation
