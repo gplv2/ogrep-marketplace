@@ -135,3 +135,121 @@ def add_scope_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Explicit repository root (default: current directory)",
     )
+
+
+# Extension to programming language mapping
+EXTENSION_LANGUAGES: dict[str, str] = {
+    # Python
+    ".py": "python",
+    ".pyi": "python",
+    ".pyx": "python",
+    # JavaScript/TypeScript
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    # Web
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".sass": "sass",
+    ".less": "less",
+    # Systems languages
+    ".c": "c",
+    ".h": "c",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".cc": "cpp",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
+    ".rs": "rust",
+    ".go": "go",
+    ".zig": "zig",
+    # JVM
+    ".java": "java",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".scala": "scala",
+    ".clj": "clojure",
+    ".cljs": "clojure",
+    ".groovy": "groovy",
+    # .NET
+    ".cs": "csharp",
+    ".fs": "fsharp",
+    ".vb": "vb",
+    # Scripting
+    ".rb": "ruby",
+    ".php": "php",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".lua": "lua",
+    ".r": "r",
+    ".R": "r",
+    # Shell
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+    ".fish": "shell",
+    ".ps1": "powershell",
+    ".psm1": "powershell",
+    # Functional
+    ".hs": "haskell",
+    ".lhs": "haskell",
+    ".ml": "ocaml",
+    ".mli": "ocaml",
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".erl": "erlang",
+    ".hrl": "erlang",
+    # Data/Config (included for completeness, often excluded from indexing)
+    ".sql": "sql",
+    ".graphql": "graphql",
+    ".gql": "graphql",
+    # Swift/Objective-C
+    ".swift": "swift",
+    ".m": "objective-c",
+    ".mm": "objective-cpp",
+    # Other
+    ".vim": "vim",
+    ".el": "elisp",
+    ".rkt": "racket",
+    ".nim": "nim",
+    ".d": "d",
+    ".dart": "dart",
+    ".v": "v",
+    ".asm": "assembly",
+    ".s": "assembly",
+    ".S": "assembly",
+    ".wasm": "wasm",
+    ".wat": "wasm",
+}
+
+
+def detect_language(path: str) -> str | None:
+    """
+    Detect programming language from file extension.
+
+    Args:
+        path: File path (absolute or relative).
+
+    Returns:
+        Language name (lowercase) or None if unknown.
+
+    Example:
+        >>> detect_language("/home/user/project/auth.py")
+        'python'
+        >>> detect_language("main.rs")
+        'rust'
+        >>> detect_language("Makefile")
+        None
+    """
+    ext = Path(path).suffix.lower()
+    # Handle uppercase extensions like .R
+    if ext not in EXTENSION_LANGUAGES:
+        ext = Path(path).suffix  # Try original case
+    return EXTENSION_LANGUAGES.get(ext)

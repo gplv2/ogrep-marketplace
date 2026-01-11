@@ -159,6 +159,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Check for changed files and reindex before querying. "
         "Recommended for AI tools to ensure results reflect current code.",
     )
+    p_query.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON (full text, structured metadata). "
+        "Recommended for AI tools and programmatic use.",
+    )
     _add_model_args(p_query, for_query=True)
     p_query.set_defaults(func=cmd_query)
 

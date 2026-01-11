@@ -19,23 +19,61 @@ Fast semantic search over local repos using `ogrep` (SQLite index + OpenAI embed
 # Index the repo (run once, or after major changes)
 ogrep index .
 
-# Semantic search (ALWAYS use --refresh for accurate results)
-ogrep query "where is authentication handled?" -n 15 --refresh
+# Semantic search (ALWAYS use --refresh and --json for AI tools)
+ogrep query "where is authentication handled?" -n 15 --refresh --json
 ```
 
-## IMPORTANT: Always Use --refresh
+## IMPORTANT: Always Use --refresh and --json
 
-**When querying, ALWAYS use the `--refresh` flag:**
+**When querying from AI tools, ALWAYS use both flags:**
 
 ```bash
-ogrep query "your search" --refresh
+ogrep query "your search" --refresh --json
 ```
 
-The `--refresh` flag checks for changed files and reindexes them before searching.
-Without it, queries may return stale results based on outdated embeddings.
+- `--refresh` checks for changed files and reindexes them before searching.
+  Without it, queries may return stale results based on outdated embeddings.
+- `--json` returns structured output with full chunk text, language detection,
+  and metadata. Much better for AI tools than truncated human-readable output.
 
 This is especially critical in AI tool contexts where files are being edited
 between queries. The `--refresh` operation is fast due to smart embedding reuse.
+
+## JSON Output Format
+
+The `--json` flag returns structured data:
+
+```json
+{
+  "query": "where is authentication handled?",
+  "results": [
+    {
+      "rank": 1,
+      "path": "/home/user/repo/auth.py",
+      "relative_path": "auth.py",
+      "start_line": 10,
+      "end_line": 70,
+      "score": 0.8523,
+      "language": "python",
+      "text": "def authenticate_user(username, password):\n    ..."
+    }
+  ],
+  "stats": {
+    "total_results": 15,
+    "total_chunks": 1234,
+    "search_time_ms": 45,
+    "index_model": "nomic",
+    "index_dimensions": 768,
+    "refreshed_files": 0
+  }
+}
+```
+
+**Key fields:**
+- `relative_path`: Easier to read than absolute paths
+- `language`: Programming language detected from extension
+- `text`: **Full chunk content** (not truncated like human output)
+- `stats`: Metadata about the search and index
 
 ## Smart Defaults
 

@@ -6,17 +6,22 @@ the most relevant code chunks ranked by cosine similarity.
 
 Supports --refresh flag to automatically reindex changed files before
 querying, ensuring search results reflect the current codebase state.
+
+Supports --json flag for structured output suitable for AI tools and
+programmatic use, including full chunk text and metadata.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from ..search import query as query_db
-from ._common import require_embedding_config, resolve_db_path
+from ._common import detect_language, require_embedding_config, resolve_db_path
 
 
 def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
@@ -66,6 +71,7 @@ def cmd_query(args: argparse.Namespace) -> int:
             - query: Natural language search query
             - top: Number of results to return
             - refresh: Whether to check for and reindex changed files
+            - json: Whether to output results as JSON
             - db, profile, global_cache, repo_root: Scope options
             - model: OpenAI embedding model (must match indexed model)
             - dimensions: Embedding dimensions (must match indexed dimensions)
@@ -78,6 +84,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         (mtime/size) and runs an incremental reindex before querying.
         This ensures search results reflect the current codebase state.
 
+        When --json is used, output is structured JSON with full chunk text,
+        language detection, and metadata. Recommended for AI tools.
+
         IMPORTANT: Without --refresh, queries may return stale results if
         files have been modified since the last index. AI tools and skills
         should always use --refresh to ensure accurate results.
@@ -87,11 +96,18 @@ def cmd_query(args: argparse.Namespace) -> int:
 
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
+    use_json = getattr(args, "json", False)
 
     if not db.exists():
-        print(f"Error: Database not found at {db}", file=sys.stderr)
-        print("Run 'ogrep index .' first to create the index.", file=sys.stderr)
+        if use_json:
+            print(json.dumps({"error": f"Database not found at {db}"}))
+        else:
+            print(f"Error: Database not found at {db}", file=sys.stderr)
+            print("Run 'ogrep index .' first to create the index.", file=sys.stderr)
         return 1
+
+    # Track refresh stats for JSON output
+    refreshed_files = 0
 
     # Handle --refresh: check for stale files and reindex if needed
     if getattr(args, "refresh", False):
@@ -100,20 +116,25 @@ def cmd_query(args: argparse.Namespace) -> int:
             # Import here to avoid circular imports
             from ..indexer import index_path
 
-            print(f"Refreshing index ({len(stale_files)} changed files)...", file=sys.stderr)
+            if not use_json:
+                print(f"Refreshing index ({len(stale_files)} changed files)...", file=sys.stderr)
             stats = index_path(
                 root=repo_root,
                 db_path=db,
                 model=args.model,
                 dimensions=args.dimensions,
             )
-            if stats.files_indexed > 0 or stats.chunks_reused > 0:
+            refreshed_files = stats.files_indexed
+            if not use_json and (stats.files_indexed > 0 or stats.chunks_reused > 0):
                 print(
                     f"  Updated: {stats.files_indexed} files, "
                     f"{stats.chunks_embedded} new chunks "
                     f"({stats.chunks_reused} reused)",
                     file=sys.stderr,
                 )
+
+    # Time the search
+    start_time = time.perf_counter()
 
     hits = query_db(
         db_path=db,
@@ -123,9 +144,58 @@ def cmd_query(args: argparse.Namespace) -> int:
         dimensions=args.dimensions,
     )
 
-    for h in hits:
-        print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f}")
-        snippet = h.text.strip().replace("\n", "\\n")
-        print(f"  {snippet[:240]}")
+    search_time_ms = int((time.perf_counter() - start_time) * 1000)
+
+    # Get index metadata for stats
+    con = sqlite3.connect(str(db))
+    try:
+        index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
+        total_chunks = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+    finally:
+        con.close()
+
+    index_model = index_info[0] if index_info else None
+    index_dim = index_info[1] if index_info else None
+
+    if use_json:
+        # Build JSON output
+        results = []
+        for rank, h in enumerate(hits, 1):
+            # Calculate relative path from repo root
+            try:
+                rel_path = str(Path(h.path).relative_to(repo_root))
+            except ValueError:
+                rel_path = h.path  # Fallback to absolute if not relative to root
+
+            results.append({
+                "rank": rank,
+                "path": h.path,
+                "relative_path": rel_path,
+                "start_line": h.start_line,
+                "end_line": h.end_line,
+                "score": round(h.score, 4),
+                "language": detect_language(h.path),
+                "text": h.text,
+            })
+
+        output = {
+            "query": args.query,
+            "results": results,
+            "stats": {
+                "total_results": len(hits),
+                "total_chunks": total_chunks,
+                "search_time_ms": search_time_ms,
+                "index_model": index_model,
+                "index_dimensions": index_dim,
+                "refreshed_files": refreshed_files,
+            },
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable output (truncated snippets)
+        for h in hits:
+            print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f}")
+            snippet = h.text.strip().replace("\n", "\\n")
+            print(f"  {snippet[:240]}")
 
     return 0

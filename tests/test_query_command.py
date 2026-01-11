@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import time
 from pathlib import Path
 
 import pytest
 
+from ogrep.commands._common import detect_language
 from ogrep.commands.query import _check_stale_files, cmd_query
 from ogrep.db import connect
 from ogrep.indexer import index_path
@@ -164,6 +166,7 @@ def execute_query(sql: str):
             query="test",
             top=10,
             refresh=False,
+            json=False,
             db=None,
             profile=None,
             global_cache=False,
@@ -187,6 +190,7 @@ def execute_query(sql: str):
             query="user authentication",
             top=5,
             refresh=False,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -210,6 +214,7 @@ def execute_query(sql: str):
             query="function",
             top=1,
             refresh=False,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -235,6 +240,7 @@ def execute_query(sql: str):
             query="database connection",
             top=5,
             refresh=False,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -261,6 +267,7 @@ def execute_query(sql: str):
             query="authentication",
             top=5,
             refresh=True,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -295,6 +302,7 @@ def login(user: str, pwd: str) -> bool:
             query="login",
             top=5,
             refresh=True,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -324,6 +332,7 @@ class TestCmdQueryEdgeCases:
             query="anything",
             top=10,
             refresh=False,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -348,6 +357,7 @@ class TestCmdQueryEdgeCases:
             query="def __init__(self):",
             top=10,
             refresh=False,
+            json=False,
             db=db_path,
             profile=None,
             global_cache=False,
@@ -359,3 +369,334 @@ class TestCmdQueryEdgeCases:
         # Should not raise
         result = cmd_query(args)
         assert result == 0
+
+
+class TestDetectLanguage:
+    """Tests for detect_language utility function."""
+
+    def test_python_extensions(self) -> None:
+        """Test Python file extension detection."""
+        assert detect_language("/path/to/file.py") == "python"
+        assert detect_language("test.pyi") == "python"
+        assert detect_language("cython.pyx") == "python"
+
+    def test_javascript_typescript(self) -> None:
+        """Test JS/TS file extension detection."""
+        assert detect_language("app.js") == "javascript"
+        assert detect_language("component.jsx") == "javascript"
+        assert detect_language("service.ts") == "typescript"
+        assert detect_language("component.tsx") == "typescript"
+
+    def test_systems_languages(self) -> None:
+        """Test systems language detection."""
+        assert detect_language("main.c") == "c"
+        assert detect_language("header.h") == "c"
+        assert detect_language("class.cpp") == "cpp"
+        assert detect_language("lib.rs") == "rust"
+        assert detect_language("server.go") == "go"
+
+    def test_unknown_extension(self) -> None:
+        """Test unknown file extension returns None."""
+        assert detect_language("Makefile") is None
+        assert detect_language("README") is None
+        assert detect_language(".gitignore") is None
+
+    def test_case_sensitivity(self) -> None:
+        """Test case handling for extensions."""
+        # .R is uppercase for R language
+        assert detect_language("analysis.R") == "r"
+        assert detect_language("script.r") == "r"
+
+
+class TestCmdQueryJson:
+    """Tests for cmd_query with --json flag."""
+
+    @pytest.fixture
+    def indexed_repo(self, temp_dir: Path) -> tuple[Path, Path]:
+        """Create a temporary repo with indexed files."""
+        src_dir = temp_dir / "src"
+        src_dir.mkdir()
+        (src_dir / "auth.py").write_text(
+            '''"""Authentication module."""
+
+def authenticate_user(username: str, password: str) -> bool:
+    """Authenticate a user with username and password."""
+    return check_credentials(username, password)
+
+def check_credentials(user: str, pwd: str) -> bool:
+    """Verify credentials against database."""
+    return True
+'''
+        )
+        (src_dir / "server.ts").write_text(
+            '''/**
+ * Server module for handling HTTP requests.
+ */
+export function startServer(port: number): void {
+    console.log(`Starting server on port ${port}`);
+}
+
+export function handleRequest(req: Request): Response {
+    return new Response("OK");
+}
+'''
+        )
+
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        index_path(root=temp_dir, db_path=db_path)
+
+        return temp_dir, db_path
+
+    def test_json_output_structure(self, indexed_repo, capsys) -> None:
+        """Test that JSON output has correct structure."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="user authentication",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Check top-level structure
+        assert "query" in output
+        assert "results" in output
+        assert "stats" in output
+        assert output["query"] == "user authentication"
+
+    def test_json_result_fields(self, indexed_repo, capsys) -> None:
+        """Test that each result has all required fields."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="authenticate",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        assert len(output["results"]) > 0
+        first_result = output["results"][0]
+
+        # Check all required fields
+        assert "rank" in first_result
+        assert "path" in first_result
+        assert "relative_path" in first_result
+        assert "start_line" in first_result
+        assert "end_line" in first_result
+        assert "score" in first_result
+        assert "language" in first_result
+        assert "text" in first_result
+
+        # Check types
+        assert isinstance(first_result["rank"], int)
+        assert isinstance(first_result["start_line"], int)
+        assert isinstance(first_result["end_line"], int)
+        assert isinstance(first_result["score"], float)
+        assert isinstance(first_result["text"], str)
+
+    def test_json_language_detection(self, indexed_repo, capsys) -> None:
+        """Test that language is correctly detected from file extension."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="server http request",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Find result for .ts file
+        ts_results = [r for r in output["results"] if r["path"].endswith(".ts")]
+        if ts_results:
+            assert ts_results[0]["language"] == "typescript"
+
+        # Find result for .py file
+        py_results = [r for r in output["results"] if r["path"].endswith(".py")]
+        if py_results:
+            assert py_results[0]["language"] == "python"
+
+    def test_json_relative_path(self, indexed_repo, capsys) -> None:
+        """Test that relative_path is correctly calculated."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="authenticate",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        for r in output["results"]:
+            # relative_path should not start with /
+            assert not r["relative_path"].startswith("/")
+            # absolute path should end with relative path
+            assert r["path"].endswith(r["relative_path"])
+
+    def test_json_stats_fields(self, indexed_repo, capsys) -> None:
+        """Test that stats contain expected fields."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="function",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        stats = output["stats"]
+        assert "total_results" in stats
+        assert "total_chunks" in stats
+        assert "search_time_ms" in stats
+        assert "index_model" in stats
+        assert "index_dimensions" in stats
+        assert "refreshed_files" in stats
+
+        # Check types
+        assert isinstance(stats["total_results"], int)
+        assert isinstance(stats["total_chunks"], int)
+        assert isinstance(stats["search_time_ms"], int)
+        assert stats["search_time_ms"] >= 0
+
+    def test_json_full_text_not_truncated(self, indexed_repo, capsys) -> None:
+        """Test that JSON output includes full text, not truncated."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="authenticate",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # JSON output should have full text with actual newlines
+        for r in output["results"]:
+            # Text should contain newlines (not escaped \\n)
+            if len(r["text"]) > 100:
+                assert "\n" in r["text"]
+
+    def test_json_missing_database_error(self, temp_dir: Path, capsys) -> None:
+        """Test JSON error output when database is missing."""
+        args = argparse.Namespace(
+            query="test",
+            top=10,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert "error" in output
+        assert "Database not found" in output["error"]
+
+    def test_json_rank_ordering(self, indexed_repo, capsys) -> None:
+        """Test that results are ranked correctly starting from 1."""
+        repo_dir, db_path = indexed_repo
+
+        args = argparse.Namespace(
+            query="function",
+            top=5,
+            refresh=False,
+            json=True,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            repo_root=repo_dir,
+            model="text-embedding-3-small",
+            dimensions=None,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Check ranks are sequential starting from 1
+        for i, r in enumerate(output["results"]):
+            assert r["rank"] == i + 1
+
+        # Check scores are in descending order
+        scores = [r["score"] for r in output["results"]]
+        assert scores == sorted(scores, reverse=True)
