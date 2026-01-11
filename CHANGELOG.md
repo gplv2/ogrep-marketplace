@@ -93,6 +93,16 @@ New patterns added to `DEFAULT_EXCLUDES`:
 
 File type detection now processes files in batches of 500 to handle large repositories (30K+ files) without hitting command-line length limits or timeouts.
 
+#### Smart File Skipping
+
+- **Empty files** (0 bytes) are now skipped automatically
+- **Duplicate symlinks** pointing to the same real path are deduplicated
+- **Broken symlinks** are skipped gracefully (no errors)
+
+#### Additional Skipped Directories
+
+Added `.svn` and `.hg` (Mercurial) to `DEFAULT_SKIP_DIRS` alongside `.git`.
+
 ### 📚 Documentation
 
 - Updated CLAUDE.md with new features and default excludes
