@@ -272,10 +272,14 @@ ogrep tune . -s 10     # Use 10 test samples
 
 ### Local Models (via LM Studio)
 
-| Model | Alias | Dimensions | Use Case |
-|-------|-------|------------|----------|
-| bge-base-en-v1.5 | `bge` | 768 | Local/offline, privacy |
-| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | Local/offline, privacy |
+| Model | Alias | Dimensions | Optimal Chunk | Accuracy | Use Case |
+|-------|-------|------------|---------------|----------|----------|
+| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | **96%** | Best overall (default) |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Large context queries |
+| bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
+| bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
+
+**Smart Default:** When `OGREP_BASE_URL` is set, ogrep auto-selects `minilm` (best accuracy).
 
 **Important:** Query model must match index model.
 
@@ -394,23 +398,28 @@ OGREP_BASE_URL=http://localhost:1234/v1
 OGREP_MODEL=nomic-embed-text-v1.5
 ```
 
-### Chunk Size Tuning
+### Chunk Size and Overlap Tuning
 
-**Critical:** Different models require different chunk sizes for optimal results.
+**Critical:** Different models require different chunk sizes and overlap for optimal results.
 
-| Model | Optimal Chunk Size | Notes |
-|-------|-------------------|-------|
-| nomic-embed-text-v1.5 | 90 lines | Better with larger context |
-| bge-base-en-v1.5 | 30 lines | Fails completely at 90+ lines |
+| Model | Optimal Chunk | Optimal Overlap | Notes |
+|-------|---------------|-----------------|-------|
+| minilm | 30 lines | 5 lines | Best accuracy (96%), small chunks |
+| nomic | 90 lines | 15 lines | Better with larger context |
+| bge | 30 lines | 10 lines | Fails at 90+ lines |
+| bge-m3 | 60 lines | 10 lines | Multi-lingual support |
 
-Always tune when using a new model:
+**Benchmark to find optimal settings for your codebase:**
 
 ```bash
-# Find optimal chunk size for your model and codebase
-ogrep tune . -m nomic -s 10
+# Comprehensive benchmark of all available models
+ogrep benchmark . --samples 10
 
-# Apply the recommended setting
-ogrep reindex . -m nomic --chunk-lines 90
+# Save optimal settings to .env
+ogrep benchmark . --samples 10 --save
+
+# Or use tune for a specific model
+ogrep tune . -m nomic -s 10 --save --apply
 ```
 
 ### Dimension Mismatch
@@ -553,6 +562,9 @@ Prevents cross-repo pollution:
 | `tests/test_db.py` | Database schema and connections |
 | `tests/test_roundtrip.py` | End-to-end index/query flow |
 | `tests/test_embedding_reuse.py` | Smart embedding reuse (13 tests) |
+| `tests/test_benchmark.py` | Benchmark command (21 tests) |
+| `tests/test_models.py` | Model resolution and configuration |
+| `tests/test_search.py` | Query execution and scoring |
 
 ### Key Embedding Reuse Tests
 

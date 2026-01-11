@@ -150,19 +150,20 @@ See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup an
 
 ### Local Models (via LM Studio)
 
-| Model | Alias | Dimensions | Optimal Chunks | Notes |
-|-------|-------|------------|----------------|-------|
-| nomic-embed-text-v1.5 | `nomic`, `local` | 768 | 90 lines | Best accuracy, larger context |
-| bge-base-en-v1.5 | `bge` | 768 | 30 lines | Smaller chunks work better |
-| bge-m3 | `bge-m3` | 1024 | 60 lines | Multi-lingual, 100+ languages |
-| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | Smallest, fastest (~25MB) |
+| Model | Alias | Dimensions | Optimal Chunks | Accuracy | Notes |
+|-------|-------|------------|----------------|----------|-------|
+| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | **96%** | Best accuracy, smallest (~25MB) |
+| nomic-embed-text-v1.5 | `nomic` | 768 | 90 lines | 72% | Larger context windows |
+| bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
+| bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
 
 ```bash
-# Use model alias
-ogrep index . -m nomic
+# Use model alias (minilm auto-selected when OGREP_BASE_URL is set)
+ogrep index . -m minilm
 
-# Set default via environment
-export OGREP_MODEL=nomic
+# Or set environment for persistent config
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index .   # Auto-uses minilm
 ```
 
 > **Important:** Query model must match index model. Use `ogrep status` to check.
@@ -256,9 +257,10 @@ RESULTS BY MODEL
 Model                   Dims  Chunk/Overlap  Accuracy  Index    Query
 --------------------------------------------------------------------------------
 minilm                   384       30 / 5       0.96    0.89s   0.01s  *
-small                   1536       60 / 10      0.92    2.34s   0.02s
 nomic                    768       90 / 15      0.72    1.87s   0.01s
 bge                      768       30 / 10      0.52    1.65s   0.01s
+large                   3072       30 / 15      0.52    3.12s   0.03s
+small                   1536       45 / 15      0.48    2.34s   0.02s
 --------------------------------------------------------------------------------
 
 RECOMMENDATIONS
@@ -266,6 +268,9 @@ RECOMMENDATIONS
 * BEST OVERALL: minilm
   Accuracy: 96% | Speed: 0.89s | Cost: FREE
   Optimal: 30-line chunks, 5-line overlap
+
+* BEST CLOUD: large
+  Accuracy: 52% | Speed: 3.12s | Cost: $0.13/M tokens
 ```
 
 ### Benchmark Options
