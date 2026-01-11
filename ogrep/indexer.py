@@ -26,6 +26,8 @@ from .models import resolve_model
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {
     ".git",
+    ".svn",
+    ".hg",  # Mercurial
     ".venv",
     "venv",
     "node_modules",
