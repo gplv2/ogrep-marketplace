@@ -131,6 +131,41 @@ def _get_sqlite_info(con: sqlite3.Connection, db_path: Path) -> dict:
     return info
 
 
+def _get_dedup_stats(con: sqlite3.Connection) -> dict | None:
+    """
+    Get cross-file chunk deduplication statistics.
+
+    Returns:
+        Dictionary with total_chunks, unique_hashes, duplicated, dedup_ratio.
+        None if no chunks exist.
+    """
+    cur = con.cursor()
+
+    # Total chunks
+    cur.execute("SELECT COUNT(*) FROM chunks")
+    total_chunks = cur.fetchone()[0]
+
+    if total_chunks == 0:
+        return None
+
+    # Unique text_sha256 hashes
+    cur.execute("SELECT COUNT(DISTINCT text_sha256) FROM chunks")
+    unique_hashes = cur.fetchone()[0]
+
+    # Duplicates = chunks that share a hash with another chunk
+    duplicated = total_chunks - unique_hashes
+
+    # Ratio: percentage of embedding storage saved
+    dedup_ratio = (duplicated / total_chunks * 100) if total_chunks > 0 else 0.0
+
+    return {
+        "total_chunks": total_chunks,
+        "unique_hashes": unique_hashes,
+        "duplicated": duplicated,
+        "dedup_ratio": dedup_ratio,
+    }
+
+
 def _get_fts5_stats(con: sqlite3.Connection) -> dict | None:
     """Get FTS5 index statistics if available."""
     cur = con.cursor()
@@ -370,6 +405,20 @@ def cmd_health(args: argparse.Namespace) -> int:
         else:
             print("\n── FTS5 Stats ──")
             print("  Not available (run 'ogrep reindex .' to enable)")
+
+        # Dedup stats
+        dedup_stats = _get_dedup_stats(con)
+        if dedup_stats:
+            print("\n── Dedup Stats ──")
+            print(f"  Total chunks: {dedup_stats['total_chunks']:,}")
+            print(f"  Unique hashes: {dedup_stats['unique_hashes']:,}")
+            if dedup_stats["duplicated"] > 0:
+                print(
+                    f"  Deduplicated: {dedup_stats['duplicated']:,} "
+                    f"({dedup_stats['dedup_ratio']:.1f}% embedding savings)"
+                )
+            else:
+                print("  Deduplicated: 0 (0% - no duplicates found)")
 
         # Quick check
         print("\n── Quick Check ──")

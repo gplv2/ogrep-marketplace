@@ -42,6 +42,19 @@ ogrep index .
 - Error if querying/indexing with different model than existing chunks
 - Use `ogrep reset` to start fresh with a new model
 
+#### Dedup Stats in Health Command
+
+The `ogrep health` command now displays cross-file deduplication statistics:
+
+```
+── Dedup Stats ──
+  Total chunks: 217
+  Unique hashes: 215
+  Deduplicated: 2 (0.9% embedding savings)
+```
+
+Shows how many chunks share the same text hash across files, indicating embedding storage savings from deduplication.
+
 #### Per-Model Batch Size Limits
 
 Added `context_tokens` and `max_batch_size` to model definitions to prevent context overflow and optimize throughput:
