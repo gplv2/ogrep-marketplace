@@ -76,6 +76,21 @@ Human-readable confidence levels help Claude decide how much to trust results:
 
 ### 🔧 Improvements
 
+#### Batch Chunking for Local Embedding Servers
+
+Embedding requests to local servers (LM Studio) are now automatically batched to prevent crashes and improve throughput:
+
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index .  # Automatically batches large requests
+```
+
+- **Auto-tuning**: Tests batch sizes 8, 16, 32, 64, 96 and picks the fastest
+- **Crash prevention**: Prevents "Model was unloaded while request was in queue" errors
+- **Session caching**: Optimal batch size is cached per session
+- **Override**: Set `OGREP_BATCH_SIZE` env var to force a specific batch size
+- **Smart threshold**: Only batches when >32 texts (small requests sent at once)
+
 #### Model-Specific Overlap Defaults
 
 Each embedding model now has its own optimal overlap setting based on benchmark results:
@@ -148,6 +163,13 @@ Query JSON output now includes:
 - `tests/test_health_command.py` - Health command tests (7 tests)
 - `tests/test_chunk_command.py` - Chunk command tests (12 tests)
 - `tests/test_hybrid_search.py` - Hybrid search tests (12 tests)
+- `docs/EMBEDDING_PERFORMANCE_TEST_PLAN.md` - Test plan for local embedding performance
+
+### 🐛 Fixes
+
+- **Single file indexing path resolution**: Fixed crash when indexing a single file (e.g., `ogrep index file.py`) where `.ogrep` directory was incorrectly created inside the file path. Now correctly uses the parent directory.
+
+- **Empty input handling**: `embed_texts([])` now returns empty results `([], 0)` instead of asserting, matching expected behavior for edge cases.
 
 ## [0.4.5] - 2026-01-11
 
