@@ -88,6 +88,30 @@ This model's maximum context length is 8192 tokens, however you requested 10118 
 
 **No configuration needed** — token-aware batching is automatic.
 
+#### Friendly Model Mismatch Errors
+
+Model mismatch errors now show helpful guidance instead of Python tracebacks:
+
+```
+Error: Model mismatch: index uses 'text-embedding-3-small' but requested 'nomic-embed-text-v1.5'.
+
+Note: OGREP_BASE_URL is set to 'http://localhost:1234/v1'
+      This defaults to 'nomic-embed-text-v1.5' for local models.
+
+Options:
+
+  1. Use the same model as the existing index:
+     unset OGREP_BASE_URL
+     ogrep index .
+
+  2. Switch to new model (rebuilds entire index):
+     ogrep reindex . --force
+
+  3. Start fresh with new model:
+     ogrep reset -f
+     ogrep index .
+```
+
 ### 🔧 Changed
 
 - Default batch size for OpenAI increased from 16 to 200 (38x faster)

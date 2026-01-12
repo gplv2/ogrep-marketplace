@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from ogrep.commands.query import _check_stale_files
 from ogrep.indexer import index_path, load_ogrepignore
 from ogrep.search import query
@@ -200,3 +202,52 @@ def test_ogrepignore_excludes_files(temp_dir: Path) -> None:
     assert any("keep.py" in p for p in paths)
     assert not any("schema.sql" in p for p in paths)
     assert not any("skip.py" in p for p in paths)
+
+
+def test_cmd_index_model_mismatch_friendly_error(
+    temp_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that model mismatch shows friendly error, not traceback."""
+    import argparse
+
+    from ogrep.commands.index import cmd_index
+
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create a file to index
+    (temp_dir / "test.py").write_text("def hello():\n    return 'world'\n")
+
+    # First, index with small model
+    args = argparse.Namespace(
+        path=str(temp_dir),
+        repo_root=temp_dir,
+        db=db_path,
+        profile=None,
+        global_cache=False,
+        model="text-embedding-3-small",
+        dimensions=None,
+        chunk_lines=50,
+        overlap=10,
+        max_bytes=1_000_000,
+        exclude=[],
+        include=[],
+        list=False,
+        no_detect=True,
+    )
+    result = cmd_index(args)
+    assert result == 0
+
+    # Now try to index with a different model - should get friendly error
+    args.model = "text-embedding-3-large"
+    result = cmd_index(args)
+
+    assert result == 1  # Should return error code
+
+    captured = capsys.readouterr()
+    # Should show friendly message, not traceback
+    assert "Model mismatch" in captured.out
+    assert "Options:" in captured.out
+    assert "reindex" in captured.out.lower() or "--force" in captured.out
+    # Should NOT show Python traceback
+    assert "Traceback" not in captured.out
+    assert "Traceback" not in captured.err

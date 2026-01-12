@@ -26,6 +26,34 @@ def _format_size(size: int) -> str:
         return f"{size / (1024 * 1024):.1f}MB"
 
 
+def _print_model_mismatch_help(error_msg: str, requested_model: str | None) -> None:
+    """Print friendly help message for model mismatch errors."""
+    import os
+
+    print(f"\nError: {error_msg}\n")
+
+    # Check if OGREP_BASE_URL is set (local server mode)
+    base_url = os.environ.get("OGREP_BASE_URL")
+    if base_url:
+        print(f"Note: OGREP_BASE_URL is set to '{base_url}'")
+        print("      This defaults to 'nomic-embed-text-v1.5' for local models.\n")
+
+    print("Options:")
+    print()
+    print("  1. Use the same model as the existing index:")
+    if base_url:
+        print("     unset OGREP_BASE_URL")
+    print("     ogrep index .")
+    print()
+    print("  2. Switch to new model (rebuilds entire index):")
+    print("     ogrep reindex . --force")
+    print()
+    print("  3. Start fresh with new model:")
+    print("     ogrep reset -f")
+    print("     ogrep index .")
+    print()
+
+
 # Extensions that suggest non-code content (logs, data, dumps)
 _REVIEW_EXTENSIONS = frozenset(
     {
@@ -407,18 +435,24 @@ def cmd_index(args: argparse.Namespace) -> int:
     chunk_lines = _resolve_chunk_lines(args)
     overlap = _resolve_overlap(args)
 
-    stats = index_path(
-        root=root,
-        db_path=db,
-        model=args.model,
-        dimensions=args.dimensions,
-        chunk_lines=chunk_lines,
-        overlap=overlap,
-        max_bytes=args.max_bytes,
-        exclude=args.exclude,
-        include=args.include,
-        detect=detect,
-    )
+    try:
+        stats = index_path(
+            root=root,
+            db_path=db,
+            model=args.model,
+            dimensions=args.dimensions,
+            chunk_lines=chunk_lines,
+            overlap=overlap,
+            max_bytes=args.max_bytes,
+            exclude=args.exclude,
+            include=args.include,
+            detect=detect,
+        )
+    except ValueError as e:
+        if "Model mismatch" in str(e):
+            _print_model_mismatch_help(str(e), args.model)
+            return 1
+        raise
 
     _print_stats(db, stats)
     return 0
