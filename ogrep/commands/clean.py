@@ -40,23 +40,30 @@ def cmd_clean(args: argparse.Namespace) -> int:
     con = sqlite3.connect(str(db))
     cur = con.cursor()
 
-    # Find files that no longer exist
-    cur.execute("SELECT id, path FROM files")
-    rows = cur.fetchall()
+    try:
+        # Find files that no longer exist
+        cur.execute("SELECT id, path FROM files")
+        rows = cur.fetchall()
 
-    removed = 0
-    for file_id, path in rows:
-        if not Path(path).exists():
-            cur.execute("DELETE FROM files WHERE id = ?", (file_id,))
-            removed += 1
+        removed = 0
+        for file_id, path in rows:
+            if not Path(path).exists():
+                cur.execute("DELETE FROM files WHERE id = ?", (file_id,))
+                removed += 1
 
-    con.commit()
-    print(f"Removed {removed} stale file entries")
+        con.commit()
+        print(f"Removed {removed} stale file entries")
 
-    if args.vacuum:
-        print("Running VACUUM...")
-        con.execute("VACUUM")
-        print("Database compacted")
+        if args.vacuum:
+            print("Running VACUUM...")
+            con.execute("VACUUM")
+            print("Database compacted")
+
+    except KeyboardInterrupt:
+        con.close()
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Clean cancelled. Partial changes may have been saved.")
+        return 130  # Standard SIGINT exit code (128 + 2)
 
     con.close()
     return 0

@@ -194,24 +194,29 @@ def cmd_tune(args: argparse.Namespace) -> int:
     results: list[tuple[int, float, int]] = []
 
     # Use temp directory for test indexes
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for chunk_size in chunk_sizes:
-            db_path = Path(tmpdir) / f"test_{chunk_size}.sqlite"
-            print(f"Testing chunk size {chunk_size}...", end=" ", flush=True)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for chunk_size in chunk_sizes:
+                db_path = Path(tmpdir) / f"test_{chunk_size}.sqlite"
+                print(f"Testing chunk size {chunk_size}...", end=" ", flush=True)
 
-            try:
-                accuracy, hits = _test_chunk_size(
-                    root=root,
-                    db_path=db_path,
-                    chunk_size=chunk_size,
-                    samples=samples,
-                    model=args.model,
-                )
-                results.append((chunk_size, accuracy, hits))
-                print(f"accuracy={accuracy:.2f} ({hits}/{len(samples)} hits)")
-            except Exception as e:
-                print(f"failed: {e}")
-                results.append((chunk_size, 0.0, 0))
+                try:
+                    accuracy, hits = _test_chunk_size(
+                        root=root,
+                        db_path=db_path,
+                        chunk_size=chunk_size,
+                        samples=samples,
+                        model=args.model,
+                    )
+                    results.append((chunk_size, accuracy, hits))
+                    print(f"accuracy={accuracy:.2f} ({hits}/{len(samples)} hits)")
+                except Exception as e:
+                    print(f"failed: {e}")
+                    results.append((chunk_size, 0.0, 0))
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Tuning cancelled. No results saved.")
+        return 130  # Standard SIGINT exit code (128 + 2)
 
     print()
     print("=" * 50)
@@ -261,15 +266,20 @@ def cmd_tune(args: argparse.Namespace) -> int:
         if db.exists():
             db.unlink()
 
-        stats = index_path(
-            root=root,
-            db_path=db,
-            model=args.model,
-            chunk_lines=best_chunk,
-            overlap=max(5, best_chunk // 6),
-        )
-        print(f"Indexed into {db}")
-        print(f"  Files: {stats.files_indexed} indexed")
-        print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
+        try:
+            stats = index_path(
+                root=root,
+                db_path=db,
+                model=args.model,
+                chunk_lines=best_chunk,
+                overlap=max(5, best_chunk // 6),
+            )
+            print(f"Indexed into {db}")
+            print(f"  Files: {stats.files_indexed} indexed")
+            print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
+        except KeyboardInterrupt:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            print("Reindex cancelled. Partial progress may have been saved.")
+            return 130  # Standard SIGINT exit code (128 + 2)
 
     return 0

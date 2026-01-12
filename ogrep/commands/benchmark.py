@@ -401,63 +401,68 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     # Run benchmarks
     reports: list[ModelReport] = []
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for model_id in sorted(available.keys()):
-            alias = _get_model_alias(model_id)
-            print(f"Testing {alias}...")
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for model_id in sorted(available.keys()):
+                alias = _get_model_alias(model_id)
+                print(f"Testing {alias}...")
 
-            model_results: list[BenchmarkResult] = []
+                model_results: list[BenchmarkResult] = []
 
-            for chunk_size in chunk_sizes:
-                for overlap in overlaps:
-                    if overlap >= chunk_size:
-                        continue  # Skip invalid overlap
+                for chunk_size in chunk_sizes:
+                    for overlap in overlaps:
+                        if overlap >= chunk_size:
+                            continue  # Skip invalid overlap
 
-                    db_path = Path(tmpdir) / f"{model_id}_{chunk_size}_{overlap}.sqlite"
+                        db_path = Path(tmpdir) / f"{model_id}_{chunk_size}_{overlap}.sqlite"
 
-                    try:
-                        result = _test_configuration(
-                            root=root,
-                            db_path=db_path,
-                            model=model_id,
-                            chunk_size=chunk_size,
-                            overlap=overlap,
-                            samples=samples,
-                        )
-                        model_results.append(result)
-
-                        if args.verbose:
-                            print(
-                                f"  chunk={chunk_size} overlap={overlap}: "
-                                f"accuracy={result.accuracy:.2f} ({result.hits}/{result.total_samples})"
+                        try:
+                            result = _test_configuration(
+                                root=root,
+                                db_path=db_path,
+                                model=model_id,
+                                chunk_size=chunk_size,
+                                overlap=overlap,
+                                samples=samples,
                             )
-                    except Exception as e:
-                        if args.verbose:
-                            print(f"  chunk={chunk_size} overlap={overlap}: failed - {e}")
+                            model_results.append(result)
 
-            if model_results:
-                best = max(model_results, key=lambda r: r.accuracy)
-                avg_index = sum(r.index_time_s for r in model_results) / len(model_results)
-                avg_query = sum(r.query_time_s for r in model_results) / len(model_results)
-                avg_embed = sum(r.embed_time_s for r in model_results) / len(model_results)
+                            if args.verbose:
+                                print(
+                                    f"  chunk={chunk_size} overlap={overlap}: "
+                                    f"accuracy={result.accuracy:.2f} ({result.hits}/{result.total_samples})"
+                                )
+                        except Exception as e:
+                            if args.verbose:
+                                print(f"  chunk={chunk_size} overlap={overlap}: failed - {e}")
 
-                report = ModelReport(
-                    model=model_id,
-                    model_alias=alias,
-                    dimensions=get_model(model_id).dimensions,
-                    best_chunk_size=best.chunk_size,
-                    best_overlap=best.overlap,
-                    best_accuracy=best.accuracy,
-                    avg_embed_time=avg_embed,
-                    avg_query_time=avg_query,
-                    avg_index_time=avg_index,
-                    all_results=model_results,
-                )
-                reports.append(report)
+                if model_results:
+                    best = max(model_results, key=lambda r: r.accuracy)
+                    avg_index = sum(r.index_time_s for r in model_results) / len(model_results)
+                    avg_query = sum(r.query_time_s for r in model_results) / len(model_results)
+                    avg_embed = sum(r.embed_time_s for r in model_results) / len(model_results)
 
-                print(
-                    f"  Best: accuracy={best.accuracy:.2f} at chunk={best.chunk_size}/overlap={best.overlap}"
-                )
+                    report = ModelReport(
+                        model=model_id,
+                        model_alias=alias,
+                        dimensions=get_model(model_id).dimensions,
+                        best_chunk_size=best.chunk_size,
+                        best_overlap=best.overlap,
+                        best_accuracy=best.accuracy,
+                        avg_embed_time=avg_embed,
+                        avg_query_time=avg_query,
+                        avg_index_time=avg_index,
+                        all_results=model_results,
+                    )
+                    reports.append(report)
+
+                    print(
+                        f"  Best: accuracy={best.accuracy:.2f} at chunk={best.chunk_size}/overlap={best.overlap}"
+                    )
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Benchmark cancelled. No results saved.")
+        return 130  # Standard SIGINT exit code (128 + 2)
 
     print()
 

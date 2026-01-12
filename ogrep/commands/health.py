@@ -313,140 +313,147 @@ def cmd_health(args: argparse.Namespace) -> int:
     con = sqlite3.connect(str(db_path))
     exit_code = 0
 
-    # Handle repair flags first
-    if args.full:
-        args.vacuum = True
-        args.rebuild_fts = True
-        args.integrity = True
+    try:
+        # Handle repair flags first
+        if args.full:
+            args.vacuum = True
+            args.rebuild_fts = True
+            args.integrity = True
 
-    if args.vacuum:
-        print("\n── Vacuum ──")
-        before, after = _do_vacuum(con, db_path)
-        saved = before - after
-        print(f"  Before: {_format_size(before)}")
-        print(f"  After:  {_format_size(after)}")
-        if saved > 0:
-            print(f"  Reclaimed: {_format_size(saved)}")
+        if args.vacuum:
+            print("\n── Vacuum ──")
+            before, after = _do_vacuum(con, db_path)
+            saved = before - after
+            print(f"  Before: {_format_size(before)}")
+            print(f"  After:  {_format_size(after)}")
+            if saved > 0:
+                print(f"  Reclaimed: {_format_size(saved)}")
+            else:
+                print("  No space reclaimed")
+
+        if args.rebuild_fts:
+            print("\n── Rebuild FTS5 ──")
+            try:
+                count = _do_rebuild_fts(con)
+                print(f"  Indexed {count} chunks")
+            except sqlite3.OperationalError as e:
+                print(f"  Error: {e}")
+                exit_code = 1
+
+        if args.reindex:
+            print("\n── Reindex ──")
+            print("  Use 'ogrep reindex .' to rebuild the full index")
+            print("  (Not run automatically - requires re-embedding)")
+
+        # Run integrity check
+        if args.integrity:
+            print("\n── Full Integrity Check ──")
+            results = _run_integrity_check(con)
+            if results == ["ok"]:
+                print("  Result: OK")
+            else:
+                print("  Issues found:")
+                for r in results[:10]:
+                    print(f"    {r}")
+                if len(results) > 10:
+                    print(f"    ... and {len(results) - 10} more")
+                exit_code = 1
         else:
-            print("  No space reclaimed")
+            # If we did any repair, don't show full diagnostic
+            if not (args.vacuum or args.rebuild_fts):
+                pass  # Show full diagnostic below
 
-    if args.rebuild_fts:
-        print("\n── Rebuild FTS5 ──")
-        try:
-            count = _do_rebuild_fts(con)
-            print(f"  Indexed {count} chunks")
-        except sqlite3.OperationalError as e:
-            print(f"  Error: {e}")
-            exit_code = 1
+        # Show full diagnostic if no repair flags (or after repairs)
+        if not (args.vacuum or args.rebuild_fts or args.integrity or args.reindex):
+            # Tables
+            print("\n── Tables ──")
+            table_stats = _get_table_stats(con)
+            for name, rows, size in table_stats:
+                fts_marker = "  (FTS5)" if name == "chunks_fts" else ""
+                print(f"  {name:<12} {rows:>6} rows  {_format_size(size):>10}{fts_marker}")
 
-    if args.reindex:
-        print("\n── Reindex ──")
-        print("  Use 'ogrep reindex .' to rebuild the full index")
-        print("  (Not run automatically - requires re-embedding)")
+            # Indexes
+            print("\n── Indexes ──")
+            indexes = _get_index_info(con)
+            if indexes:
+                for name, definition in indexes:
+                    print(f"  {name:<25} {definition}")
+            else:
+                print("  No user indexes")
 
-    # Run integrity check
-    if args.integrity:
-        print("\n── Full Integrity Check ──")
-        results = _run_integrity_check(con)
-        if results == ["ok"]:
-            print("  Result: OK")
-        else:
-            print("  Issues found:")
-            for r in results[:10]:
-                print(f"    {r}")
-            if len(results) > 10:
-                print(f"    ... and {len(results) - 10} more")
-            exit_code = 1
-    else:
-        # If we did any repair, don't show full diagnostic
-        if not (args.vacuum or args.rebuild_fts):
-            pass  # Show full diagnostic below
-
-    # Show full diagnostic if no repair flags (or after repairs)
-    if not (args.vacuum or args.rebuild_fts or args.integrity or args.reindex):
-        # Tables
-        print("\n── Tables ──")
-        table_stats = _get_table_stats(con)
-        for name, rows, size in table_stats:
-            fts_marker = "  (FTS5)" if name == "chunks_fts" else ""
-            print(f"  {name:<12} {rows:>6} rows  {_format_size(size):>10}{fts_marker}")
-
-        # Indexes
-        print("\n── Indexes ──")
-        indexes = _get_index_info(con)
-        if indexes:
-            for name, definition in indexes:
-                print(f"  {name:<25} {definition}")
-        else:
-            print("  No user indexes")
-
-        # SQLite info
-        print("\n── SQLite Info ──")
-        info = _get_sqlite_info(con, db_path)
-        print(f"  Version: {info['version']}")
-        print(f"  Journal: {info['journal']}")
-        print(f"  Page size: {info['page_size']}")
-        print(f"  Page count: {info['page_count']}")
-        if info["freelist"] > 0:
-            print(
-                f"  Freelist: {info['freelist']} pages "
-                f"({_format_size(info['reclaimable'])} reclaimable)"
-            )
-        else:
-            print("  Freelist: 0 pages")
-
-        # FTS5 stats
-        fts_stats = _get_fts5_stats(con)
-        if fts_stats:
-            print("\n── FTS5 Stats ──")
-            print(f"  Rows indexed: {fts_stats['rows']:,}")
-            print(f"  Tokens (est): {fts_stats['tokens_estimate']:,}")
-            print(f"  Unique terms (est): {fts_stats['unique_estimate']:,}")
-        else:
-            print("\n── FTS5 Stats ──")
-            print("  Not available (run 'ogrep reindex .' to enable)")
-
-        # Dedup stats
-        dedup_stats = _get_dedup_stats(con)
-        if dedup_stats:
-            print("\n── Dedup Stats ──")
-            print(f"  Total chunks: {dedup_stats['total_chunks']:,}")
-            print(f"  Unique hashes: {dedup_stats['unique_hashes']:,}")
-            if dedup_stats["duplicated"] > 0:
+            # SQLite info
+            print("\n── SQLite Info ──")
+            info = _get_sqlite_info(con, db_path)
+            print(f"  Version: {info['version']}")
+            print(f"  Journal: {info['journal']}")
+            print(f"  Page size: {info['page_size']}")
+            print(f"  Page count: {info['page_count']}")
+            if info["freelist"] > 0:
                 print(
-                    f"  Deduplicated: {dedup_stats['duplicated']:,} "
-                    f"({dedup_stats['dedup_ratio']:.1f}% embedding savings)"
+                    f"  Freelist: {info['freelist']} pages "
+                    f"({_format_size(info['reclaimable'])} reclaimable)"
                 )
             else:
-                print("  Deduplicated: 0 (0% - no duplicates found)")
+                print("  Freelist: 0 pages")
 
-        # Quick check
-        print("\n── Quick Check ──")
-        result = _run_quick_check(con)
-        if result == "ok":
-            print("  Result: OK")
-        else:
-            print(f"  Result: {result}")
-            exit_code = 1
+            # FTS5 stats
+            fts_stats = _get_fts5_stats(con)
+            if fts_stats:
+                print("\n── FTS5 Stats ──")
+                print(f"  Rows indexed: {fts_stats['rows']:,}")
+                print(f"  Tokens (est): {fts_stats['tokens_estimate']:,}")
+                print(f"  Unique terms (est): {fts_stats['unique_estimate']:,}")
+            else:
+                print("\n── FTS5 Stats ──")
+                print("  Not available (run 'ogrep reindex .' to enable)")
 
-        # Embedding model
-        cur = con.cursor()
-        cur.execute("SELECT model, dim FROM chunks LIMIT 1")
-        row = cur.fetchone()
-        if row:
-            print("\n── Embedding Model ──")
-            print(f"  Model: {row[0]}")
-            print(f"  Dimensions: {row[1]}")
+            # Dedup stats
+            dedup_stats = _get_dedup_stats(con)
+            if dedup_stats:
+                print("\n── Dedup Stats ──")
+                print(f"  Total chunks: {dedup_stats['total_chunks']:,}")
+                print(f"  Unique hashes: {dedup_stats['unique_hashes']:,}")
+                if dedup_stats["duplicated"] > 0:
+                    print(
+                        f"  Deduplicated: {dedup_stats['duplicated']:,} "
+                        f"({dedup_stats['dedup_ratio']:.1f}% embedding savings)"
+                    )
+                else:
+                    print("  Deduplicated: 0 (0% - no duplicates found)")
 
-        # Total size
-        total_size = db_path.stat().st_size
-        print(f"\nTotal size: {_format_size(total_size)}")
+            # Quick check
+            print("\n── Quick Check ──")
+            result = _run_quick_check(con)
+            if result == "ok":
+                print("  Result: OK")
+            else:
+                print(f"  Result: {result}")
+                exit_code = 1
 
-        # Status summary
-        if exit_code == 0:
-            print("\nStatus: Healthy")
-        else:
-            print("\nStatus: Issues detected")
+            # Embedding model
+            cur = con.cursor()
+            cur.execute("SELECT model, dim FROM chunks LIMIT 1")
+            row = cur.fetchone()
+            if row:
+                print("\n── Embedding Model ──")
+                print(f"  Model: {row[0]}")
+                print(f"  Dimensions: {row[1]}")
+
+            # Total size
+            total_size = db_path.stat().st_size
+            print(f"\nTotal size: {_format_size(total_size)}")
+
+            # Status summary
+            if exit_code == 0:
+                print("\nStatus: Healthy")
+            else:
+                print("\nStatus: Issues detected")
+
+    except KeyboardInterrupt:
+        con.close()
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Health check cancelled.")
+        return 130  # Standard SIGINT exit code (128 + 2)
 
     con.close()
     return exit_code
