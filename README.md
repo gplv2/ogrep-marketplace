@@ -9,12 +9,14 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 - *"where do we open DB connections and run queries?"*
 - *"what kind of API key mechanism do we use?"*
 
-## What's New in v0.5.0
+## What's New in v0.6.0
 
-- **Hybrid Search** — Combines semantic understanding with keyword matching for superior results
-- **Confidence Scores** — Know how much to trust each result (high/medium/low)
-- **Chunk Navigation** — Expand context around any search result with `ogrep chunk`
-- **JSON Output** — Structured output for AI tools and automation
+- **Cross-File Chunk Deduplication** — Identical chunks across files share embeddings, saving up to 80% on API costs for duplicate code
+- **Graceful Ctrl-C Handling** — All commands handle keyboard interrupts cleanly with helpful recovery messages
+- **Token-Aware Batching** — Automatic batch splitting and retry to prevent context overflow crashes
+- **Tunable Confidence Thresholds** — Lower thresholds for legacy/sparse codebases via environment variables
+- **Fixed --refresh Model Mismatch** — Query refresh now uses the index's model, not CLI defaults
+- **Friendly Error Messages** — Model mismatch and corrupted index errors now show clear, actionable guidance
 
 ---
 
