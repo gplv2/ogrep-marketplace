@@ -1,6 +1,6 @@
 {
   "name": "ogrep-marketplace",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Claude Code marketplace for ogrep - semantic grep with local models (LM Studio) or OpenAI",
   "owner": {
     "name": "gplv2",
