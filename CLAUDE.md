@@ -451,6 +451,20 @@ ogrep tune . -s 10     # Use 10 test samples
 - Auto-tuning tests multiple batch sizes and picks fastest
 - Manual override via `OGREP_BATCH_SIZE` (capped to model's max)
 
+**Tuning for Legacy/Sparse Codebases:**
+
+Semantic search works best with well-documented code. For legacy code with sparse comments:
+
+```bash
+# Lower confidence thresholds for dense implementation code
+export OGREP_CONFIDENCE_HIGH=0.60
+export OGREP_CONFIDENCE_MEDIUM=0.45
+export OGREP_CONFIDENCE_LOW=0.35
+
+# More keyword-heavy hybrid search (for exact terms)
+export OGREP_HYBRID_ALPHA=0.4  # Default is 0.7
+```
+
 ## Embedding Models
 
 ### OpenAI Models (Cloud)

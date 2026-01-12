@@ -938,6 +938,41 @@ ogrep reset -f && ogrep index .
 2. **Model not loaded** - Check `lms status` and load the correct model
 3. **Stale index** - Use `--refresh` flag or reindex: `ogrep reindex .`
 
+### Low confidence scores on legacy codebases
+
+Semantic search works best when code has good comments, docstrings, or descriptive variable names. Dense implementation code with few comments tends to score lower on conceptual queries.
+
+**Tune confidence thresholds for your codebase:**
+
+```bash
+# Default thresholds (well-documented code)
+# high: 0.85, medium: 0.70, low: 0.50
+
+# For legacy PHP/dense implementation code with few comments:
+export OGREP_CONFIDENCE_HIGH=0.60
+export OGREP_CONFIDENCE_MEDIUM=0.45
+export OGREP_CONFIDENCE_LOW=0.35
+```
+
+**Adjust hybrid search balance:**
+
+```bash
+# Default: 70% semantic, 30% keyword
+export OGREP_HYBRID_ALPHA=0.7
+
+# More keyword-heavy (exact terms, identifiers):
+OGREP_HYBRID_ALPHA=0.4 ogrep query "validateToken" -n 10
+
+# More semantic (conceptual questions):
+OGREP_HYBRID_ALPHA=0.9 ogrep query "how is auth handled" -n 10
+```
+
+**Other tips for low scores:**
+
+1. **Try more code-like queries** — match the terminology in the code
+2. **Use fulltext mode** — for exact identifiers: `ogrep query "ClassName" --mode fulltext`
+3. **Check chunk context** — use `ogrep chunk "path:N" -C 2` to expand around results
+
 ### Server not responding
 
 ```bash
