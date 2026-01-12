@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ New Features
+
+#### Graceful Ctrl-C Handling Across All Commands
+
+All commands now handle keyboard interrupts gracefully instead of showing Python tracebacks:
+
+```bash
+ogrep index .
+# Press Ctrl-C...
+# Interrupted by user (Ctrl-C).
+# Partial progress may have been saved to the index.
+# Run 'ogrep index .' again to continue from where you left off.
+```
+
+**Commands with Ctrl-C handling:**
+- `ogrep index` (both regular and `--list` mode)
+- `ogrep reindex`
+- `ogrep query --refresh`
+- `ogrep benchmark`
+- `ogrep tune` (both test loop and `--apply`)
+- `ogrep health` (vacuum, rebuild-fts, integrity)
+- `ogrep clean`
+
+All commands return exit code 130 (standard SIGINT) on interrupt.
+
+#### Tunable Confidence Thresholds and Hybrid Alpha
+
+For legacy or sparse codebases where default thresholds produce too many "very_low" results, you can now tune the scoring:
+
+**Confidence thresholds** (via environment variables):
+```bash
+# Lower thresholds for sparse codebases
+export OGREP_CONFIDENCE_HIGH=0.60    # default: 0.85
+export OGREP_CONFIDENCE_MEDIUM=0.45  # default: 0.70
+export OGREP_CONFIDENCE_LOW=0.35     # default: 0.50
+```
+
+**Hybrid search balance** (semantic vs keyword weight):
+```bash
+# Favor keyword matching for identifier-heavy searches
+export OGREP_HYBRID_ALPHA=0.5  # default: 0.7 (70% semantic, 30% keyword)
+```
+
 ### 🐛 Fixes
 
 #### Fixed --refresh Using Wrong Model (Dimension Mismatch Crash)
