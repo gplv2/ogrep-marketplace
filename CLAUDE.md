@@ -486,6 +486,22 @@ Each model has a `max_batch_size` to prevent context overflow:
 
 OpenAI benefits greatly from larger batches (38x faster at batch 200 vs serial).
 
+### Model Context Limits
+
+Each model has a maximum context window (in tokens):
+
+| Model | Context Tokens | Chars/Token (est.) | Max Text per Chunk |
+|-------|----------------|--------------------|--------------------|
+| minilm | 256 | ~3 | ~768 chars |
+| bge | 512 | ~3 | ~1,536 chars |
+| nomic | 8,192 | ~3 | ~24,576 chars |
+| bge-m3 | 8,192 | ~3 | ~24,576 chars |
+| OpenAI (all) | 8,191 | ~4 | ~32,764 chars |
+
+**Token estimation**: ogrep uses ~3 chars/token for code (conservative). If a chunk exceeds the limit, it's automatically truncated with a warning.
+
+**Auto-retry**: If the API still returns a context overflow, ogrep parses the error, truncates further, and retries (up to 3x).
+
 ### Token-Aware Batching with Auto-Retry
 
 Batches are automatically split to respect model context limits:
@@ -665,6 +681,23 @@ OpenAI models use 1536D or 3072D, local models use 768D. You cannot mix models:
 Dimension mismatch: query uses 768D (nomic) but index was built with 1536D (small).
 Use -m small or reindex with -m nomic.
 ```
+
+### Corrupted Index (Mixed Dimensions)
+
+If you see this error, your index has embeddings from multiple models:
+
+```
+ValueError: Corrupted index: mixed dimensions detected ([768, 1536]).
+This can happen if --refresh was run with a different model.
+Run 'ogrep reset -f && ogrep index .' to rebuild.
+```
+
+**Fix:** Rebuild from scratch:
+```bash
+ogrep reset -f && ogrep index .
+```
+
+This can happen if `--refresh` was used with a different model before the bug fix in v0.5.1+.
 
 ### Auto-Start Server on Boot
 

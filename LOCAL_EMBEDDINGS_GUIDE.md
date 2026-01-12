@@ -923,6 +923,15 @@ Dimension mismatch: query uses 768D (nomic) but index was built with 1536D (smal
 - Query with the same model: `ogrep query "..." -m small`
 - Or reindex with the new model: `ogrep reindex . -m nomic`
 
+### "Corrupted index: mixed dimensions detected"
+
+Your index contains embeddings from different models (e.g., 768D nomic + 1536D OpenAI). This can happen if `--refresh` was used with a different model before the bug fix in v0.5.1+.
+
+**Fix:** Rebuild the index from scratch:
+```bash
+ogrep reset -f && ogrep index .
+```
+
 ### Low accuracy / poor results
 
 1. **Wrong chunk size for your model** - Run `ogrep tune . -m <model>` to find optimal

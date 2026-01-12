@@ -613,7 +613,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-make test    # Run tests (182 tests)
+make test    # Run tests (282 tests)
 make lint    # Run linters
 make check   # All checks
 ```

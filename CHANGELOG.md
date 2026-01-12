@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixes
+
+#### Fixed --refresh Using Wrong Model (Dimension Mismatch Crash)
+
+The `ogrep query --refresh` command was using CLI default model instead of the index's actual model, causing dimension mismatch crashes when indexes were built with a different model than the default.
+
+**Before (broken):**
+```
+$ ogrep query "test" --refresh
+ValueError: shapes (1536,) and (768,) not aligned: 1536 (dim 0) != 768 (dim 0)
+```
+
+**After (fixed):**
+- Query now reads the index's model/dimensions BEFORE refresh
+- Uses the index's model for incremental reindex, not CLI defaults
+- Shows warning if user specified a different model with `--refresh`
+
+#### Mixed Dimensions Detection for Corrupted Indexes
+
+Added early detection for indexes corrupted with mixed embedding dimensions. This can happen if `--refresh` was accidentally run with a different model before the fix above.
+
+**Before:** Cryptic numpy shape error deep in the code
+**After:** Clear, actionable error message:
+```
+ValueError: Corrupted index: mixed dimensions detected ([768, 1536]).
+This can happen if --refresh was run with a different model.
+Run 'ogrep reset -f && ogrep index .' to rebuild.
+```
+
+### 🔧 Changed
+
+#### Refactored CLI Argument Builders
+
+Extracted common argument patterns from `cli.py` to new `ogrep/commands/_arg_builders.py` module:
+
+| Function | Arguments | Used By |
+|----------|-----------|---------|
+| `add_model_args()` | `--model`, `--dimensions` | index, query, reindex, tune |
+| `add_indexing_args()` | `--chunk-lines`, `--overlap`, `--max-bytes`, `-e`, `-i` | index, reindex |
+| `add_benchmark_args()` | `--samples`, `--models`, `--local-only`, etc. | benchmark |
+
+This reduces code duplication and makes argument patterns consistent across commands.
+
 ### ✨ New Features
 
 #### Cross-File Chunk Deduplication
