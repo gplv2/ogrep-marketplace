@@ -10,9 +10,27 @@ Search modes:
     - fulltext: SQLite FTS5 keyword matching only
     - hybrid: Combined score (default) - best of both worlds
 
+Confidence scoring:
+    Results include a confidence level (high/medium/low/very_low) that
+    indicates match quality. Two modes are available:
+
+    - relative (default): Compares each score to the top result.
+      More meaningful since cosine similarity clusters around 0.3-0.5.
+      A score of 0.40 that's 90% of the top score (0.44) = "high".
+
+    - absolute: Uses fixed thresholds (legacy behavior).
+      Less meaningful for typical embedding distributions.
+
 Environment variables:
     OGREP_SEARCH_MODE: Default search mode (semantic, fulltext, hybrid)
     OGREP_HYBRID_ALPHA: Semantic weight in hybrid mode (0.0-1.0, default: 0.7)
+    OGREP_CONFIDENCE_MODE: "relative" (default) or "absolute"
+    OGREP_RELATIVE_HIGH: Fraction of top score for "high" (default: 0.90)
+    OGREP_RELATIVE_MEDIUM: Fraction of top score for "medium" (default: 0.75)
+    OGREP_RELATIVE_LOW: Fraction of top score for "low" (default: 0.50)
+    OGREP_CONFIDENCE_HIGH: Absolute threshold for "high" (default: 0.50)
+    OGREP_CONFIDENCE_MEDIUM: Absolute threshold for "medium" (default: 0.40)
+    OGREP_CONFIDENCE_LOW: Absolute threshold for "low" (default: 0.30)
 """
 
 from __future__ import annotations
@@ -42,15 +60,27 @@ DEFAULT_SEARCH_MODE: SearchMode = os.environ.get("OGREP_SEARCH_MODE", "hybrid") 
 # Hybrid scoring weight (0.0-1.0, where 1.0 is all semantic, 0.0 is all fulltext)
 HYBRID_ALPHA = float(os.environ.get("OGREP_HYBRID_ALPHA", "0.7"))
 
-# Confidence thresholds (configurable via environment)
-CONFIDENCE_HIGH = float(os.environ.get("OGREP_CONFIDENCE_HIGH", "0.85"))
-CONFIDENCE_MEDIUM = float(os.environ.get("OGREP_CONFIDENCE_MEDIUM", "0.70"))
-CONFIDENCE_LOW = float(os.environ.get("OGREP_CONFIDENCE_LOW", "0.50"))
+# Confidence mode: "relative" (percentile-based, default) or "absolute" (threshold-based)
+# Relative mode compares scores to the top result, which is more meaningful since
+# cosine similarity for text embeddings clusters around 0.3-0.5, not uniformly [0,1]
+CONFIDENCE_MODE = os.environ.get("OGREP_CONFIDENCE_MODE", "relative")
+
+# Absolute confidence thresholds (calibrated for typical embedding distributions)
+# These are used when OGREP_CONFIDENCE_MODE=absolute
+CONFIDENCE_HIGH = float(os.environ.get("OGREP_CONFIDENCE_HIGH", "0.50"))
+CONFIDENCE_MEDIUM = float(os.environ.get("OGREP_CONFIDENCE_MEDIUM", "0.40"))
+CONFIDENCE_LOW = float(os.environ.get("OGREP_CONFIDENCE_LOW", "0.30"))
+
+# Relative confidence thresholds (as percentage of top score)
+# These define what fraction of the top score qualifies for each level
+RELATIVE_HIGH = float(os.environ.get("OGREP_RELATIVE_HIGH", "0.90"))  # >= 90% of top
+RELATIVE_MEDIUM = float(os.environ.get("OGREP_RELATIVE_MEDIUM", "0.75"))  # >= 75% of top
+RELATIVE_LOW = float(os.environ.get("OGREP_RELATIVE_LOW", "0.50"))  # >= 50% of top
 
 
 def get_confidence_level(score: float) -> str:
     """
-    Convert numeric score to human-readable confidence level.
+    Convert numeric score to human-readable confidence level (absolute mode).
 
     Uses configurable thresholds from environment variables:
         OGREP_CONFIDENCE_HIGH: Threshold for "high" (default: 0.85)
@@ -71,6 +101,68 @@ def get_confidence_level(score: float) -> str:
         return "low"
     else:
         return "very_low"
+
+
+def get_relative_confidence(score: float, top_score: float) -> str:
+    """
+    Convert numeric score to confidence level relative to top result.
+
+    Instead of absolute thresholds, this compares the score to the best
+    match in the result set. This accounts for the fact that cosine
+    similarity scores for text embeddings cluster around 0.3-0.5, making
+    absolute thresholds misleading.
+
+    Uses configurable thresholds from environment variables:
+        OGREP_RELATIVE_HIGH: Fraction of top score for "high" (default: 0.90)
+        OGREP_RELATIVE_MEDIUM: Fraction of top score for "medium" (default: 0.75)
+        OGREP_RELATIVE_LOW: Fraction of top score for "low" (default: 0.50)
+
+    Args:
+        score: Similarity score for this result.
+        top_score: Highest score in the result set.
+
+    Returns:
+        Confidence level: "high", "medium", "low", or "very_low".
+
+    Example:
+        If top_score=0.45 and score=0.42:
+        - ratio = 0.42/0.45 = 0.93 (93% of top)
+        - Since 0.93 >= 0.90, this is "high" confidence
+
+        This is more meaningful than absolute scoring, where 0.42
+        might appear as "low" despite being nearly as good as the
+        best match.
+    """
+    if top_score <= 0:
+        return "very_low"
+
+    ratio = score / top_score
+
+    if ratio >= RELATIVE_HIGH:
+        return "high"
+    elif ratio >= RELATIVE_MEDIUM:
+        return "medium"
+    elif ratio >= RELATIVE_LOW:
+        return "low"
+    else:
+        return "very_low"
+
+
+def assign_confidence(score: float, top_score: float | None = None) -> str:
+    """
+    Assign confidence level based on current mode (absolute or relative).
+
+    Args:
+        score: Similarity score for this result.
+        top_score: Highest score in result set (required for relative mode).
+
+    Returns:
+        Confidence level: "high", "medium", "low", or "very_low".
+    """
+    if CONFIDENCE_MODE == "relative" and top_score is not None:
+        return get_relative_confidence(score, top_score)
+    else:
+        return get_confidence_level(score)
 
 
 @dataclass(frozen=True)
@@ -273,21 +365,30 @@ def query(
             chunk_ids,
         ).fetchall()
 
+        # Build hits with scores, sorted by score descending
+        scored_rows = sorted(
+            [(fts_scores[row[0]], row) for row in rows],
+            key=lambda x: x[0],
+            reverse=True,
+        )[:top_k]
+
+        # Get top score for relative confidence
+        top_score = scored_rows[0][0] if scored_rows else 0.0
+
         hits = [
             Hit(
-                score=fts_scores[row[0]],
+                score=score,
                 path=row[2],
                 start_line=int(row[3]),
                 end_line=int(row[4]),
                 text=row[5],
                 chunk_id=int(row[0]),
                 chunk_index=int(row[1]),
-                confidence=get_confidence_level(fts_scores[row[0]]),
+                confidence=assign_confidence(score, top_score),
             )
-            for row in rows
+            for score, row in scored_rows
         ]
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:top_k], fts_available
+        return hits, fts_available
 
     # Semantic search (needed for semantic and hybrid modes)
     # Embed the query
@@ -322,8 +423,9 @@ def query(
     if effective_mode == "hybrid" and fts_available:
         fts_scores = _fulltext_search(con, q, top_k * 2)
 
-    # Compute similarities
-    hits: list[Hit] = []
+    # Compute similarities - collect as tuples first for relative confidence
+    scored_results: list[tuple[float, int, int, str, int, int, str]] = []
+
     if np is not None:
         # Fast path with numpy
         qv = np.frombuffer(q_blob[0], dtype=np.float32)
@@ -339,17 +441,8 @@ def query(
             else:
                 score = semantic_score
 
-            hits.append(
-                Hit(
-                    score=score,
-                    path=path,
-                    start_line=int(sl),
-                    end_line=int(el),
-                    text=text,
-                    chunk_id=int(chunk_id),
-                    chunk_index=int(chunk_idx),
-                    confidence=get_confidence_level(score),
-                )
+            scored_results.append(
+                (score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
             )
     else:
         # Fallback pure Python
@@ -365,19 +458,30 @@ def query(
             else:
                 score = semantic_score
 
-            hits.append(
-                Hit(
-                    score=score,
-                    path=path,
-                    start_line=int(sl),
-                    end_line=int(el),
-                    text=text,
-                    chunk_id=int(chunk_id),
-                    chunk_index=int(chunk_idx),
-                    confidence=get_confidence_level(score),
-                )
+            scored_results.append(
+                (score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
             )
 
-    # Sort by score descending and return top-k
-    hits.sort(key=lambda h: h.score, reverse=True)
-    return hits[:top_k], fts_available
+    # Sort by score descending and take top-k
+    scored_results.sort(key=lambda x: x[0], reverse=True)
+    top_results = scored_results[:top_k]
+
+    # Get top score for relative confidence calculation
+    top_score = top_results[0][0] if top_results else 0.0
+
+    # Build final Hit objects with confidence
+    hits = [
+        Hit(
+            score=score,
+            path=path,
+            start_line=sl,
+            end_line=el,
+            text=text,
+            chunk_id=chunk_id,
+            chunk_index=chunk_idx,
+            confidence=assign_confidence(score, top_score),
+        )
+        for score, chunk_id, chunk_idx, path, sl, el, text in top_results
+    ]
+
+    return hits, fts_available

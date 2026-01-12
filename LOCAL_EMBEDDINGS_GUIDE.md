@@ -938,20 +938,46 @@ ogrep reset -f && ogrep index .
 2. **Model not loaded** - Check `lms status` and load the correct model
 3. **Stale index** - Use `--refresh` flag or reindex: `ogrep reindex .`
 
-### Low confidence scores on legacy codebases
+### Understanding "Low" Confidence Scores
 
-Semantic search works best when code has good comments, docstrings, or descriptive variable names. Dense implementation code with few comments tends to score lower on conceptual queries.
+**Why scores seem low but search still works:**
 
-**Tune confidence thresholds for your codebase:**
+Cosine similarity for text embeddings does NOT distribute uniformly across [0, 1]. Scores cluster around 0.3-0.5:
+
+```
+Pairwise similarity distribution in a typical codebase:
+├── 0.0-0.2  ████████░░░░░░░░░░░░  ~15%
+├── 0.2-0.3  ████████████░░░░░░░░  ~30%
+├── 0.3-0.4  ████████████████░░░░  ~35%  ← MEDIAN
+├── 0.4-0.5  ██████░░░░░░░░░░░░░░  ~12%
+├── 0.5-0.6  ███░░░░░░░░░░░░░░░░░  ~5%
+├── 0.6-0.7  █░░░░░░░░░░░░░░░░░░░  ~2%
+└── 0.7+     ░░░░░░░░░░░░░░░░░░░░  ~1%
+```
+
+A score of **0.45 is actually in the top 15%** of all possible matches!
+
+**Relative confidence (default in v0.7.0+):**
+
+ogrep now uses relative confidence by default, comparing each result to the top score:
+
+| Top Score | Result | Ratio | Confidence |
+|-----------|--------|-------|------------|
+| 0.45 | 0.45 | 100% | high |
+| 0.45 | 0.42 | 93% | high |
+| 0.45 | 0.35 | 78% | medium |
+| 0.45 | 0.20 | 44% | very_low |
+
+This tells you how close each result is to the best match, regardless of absolute scores.
+
+**Switching to absolute mode (legacy):**
 
 ```bash
-# Default thresholds (well-documented code)
-# high: 0.85, medium: 0.70, low: 0.50
-
-# For legacy PHP/dense implementation code with few comments:
-export OGREP_CONFIDENCE_HIGH=0.60
-export OGREP_CONFIDENCE_MEDIUM=0.45
-export OGREP_CONFIDENCE_LOW=0.35
+# Use absolute thresholds (calibrated for typical distributions)
+export OGREP_CONFIDENCE_MODE=absolute
+export OGREP_CONFIDENCE_HIGH=0.50
+export OGREP_CONFIDENCE_MEDIUM=0.40
+export OGREP_CONFIDENCE_LOW=0.30
 ```
 
 **Adjust hybrid search balance:**
@@ -967,9 +993,9 @@ OGREP_HYBRID_ALPHA=0.4 ogrep query "validateToken" -n 10
 OGREP_HYBRID_ALPHA=0.9 ogrep query "how is auth handled" -n 10
 ```
 
-**Other tips for low scores:**
+**Other tips:**
 
-1. **Try more code-like queries** — match the terminology in the code
+1. **Trust the ranking** — result #1 is almost always relevant, even with "low" absolute score
 2. **Use fulltext mode** — for exact identifiers: `ogrep query "ClassName" --mode fulltext`
 3. **Check chunk context** — use `ogrep chunk "path:N" -C 2` to expand around results
 

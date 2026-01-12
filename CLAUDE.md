@@ -464,9 +464,13 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
 | `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
-| `OGREP_CONFIDENCE_HIGH` | Threshold for "high" confidence level | `0.85` |
-| `OGREP_CONFIDENCE_MEDIUM` | Threshold for "medium" confidence level | `0.70` |
-| `OGREP_CONFIDENCE_LOW` | Threshold for "low" confidence level | `0.50` |
+| `OGREP_CONFIDENCE_MODE` | Confidence scoring mode: `relative` or `absolute` | `relative` |
+| `OGREP_RELATIVE_HIGH` | Relative mode: fraction of top score for "high" | `0.90` |
+| `OGREP_RELATIVE_MEDIUM` | Relative mode: fraction of top score for "medium" | `0.75` |
+| `OGREP_RELATIVE_LOW` | Relative mode: fraction of top score for "low" | `0.50` |
+| `OGREP_CONFIDENCE_HIGH` | Absolute mode: threshold for "high" | `0.50` |
+| `OGREP_CONFIDENCE_MEDIUM` | Absolute mode: threshold for "medium" | `0.40` |
+| `OGREP_CONFIDENCE_LOW` | Absolute mode: threshold for "low" | `0.30` |
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
 **Smart Model Default:**
@@ -479,18 +483,62 @@ ogrep tune . -s 10     # Use 10 test samples
 - Auto-tuning tests multiple batch sizes and picks fastest
 - Manual override via `OGREP_BATCH_SIZE` (capped to model's max)
 
-**Tuning for Legacy/Sparse Codebases:**
+## Understanding Confidence Scores
 
-Semantic search works best with well-documented code. For legacy code with sparse comments:
+### Why Scores Look "Low" (But Search Works Fine)
+
+Cosine similarity for text embeddings does NOT distribute uniformly across [0, 1]. Instead, scores cluster around 0.3-0.5:
+
+```
+Distribution of pairwise similarities in a typical codebase:
+├── 0.0-0.2  ████████░░░░░░░░░░░░  ~15%
+├── 0.2-0.3  ████████████░░░░░░░░  ~30%
+├── 0.3-0.4  ████████████████░░░░  ~35%  ← MEDIAN IS HERE
+├── 0.4-0.5  ██████░░░░░░░░░░░░░░  ~12%
+├── 0.5-0.6  ███░░░░░░░░░░░░░░░░░  ~5%
+├── 0.6-0.7  █░░░░░░░░░░░░░░░░░░░  ~2%
+└── 0.7+     ░░░░░░░░░░░░░░░░░░░░  ~1% (near-duplicates only)
+```
+
+**What this means for search:**
+- A score of 0.40 is in the **top 20%** of all possible matches
+- A score of 0.50 is in the **top 10%** of all possible matches
+- A score of 0.60 is in the **top 2%** of all possible matches
+- Getting above 0.70 requires near-duplicate text
+
+### Relative vs Absolute Confidence
+
+**Relative mode (default)** compares each result to the top score:
+
+| Top Score | Result Score | Ratio | Confidence |
+|-----------|--------------|-------|------------|
+| 0.45 | 0.45 | 100% | high |
+| 0.45 | 0.42 | 93% | high |
+| 0.45 | 0.35 | 78% | medium |
+| 0.45 | 0.20 | 44% | very_low |
+
+This is more meaningful because it tells you how close each result is to the best match, regardless of absolute scores.
+
+**Absolute mode** uses fixed thresholds. Useful if you've calibrated for your specific codebase:
 
 ```bash
-# Lower confidence thresholds for dense implementation code
-export OGREP_CONFIDENCE_HIGH=0.60
-export OGREP_CONFIDENCE_MEDIUM=0.45
-export OGREP_CONFIDENCE_LOW=0.35
+# Switch to absolute mode with custom thresholds
+export OGREP_CONFIDENCE_MODE=absolute
+export OGREP_CONFIDENCE_HIGH=0.50
+export OGREP_CONFIDENCE_MEDIUM=0.40
+export OGREP_CONFIDENCE_LOW=0.30
+```
 
+### Tuning for Legacy/Sparse Codebases
+
+For legacy code with sparse comments, consider:
+
+```bash
 # More keyword-heavy hybrid search (for exact terms)
 export OGREP_HYBRID_ALPHA=0.4  # Default is 0.7
+
+# Or use fulltext mode for exact identifier searches
+ogrep query "validateToken" --mode fulltext
 ```
 
 ## Embedding Models

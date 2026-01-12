@@ -9,7 +9,14 @@ import pytest
 
 from ogrep.db import connect
 from ogrep.embed import embed_texts
-from ogrep.search import Hit, _dot_py, query
+from ogrep.search import (
+    Hit,
+    _dot_py,
+    assign_confidence,
+    get_confidence_level,
+    get_relative_confidence,
+    query,
+)
 
 
 class TestHitDataclass:
@@ -139,6 +146,90 @@ class TestDotProduct:
         b = array.array("f", [0.0, 0.0, 0.0])
         result = _dot_py(a, b)
         assert abs(result) < 1e-10
+
+
+class TestConfidenceScoring:
+    """Tests for confidence level functions."""
+
+    def test_absolute_confidence_ordering(self) -> None:
+        """Test absolute confidence returns correct ordering."""
+        # Test that higher scores produce equal or higher confidence
+        # This tests the logic regardless of specific thresholds
+        levels = ["very_low", "low", "medium", "high"]
+
+        def level_rank(level: str) -> int:
+            return levels.index(level)
+
+        # Higher scores should have >= confidence
+        assert level_rank(get_confidence_level(1.0)) >= level_rank(
+            get_confidence_level(0.5)
+        )
+        assert level_rank(get_confidence_level(0.5)) >= level_rank(
+            get_confidence_level(0.3)
+        )
+        assert level_rank(get_confidence_level(0.3)) >= level_rank(
+            get_confidence_level(0.1)
+        )
+
+    def test_absolute_confidence_extremes(self) -> None:
+        """Test absolute confidence at extremes."""
+        # Very high score should be "high"
+        assert get_confidence_level(1.0) == "high"
+        # Very low score should be "very_low"
+        assert get_confidence_level(0.0) == "very_low"
+
+    def test_absolute_confidence_valid_levels(self) -> None:
+        """Test absolute confidence returns valid level strings."""
+        valid_levels = {"high", "medium", "low", "very_low"}
+        for score in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            assert get_confidence_level(score) in valid_levels
+
+    def test_relative_confidence_high(self) -> None:
+        """Test relative confidence for scores close to top."""
+        # Default: >= 90% of top score is "high"
+        assert get_relative_confidence(0.45, 0.45) == "high"  # 100%
+        assert get_relative_confidence(0.42, 0.45) == "high"  # 93%
+        assert get_relative_confidence(0.405, 0.45) == "high"  # 90%
+
+    def test_relative_confidence_medium(self) -> None:
+        """Test relative confidence for scores moderately close to top."""
+        # Default: >= 75% of top score is "medium"
+        assert get_relative_confidence(0.40, 0.45) == "medium"  # 89%
+        assert get_relative_confidence(0.35, 0.45) == "medium"  # 78%
+        assert get_relative_confidence(0.3375, 0.45) == "medium"  # 75%
+
+    def test_relative_confidence_low(self) -> None:
+        """Test relative confidence for scores around half of top."""
+        # Default: >= 50% of top score is "low"
+        assert get_relative_confidence(0.33, 0.45) == "low"  # 73%
+        assert get_relative_confidence(0.25, 0.45) == "low"  # 56%
+        assert get_relative_confidence(0.225, 0.45) == "low"  # 50%
+
+    def test_relative_confidence_very_low(self) -> None:
+        """Test relative confidence for scores much lower than top."""
+        # Default: < 50% of top score is "very_low"
+        assert get_relative_confidence(0.22, 0.45) == "very_low"  # 49%
+        assert get_relative_confidence(0.10, 0.45) == "very_low"  # 22%
+
+    def test_relative_confidence_zero_top_score(self) -> None:
+        """Test relative confidence handles zero top score gracefully."""
+        assert get_relative_confidence(0.0, 0.0) == "very_low"
+        assert get_relative_confidence(0.5, 0.0) == "very_low"
+
+    def test_assign_confidence_with_top_score(self) -> None:
+        """Test assign_confidence uses relative mode with top_score."""
+        # When top_score is provided, should use relative mode
+        # (assuming OGREP_CONFIDENCE_MODE defaults to "relative")
+        result = assign_confidence(0.42, top_score=0.45)
+        # 0.42/0.45 = 93% >= 90% threshold = "high"
+        assert result == "high"
+
+    def test_assign_confidence_no_top_score(self) -> None:
+        """Test assign_confidence without top_score falls back to absolute."""
+        # Without top_score, should use absolute thresholds
+        result = assign_confidence(0.45)
+        # 0.45 >= 0.40 (medium threshold) but < 0.50 (high threshold) = "medium"
+        assert result == "medium"
 
 
 class TestQuery:
