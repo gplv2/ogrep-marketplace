@@ -26,6 +26,55 @@ def _format_size(size: int) -> str:
         return f"{size / (1024 * 1024):.1f}MB"
 
 
+def _safe_relative_path(path: Path, root: Path) -> Path:
+    """
+    Get relative path, falling back to absolute if outside root.
+
+    Args:
+        path: The file path to make relative.
+        root: The root directory to calculate relative path from.
+
+    Returns:
+        Relative path if within root, otherwise the original path.
+    """
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return path
+
+
+def _accumulate_stat(stats: dict[str, tuple[int, int]], key: str, size: int) -> None:
+    """
+    Accumulate file count and size statistics.
+
+    Args:
+        stats: Dictionary mapping key to (count, total_size) tuple.
+        key: The key to accumulate (e.g., extension, category).
+        size: File size to add.
+    """
+    if key not in stats:
+        stats[key] = (0, 0)
+    count, total = stats[key]
+    stats[key] = (count + 1, total + size)
+
+
+def _extract_mime_category(mime_type: str | None) -> str:
+    """
+    Extract category from MIME type (e.g., "text/x-python" -> "text").
+
+    Args:
+        mime_type: Full MIME type string or None.
+
+    Returns:
+        Category portion, or "text" for None/empty.
+    """
+    if not mime_type:
+        return "text"
+    if "/" in mime_type:
+        return mime_type.split("/")[0]
+    return mime_type
+
+
 def _print_model_mismatch_help(error_msg: str, requested_model: str | None) -> None:
     """Print friendly help message for model mismatch errors."""
     import os
@@ -166,10 +215,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
     # Group by extension for summary (indexable only)
     ext_stats: dict[str, tuple[int, int]] = {}  # ext -> (count, total_size)
     for _, ext, size in indexable:
-        if ext not in ext_stats:
-            ext_stats[ext] = (0, 0)
-        count, total = ext_stats[ext]
-        ext_stats[ext] = (count + 1, total + size)
+        _accumulate_stat(ext_stats, ext, size)
 
     # Count files per directory
     dir_counts: dict[Path, int] = {}
@@ -196,7 +242,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
             ext_total_size = sum(s for _, s in ext_files)
             print(f"\n── {ext} ({len(ext_files)} files, {_format_size(ext_total_size)}) ──")
 
-        rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+        rel_path = _safe_relative_path(p, root)
         result = detection_results.get(p)
 
         if result and not result.is_text:
@@ -239,23 +285,14 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
         mime_stats: dict[str, tuple[int, int]] = {}  # category -> (count, size)
         for p, _ext, size in indexable:
             result = detection_results.get(p)
-            if result and result.mime_type:
-                # Extract category (e.g., "text/x-python" -> "text")
-                category = result.mime_type.split("/")[0]
-            else:
-                category = "text"  # Default for files that passed detection
-            if category not in mime_stats:
-                mime_stats[category] = (0, 0)
-            c, s = mime_stats[category]
-            mime_stats[category] = (c + 1, s + size)
+            mime_type = result.mime_type if result else None
+            category = _extract_mime_category(mime_type)
+            _accumulate_stat(mime_stats, category, size)
 
         # Add excluded files
         for _p, _ext, size, mime in excluded:
-            category = mime.split("/")[0] if "/" in mime else mime
-            if category not in mime_stats:
-                mime_stats[category] = (0, 0)
-            c, s = mime_stats[category]
-            mime_stats[category] = (c + 1, s + size)
+            category = _extract_mime_category(mime)
+            _accumulate_stat(mime_stats, category, size)
 
         if len(mime_stats) > 1:
             total_files = len(indexable) + len(excluded)
@@ -280,7 +317,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
     if largest_indexable:
         print("\nLargest indexable:")
         for p, _ext, size in largest_indexable:
-            rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+            rel_path = _safe_relative_path(p, root)
             print(f"  {_format_size(size):>8}  {rel_path}")
 
     # Show largest excluded files (binary)
@@ -288,7 +325,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
         largest_excluded = sorted(excluded, key=lambda x: x[2], reverse=True)[:5]
         print("\nLargest excluded (binary):")
         for p, _ext, size, mime in largest_excluded:
-            rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+            rel_path = _safe_relative_path(p, root)
             print(f"  {_format_size(size):>8}  {rel_path} ({mime})")
 
     # Show files that should be reviewed (pass MIME but may not be code)
@@ -305,7 +342,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
         print("  These files pass MIME detection but may not be useful code.")
         print("  Consider adding patterns to .ogrepignore:")
         for p, size, reason in review_files[:10]:
-            rel_path = p.relative_to(root) if p.is_relative_to(root) else p
+            rel_path = _safe_relative_path(p, root)
             print(f"  {_format_size(size):>8}  {rel_path}")
             print(f"           └─ {reason}")
         if len(review_files) > 10:
