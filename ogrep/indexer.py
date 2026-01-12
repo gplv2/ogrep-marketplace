@@ -21,7 +21,7 @@ from .chunking import chunk_lines as chunk_text
 from .db import connect
 from .embed import embed_texts
 from .filetype import detect_file_types_batch, has_file_command
-from .models import resolve_model
+from .models import get_model, resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {
@@ -364,12 +364,68 @@ class IndexStats:
     files_skipped: int = 0
     chunks_total: int = 0
     chunks_reused: int = 0
+    chunks_reused_global: int = 0  # Reused from other files
+    chunks_reused_local: int = 0  # Reused from same file edit
     chunks_embedded: int = 0
 
     @property
     def tokens_saved_estimate(self) -> int:
         """Estimate tokens saved by reusing embeddings (~100 tokens per chunk)."""
         return self.chunks_reused * 100
+
+    @property
+    def dedup_ratio(self) -> float:
+        """Percentage of chunks that were deduplicated."""
+        if self.chunks_total == 0:
+            return 0.0
+        return self.chunks_reused / self.chunks_total * 100
+
+
+def _find_global_embeddings(
+    con,
+    chunk_hashes: list[str],
+    model: str,
+    expected_dim: int,
+) -> dict[str, tuple[bytes, int]]:
+    """
+    Find existing embeddings across ALL files for given chunk hashes.
+
+    Performs integrity checks:
+    - Model must match
+    - Embedding dimension must match expected
+
+    Args:
+        con: Database connection.
+        chunk_hashes: List of text_sha256 hashes to look up.
+        model: Required embedding model name.
+        expected_dim: Expected embedding dimensions for this model.
+
+    Returns:
+        Dict mapping text_sha256 -> (embedding_bytes, dim).
+    """
+    if not chunk_hashes:
+        return {}
+
+    # Batch query with model filter
+    placeholders = ",".join("?" * len(chunk_hashes))
+    rows = con.execute(
+        f"""SELECT DISTINCT text_sha256, embedding, dim
+            FROM chunks
+            WHERE text_sha256 IN ({placeholders})
+              AND model = ?
+        """,
+        (*chunk_hashes, model),
+    ).fetchall()
+
+    result = {}
+    for text_sha256, embedding, dim in rows:
+        # Integrity check: Verify dimensions match model
+        if dim != expected_dim:
+            continue  # Skip mismatched dimensions
+
+        result[text_sha256] = (embedding, dim)
+
+    return result
 
 
 def index_path(
@@ -438,6 +494,43 @@ def index_path(
     all_exclude = list(exclude) + ignore_patterns
 
     con = connect(db_path)
+
+    # Model consistency check - prevent mixing models in the same index
+    existing_model_row = con.execute(
+        "SELECT DISTINCT model FROM chunks LIMIT 1"
+    ).fetchone()
+    if existing_model_row and existing_model_row[0] != model:
+        raise ValueError(
+            f"Model mismatch: index uses '{existing_model_row[0]}' "
+            f"but requested '{model}'. "
+            f"Use --force to reindex with new model."
+        )
+
+    # Get expected dimensions - prefer actual DB dimension over model definition
+    # This handles mocks and custom dimension overrides correctly
+    # Use the MOST COMMON dimension to handle corrupted entries gracefully
+    # In case of ties, prefer smaller dimension (more likely to be a standard model dimension)
+    expected_dim = dimensions
+    if expected_dim is None:
+        # Check what dimension the majority of existing chunks use
+        existing_dim_row = con.execute(
+            """SELECT dim, COUNT(*) as cnt FROM chunks
+               WHERE model = ?
+               GROUP BY dim
+               ORDER BY cnt DESC, dim ASC
+               LIMIT 1""",
+            (model,),
+        ).fetchone()
+        if existing_dim_row:
+            expected_dim = existing_dim_row[0]
+        else:
+            # Fall back to model definition
+            try:
+                model_info = get_model(model)
+                expected_dim = model_info.dimensions
+            except KeyError:
+                # Unknown model - will learn from first embed
+                expected_dim = None
 
     files = list(iter_files(root, exclude=all_exclude, include=include))
     stats.files_scanned = len(files)
@@ -528,23 +621,42 @@ def index_path(
 
         stats.chunks_total += len(chunks)
 
-        # Compute text hashes and identify reusable vs new chunks
+        # Compute text hashes for all chunks first
         chunk_hashes = []
-        chunks_to_embed = []
-        reusable_indices = []  # (chunk_index, cached_embedding, cached_dim)
-
-        for i, c in enumerate(chunks):
+        normalized_texts = []
+        for c in chunks:
             normalized_text = c.text.replace("\r\n", "\n")
             tsha = hashlib.sha256(normalized_text.encode("utf-8", errors="ignore")).hexdigest()
             chunk_hashes.append(tsha)
+            normalized_texts.append(normalized_text)
 
-            if tsha in existing_embeddings:
+        # Query global embeddings for all hashes (cross-file deduplication)
+        global_embeddings: dict[str, tuple[bytes, int]] = {}
+        if expected_dim is not None:
+            global_embeddings = _find_global_embeddings(
+                con, chunk_hashes, model, expected_dim
+            )
+
+        # Identify reusable vs new chunks (global first, then local)
+        chunks_to_embed = []
+        reusable_indices = []  # (chunk_index, cached_embedding, cached_dim)
+
+        for i, tsha in enumerate(chunk_hashes):
+            if tsha in global_embeddings:
+                # Found in another file - reuse with verified integrity
+                reusable_indices.append((i, *global_embeddings[tsha]))
+                stats.chunks_reused += 1
+                stats.chunks_reused_global += 1
+            elif tsha in existing_embeddings:
+                # Found in this file's previous version
                 reusable_indices.append(
                     (i, existing_embeddings[tsha][0], existing_embeddings[tsha][1])
                 )
                 stats.chunks_reused += 1
+                stats.chunks_reused_local += 1
             else:
-                chunks_to_embed.append((i, normalized_text))
+                # Truly new chunk - needs embedding
+                chunks_to_embed.append((i, normalized_texts[i]))
                 stats.chunks_embedded += 1
 
         # Generate embeddings only for new chunks
@@ -554,6 +666,9 @@ def index_path(
             emb_blobs, dim = embed_texts(texts, model=model, dimensions=dimensions)
             for (idx, _), emb in zip(chunks_to_embed, emb_blobs, strict=True):
                 new_embeddings[idx] = (emb, dim)
+            # Learn dimension from embed if we didn't know it
+            if expected_dim is None:
+                expected_dim = dim
 
         # Store all chunks with embeddings (reused or new)
         for i, c in enumerate(chunks):

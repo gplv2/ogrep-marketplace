@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ New Features
 
+#### Cross-File Chunk Deduplication
+
+Identical text chunks across different files now share embeddings, saving API costs:
+
+```bash
+# Two files with identical headers, imports, or utility functions
+# Only one embedding is generated, reused across both files
+ogrep index .
+# Output: Chunks: 68 total (32 reused from other files, ~3200 tokens saved)
+```
+
+**How it works:**
+- Chunks are identified by their `text_sha256` hash
+- When indexing a new file, ogrep checks if identical chunks exist anywhere in the index
+- Matching chunks reuse existing embeddings (same model + dimension required)
+- Database index on `text_sha256` provides O(log n) lookups
+
+**Expected savings:**
+- Duplicate license headers: Indexed once, reused everywhere
+- Common imports: `from __future__ import annotations` shares embeddings
+- Utility files copied across modules: Deduplicated automatically
+- Two 1000-line files differing by 10 lines: 49% savings (68 vs 132 embeddings)
+
+**New IndexStats fields:**
+- `chunks_reused_global`: Embeddings reused from other files
+- `chunks_reused_local`: Embeddings reused from same file (existing behavior)
+- `dedup_ratio`: Percentage of chunks that were deduplicated
+
+**Model consistency check:**
+- Index enforces single model per database
+- Error if querying/indexing with different model than existing chunks
+- Use `ogrep reset` to start fresh with a new model
+
 #### Per-Model Batch Size Limits
 
 Added `context_tokens` and `max_batch_size` to model definitions to prevent context overflow and optimize throughput:

@@ -261,7 +261,40 @@ else:
     chunks_to_embed.append((i, text))
 ```
 
-**`IndexStats` dataclass** tracks: `files_scanned`, `files_indexed`, `files_skipped`, `chunks_total`, `chunks_reused`, `chunks_embedded`, `tokens_saved_estimate`.
+**`IndexStats` dataclass** tracks: `files_scanned`, `files_indexed`, `files_skipped`, `chunks_total`, `chunks_reused`, `chunks_reused_global`, `chunks_reused_local`, `chunks_embedded`, `tokens_saved_estimate`, `dedup_ratio`.
+
+### Cross-File Chunk Deduplication
+
+Beyond single-file reuse, ogrep now deduplicates identical chunks **across different files**. This is especially valuable for:
+
+- Legacy codebases with copied/forked files
+- Template-based code generation
+- Vendored dependencies with minor customizations
+
+**How it works:**
+
+1. **Global lookup**: Before embedding, query ALL existing chunks by `text_sha256`
+2. **Integrity checks**: Verify model and dimension match before reusing
+3. **Priority**: Global reuse > Local reuse > New embedding
+
+**Example savings:**
+
+| Scenario | Before | After | Savings |
+|----------|--------|-------|---------|
+| Two 1000-line files, 10 lines different | 132 embeddings | 68 embeddings | 49% |
+| 5 copies of same 500-line file | 165 embeddings | 33 embeddings | 80% |
+
+**Database index** (`idx_chunks_text_sha256`) enables O(log n) cross-file lookups.
+
+**Model consistency check**: Prevents mixing different embedding models in the same index. If you try to index with a different model, you'll get:
+```
+ValueError: Model mismatch: index uses 'nomic-embed-text-v1.5' but requested 'text-embedding-3-small'. Use --force to reindex with new model.
+```
+
+**Stats tracking:**
+- `chunks_reused_global`: Count of chunks reused from OTHER files
+- `chunks_reused_local`: Count of chunks reused from SAME file (edits)
+- `dedup_ratio`: Percentage of chunks that were deduplicated
 
 ## File Filtering Flags
 

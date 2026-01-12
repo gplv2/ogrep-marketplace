@@ -805,6 +805,52 @@ For embedding tasks, this suggests diminishing returns from scale. A well-distil
 
 ---
 
+## Cross-File Chunk Deduplication
+
+When indexing repositories with copied or similar files (common in legacy codebases), ogrep now automatically deduplicates identical chunks across different files. This can save significant embedding costs and time.
+
+### How It Works
+
+1. **Global lookup**: Before embedding any chunk, ogrep checks if an identical chunk (by `text_sha256`) already exists in the database from another file
+2. **Integrity verification**: Reuses only if model and dimensions match
+3. **Priority order**: Global reuse → Local reuse (same file edit) → New embedding
+
+### Expected Savings
+
+| Scenario | Without Dedup | With Dedup | Savings |
+|----------|---------------|------------|---------|
+| Two 1000-line files, 10 lines different | 132 embeddings | 68 embeddings | 49% |
+| 5 copies of same 500-line file | 165 embeddings | 33 embeddings | 80% |
+| Vendored code with minor patches | Varies | Typically 50-80% | High |
+
+### Stats Tracking
+
+The `IndexStats` dataclass now tracks:
+- `chunks_reused_global`: Chunks reused from OTHER files
+- `chunks_reused_local`: Chunks reused from SAME file (edits)
+- `dedup_ratio`: Percentage of chunks that were deduplicated
+
+### Model Consistency Check
+
+To prevent mixing incompatible embeddings, ogrep enforces model consistency per index:
+
+```bash
+# First index with nomic
+ogrep index . -m nomic
+
+# Trying to add more files with a different model fails:
+ogrep index . -m minilm
+# ValueError: Model mismatch: index uses 'nomic-embed-text-v1.5' but requested 'all-MiniLM-L6-v2'. Use --force to reindex with new model.
+```
+
+**Why this matters**: Different models produce embeddings of different dimensions and semantic spaces. Mixing them would produce incorrect search results.
+
+### Database Index
+
+A database index (`idx_chunks_text_sha256`) enables O(log n) lookups for cross-file deduplication. This index is created automatically on new databases or when upgrading.
+
+---
+
 ## Troubleshooting
 
 ### "command not found: lms"

@@ -9,7 +9,7 @@ import pytest
 
 from ogrep.db import connect, has_fts5, rebuild_fts5
 from ogrep.embed import embed_texts
-from ogrep.search import query, _escape_fts5_query
+from ogrep.search import _escape_fts5_query, query
 
 
 class TestFTS5Schema:

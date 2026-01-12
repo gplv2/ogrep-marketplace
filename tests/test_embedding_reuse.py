@@ -268,3 +268,204 @@ def test_index_stats_dataclass_properties(temp_dir: Path) -> None:
 
     assert stats.tokens_saved_estimate == 1500  # 15 * 100
     assert stats.files_scanned == stats.files_indexed + stats.files_skipped
+
+
+# ============================================================================
+# Cross-File Chunk Deduplication Tests
+# ============================================================================
+
+
+def test_cross_file_deduplication(temp_dir: Path) -> None:
+    """Test that identical chunks across different files reuse embeddings."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create two files with mostly identical content
+    shared_content = "\n".join([f"# Shared line {i}" for i in range(60)])
+    unique_content_a = "\n".join([f"# Unique A line {i}" for i in range(60)])
+    unique_content_b = "\n".join([f"# Unique B line {i}" for i in range(60)])
+
+    (temp_dir / "file_a.py").write_text(shared_content + "\n" + unique_content_a)
+    (temp_dir / "file_b.py").write_text(shared_content + "\n" + unique_content_b)
+
+    # Index first file - all chunks embedded
+    stats1 = index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["file_b.py"])
+    assert stats1.chunks_embedded >= 2  # At least 2 chunks (shared + unique_a)
+    assert stats1.chunks_reused == 0  # First file, nothing to reuse
+
+    # Index second file - shared chunk should be reused from first file
+    stats2 = index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["file_a.py"])
+
+    # The shared chunk (60 lines) should be reused from file_a
+    assert stats2.chunks_reused >= 1, "Should reuse shared chunk from file_a"
+    assert stats2.chunks_embedded >= 1, "Should embed at least unique_b chunk"
+
+
+def test_cross_file_dedup_stats_tracking(temp_dir: Path) -> None:
+    """Test that stats distinguish between global and local reuse."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create identical content in two files
+    content = "\n".join([f"# Line {i}" for i in range(60)])
+    (temp_dir / "original.py").write_text(content)
+
+    # Index first file
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["copy.py"])
+
+    # Create copy with identical content
+    (temp_dir / "copy.py").write_text(content)
+
+    # Index second file - should reuse from global
+    stats = index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["original.py"])
+
+    # Check global reuse tracking
+    assert hasattr(stats, "chunks_reused_global"), "IndexStats should track global reuse"
+    assert stats.chunks_reused_global >= 1, "Should have at least 1 globally reused chunk"
+
+
+def test_cross_file_integrity_check_text_hash(temp_dir: Path) -> None:
+    """Test that corrupted text_sha256 entries are not reused."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create and index a file
+    content = "\n".join([f"# Line {i}" for i in range(60)])
+    (temp_dir / "source.py").write_text(content)
+
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
+
+    # Corrupt the text_sha256 in database (simulate data corruption)
+    con = sqlite3.connect(str(db_path))
+    con.execute("UPDATE chunks SET text_sha256 = 'corrupted_hash' WHERE chunk_index = 0")
+    con.commit()
+    con.close()
+
+    # Create identical file - should NOT reuse corrupted entry
+    (temp_dir / "copy.py").write_text(content)
+
+    stats = index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["source.py"])
+
+    # Should embed new chunk, not reuse corrupted one
+    assert stats.chunks_embedded >= 1, "Should embed chunk, not reuse corrupted entry"
+
+
+def test_cross_file_integrity_check_dimension(temp_dir: Path) -> None:
+    """Test that embeddings with wrong dimensions are not reused."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create and index multiple files to have multiple chunks
+    # This way the majority of chunks have the correct dimension
+    content_a = "\n".join([f"# File A Line {i}" for i in range(60)])
+    content_b = "\n".join([f"# File B Line {i}" for i in range(60)])
+    (temp_dir / "file_a.py").write_text(content_a)
+    (temp_dir / "file_b.py").write_text(content_b)
+
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["copy.py"])
+
+    # Corrupt ONE chunk's dimension in database (file_a's chunk)
+    con = sqlite3.connect(str(db_path))
+    file_a_row = con.execute(
+        "SELECT id FROM files WHERE path LIKE '%file_a.py'"
+    ).fetchone()
+    if file_a_row:
+        con.execute(
+            "UPDATE chunks SET dim = 9999 WHERE file_id = ? AND chunk_index = 0",
+            (file_a_row[0],),
+        )
+    con.commit()
+    con.close()
+
+    # Create file with content identical to corrupted chunk
+    (temp_dir / "copy.py").write_text(content_a)
+
+    stats = index_path(
+        root=temp_dir, db_path=db_path, chunk_lines=60, exclude=["file_a.py", "file_b.py"]
+    )
+
+    # Should embed new chunk, not reuse wrong-dimension entry
+    # The majority dimension (from file_b) should be used as expected_dim
+    # In case of tie (1 chunk each), tiebreaker prefers smaller dim (256 < 9999)
+    assert stats.chunks_embedded >= 1, "Should embed chunk, not reuse wrong-dimension entry"
+
+
+def test_model_consistency_check(temp_dir: Path) -> None:
+    """Test that indexing with different model raises error."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create and index with default model
+    (temp_dir / "file.py").write_text("# some code")
+    index_path(root=temp_dir, db_path=db_path, model="text-embedding-3-small")
+
+    # Try to index more files with a different model
+    (temp_dir / "file2.py").write_text("# more code")
+
+    # Should raise an error about model mismatch
+    import pytest
+
+    with pytest.raises(ValueError, match="Model mismatch"):
+        index_path(root=temp_dir, db_path=db_path, model="text-embedding-3-large")
+
+
+def test_dedup_ratio_property(temp_dir: Path) -> None:
+    """Test the dedup_ratio property on IndexStats."""
+    # Test with known values
+    stats = IndexStats(
+        files_scanned=2,
+        files_indexed=2,
+        files_skipped=0,
+        chunks_total=10,
+        chunks_reused=4,
+        chunks_embedded=6,
+    )
+
+    assert hasattr(stats, "dedup_ratio"), "IndexStats should have dedup_ratio property"
+    assert stats.dedup_ratio == 40.0, "dedup_ratio should be 40% (4/10 * 100)"
+
+
+def test_dedup_ratio_zero_chunks(temp_dir: Path) -> None:
+    """Test dedup_ratio handles zero chunks gracefully."""
+    stats = IndexStats(
+        files_scanned=0,
+        files_indexed=0,
+        files_skipped=0,
+        chunks_total=0,
+        chunks_reused=0,
+        chunks_embedded=0,
+    )
+
+    assert stats.dedup_ratio == 0.0, "dedup_ratio should be 0 when no chunks"
+
+
+def test_cross_file_dedup_query_accuracy(temp_dir: Path) -> None:
+    """Test that search works correctly with deduplicated chunks across files."""
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create two files with identical shared code
+    shared_code = """def authenticate_user(username, password):
+    '''Authenticate a user with username and password.'''
+    if not username or not password:
+        raise ValueError("Username and password required")
+    return check_credentials(username, password)
+"""
+
+    # Add unique code to each file
+    file_a = shared_code + "\ndef function_only_in_a():\n    return 'A'\n"
+    file_b = shared_code + "\ndef function_only_in_b():\n    return 'B'\n"
+
+    (temp_dir / "auth_module.py").write_text(file_a)
+    (temp_dir / "auth_copy.py").write_text(file_b)
+
+    # Index both files
+    index_path(root=temp_dir, db_path=db_path, chunk_lines=30)
+
+    # Query should return both files containing the shared code
+    con = sqlite3.connect(str(db_path))
+    rows = con.execute(
+        """SELECT DISTINCT f.path FROM chunks c
+           JOIN files f ON c.file_id = f.id
+           WHERE c.text LIKE '%authenticate_user%'"""
+    ).fetchall()
+    con.close()
+
+    paths = [r[0] for r in rows]
+    assert len(paths) == 2, "Both files should be searchable"
+    assert any("auth_module.py" in p for p in paths)
+    assert any("auth_copy.py" in p for p in paths)

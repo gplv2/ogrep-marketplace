@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_text_sha256 ON chunks(text_sha256);
 """
 
 #: FTS5 schema for full-text search on chunk text.

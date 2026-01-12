@@ -19,7 +19,6 @@ import argparse
 import json
 import re
 import sqlite3
-import sys
 from pathlib import Path
 
 from ._common import detect_language, resolve_db_path

@@ -208,7 +208,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
     # Breakdown by MIME type category (if detection was run)
     if detection_results:
         mime_stats: dict[str, tuple[int, int]] = {}  # category -> (count, size)
-        for p, ext, size in indexable:
+        for p, _ext, size in indexable:
             result = detection_results.get(p)
             if result and result.mime_type:
                 # Extract category (e.g., "text/x-python" -> "text")
@@ -221,7 +221,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
             mime_stats[category] = (c + 1, s + size)
 
         # Add excluded files
-        for p, ext, size, mime in excluded:
+        for _p, _ext, size, mime in excluded:
             category = mime.split("/")[0] if "/" in mime else mime
             if category not in mime_stats:
                 mime_stats[category] = (0, 0)
@@ -230,7 +230,6 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
 
         if len(mime_stats) > 1:
             total_files = len(indexable) + len(excluded)
-            total_size = indexable_size + excluded_size
             print("\nBreakdown by file type:")
             sorted_mimes = sorted(mime_stats.items(), key=lambda x: x[1][0], reverse=True)
             print(f"  {'Type':<15} {'Files':>7} {'Size':>10} {'%':>6}")

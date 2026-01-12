@@ -154,9 +154,9 @@ def execute_query(sql: str):
 '''
         )
 
-        # Index the repo
+        # Index the repo (explicitly use text-embedding-3-small for test consistency)
         db_path = temp_dir / ".ogrep" / "index.sqlite"
-        index_path(root=temp_dir, db_path=db_path)
+        index_path(root=temp_dir, db_path=db_path, model="text-embedding-3-small")
 
         return temp_dir, db_path
 
@@ -442,8 +442,9 @@ export function handleRequest(req: Request): Response {
 '''
         )
 
+        # Index the repo (explicitly use text-embedding-3-small for test consistency)
         db_path = temp_dir / ".ogrep" / "index.sqlite"
-        index_path(root=temp_dir, db_path=db_path)
+        index_path(root=temp_dir, db_path=db_path, model="text-embedding-3-small")
 
         return temp_dir, db_path
 
