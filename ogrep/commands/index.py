@@ -464,7 +464,11 @@ def cmd_index(args: argparse.Namespace) -> int:
 
     # Handle --list flag (doesn't require embedding config)
     if getattr(args, "list", False):
-        return _list_files(root, args.exclude, args.include, detect=detect)
+        try:
+            return _list_files(root, args.exclude, args.include, detect=detect)
+        except KeyboardInterrupt:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            return 130
 
     if not require_embedding_config():
         return 1
