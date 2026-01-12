@@ -260,17 +260,21 @@ def embed_texts(
     # Create client
     client, is_local = _create_client()
 
-    # For small batches or cloud API, send all at once
-    if len(texts) <= MIN_BATCH_THRESHOLD or not is_local:
+    # Check for explicit batch size override (supports serial mode with OGREP_BATCH_SIZE=1)
+    env_batch = os.environ.get(ENV_BATCH_SIZE)
+    if env_batch:
+        batch_size = int(env_batch)
+    elif len(texts) <= MIN_BATCH_THRESHOLD or not is_local:
+        # For small batches or cloud API, send all at once
         vectors, dim = _embed_batch(client, texts, resolved_model, resolved_dimensions)
         if return_timing:
             return vectors, dim, time.perf_counter() - start_time
         return vectors, dim
-
-    # For large batches with local server, use batching
-    batch_size = _find_optimal_batch_size(
-        client, texts, resolved_model, resolved_dimensions
-    )
+    else:
+        # For large batches with local server, use auto-tuned batching
+        batch_size = _find_optimal_batch_size(
+            client, texts, resolved_model, resolved_dimensions
+        )
 
     all_vectors: list[bytes] = []
     dim: int | None = None
