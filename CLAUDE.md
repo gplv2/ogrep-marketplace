@@ -824,36 +824,45 @@ Update ALL these files when releasing a new version:
 
 #### CRITICAL: Marketplace JSON Structure
 
-**DO NOT modify the structure of these files. Only change version numbers.**
+**DO NOT modify the structure of these files. Only change version numbers and descriptions.**
 
-The marketplace breaks if you add fields like `metadata`, `category`, `tags`, or version inside `plugins[]`.
+The marketplace breaks if you add fields like `version`, `author`, `category`, `tags` **inside `plugins[]`** array.
+Fields at the top level and in plugin.json are fine.
 
 **`.claude-plugin/marketplace.json` - EXACT working structure:**
 ```json
 {
   "name": "ogrep-marketplace",
   "version": "X.Y.Z",
-  "description": "Claude Code marketplace for ogrep - semantic grep with local models (LM Studio) or OpenAI",
+  "description": "Claude Code marketplace for ogrep - semantic code search with multiple modes: semantic (conceptual), fulltext (FTS5), and hybrid. Supports local models via LM Studio (offline, free) or OpenAI embeddings.",
   "owner": {
     "name": "gplv2",
+    "email": "glenn@bitless.be",
     "url": "https://github.com/gplv2"
   },
   "plugins": [
     {
       "name": "ogrep",
       "source": "./plugins/ogrep",
-      "description": "Semantic grep with local embedding models (offline, free) or OpenAI embeddings"
+      "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). JSON output for AI tools."
     }
   ]
 }
 ```
+
+**NOTE:** Inside `plugins[]`, only `name`, `source`, and `description` are allowed.
+Do NOT add `version`, `author`, or `category` inside the plugins array - it breaks the marketplace.
 
 **`plugins/ogrep/.claude-plugin/plugin.json` - EXACT working structure:**
 ```json
 {
   "name": "ogrep",
   "version": "X.Y.Z",
-  "description": "Semantic grep with local embedding models (LM Studio) or OpenAI",
+  "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). Supports local models via LM Studio (offline, free) or OpenAI embeddings. JSON output for AI tools.",
+  "author": {
+    "name": "gplv2",
+    "email": "glenn@bitless.be"
+  },
   "skills": "./skills/",
   "commands": ["./commands/"]
 }
