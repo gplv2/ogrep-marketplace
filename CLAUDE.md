@@ -23,6 +23,7 @@ ogrep-marketplace/
 │   ├── cli.py                # CLI argument parsing
 │   ├── commands/             # CLI command implementations
 │   │   ├── __init__.py
+│   │   ├── _arg_builders.py  # Shared argument builders for CLI
 │   │   ├── _common.py        # Shared utilities (scope resolution)
 │   │   ├── chunk.py          # Chunk command (navigation)
 │   │   ├── index.py          # Index command
