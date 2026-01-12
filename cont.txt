@@ -1,0 +1,72 @@
+ ⎿  To github.com:gplv2/ogrep-marketplace.git
+        fce51c4..2e1b4d5  dev -> dev
+
+● Done. Here's the summary of all commits pushed:
+
+  2e1b4d5 docs: update .env.example with all environment variables
+  284e1cd docs: add serial vs batched comparison tests
+  a0ef6c5 feat(embed): support explicit batch size override for serial mode
+  c79953a docs: update changelog with batch chunking and bug fixes
+  a773c52 docs: add embedding performance test plan
+  fce51c4 fix(index): use parent directory for repo_root when indexing single files
+  bedc3b8 feat(embed): add batch chunking with auto-tuning for local servers
+
+  Test Plan Location: docs/EMBEDDING_PERFORMANCE_TEST_PLAN.md
+
+  Key Tests After Reboot:
+  1. Pre-test checklist (LM Studio status, API health)
+  2. Serial mode baseline (OGREP_BATCH_SIZE=1)
+  3. Model comparison (minilm vs nomic)
+  4. Batch auto-tuning verification
+  5. Real PHP code embedding
+  6. Serial vs batched comparison
+  7. Full index workflow
+
+  Serial Mode: Set OGREP_BATCH_SIZE=1 to send requests one at a time - useful as baseline for debugging.
+
+✻ Worked for 5m 11s
+
+● Background command "Index directory with PHP include filter" completed (exit code 0).
+
+● Read agent output bd154b3
+  ⎿  Read 34 lines
+
+● This confirms the problem. The background task crashed after 13+ minutes:
+
+  Key findings:
+  - 1632 PHP files were being indexed (the -i '*.php' matched all PHP files)
+  - Extreme speed variation: 1s/it to 44s/it (wildly inconsistent)
+  - Only 61 files processed before crash
+  - Final error: Model has unloaded or crashed..
+
+  Root cause: The old installed version was running (without batch chunking), and nomic model couldn't handle sustained load on 1632 files.
+
+  After reboot, use the test plan at docs/EMBEDDING_PERFORMANCE_TEST_PLAN.md to:
+  1. Test with minilm (4.5x faster, more stable)
+  2. Verify batch chunking is working
+  3. Use serial mode (OGREP_BATCH_SIZE=1) as baseline
+  4. Test with just ONE file first before full directory
+
+❯ no, I cancelled the background indexer to reboot
+
+● Got it. Everything is committed and pushed. After reboot, use the test plan:
+
+  cat docs/EMBEDDING_PERFORMANCE_TEST_PLAN.md
+
+  Quick start after reboot:
+  # 1. Check LM Studio
+  ~/.cache/lm-studio/bin/lms server status
+  ~/.cache/lm-studio/bin/lms status
+
+  # 2. Set environment
+  export OGREP_BASE_URL=http://localhost:1234/v1
+
+  # 3. Test serial baseline first
+  export OGREP_BATCH_SIZE=1
+  ogrep index /home/glenn/repos/testsc/opt/strac -m minilm --chunk-lines 30 -e '*' -i cgpsv85.php
+
+  # 4. Then test batched
+  unset OGREP_BATCH_SIZE
+  ogrep index /home/glenn/repos/testsc/opt/strac -m minilm --chunk-lines 30 -e '*' -i cgpsv85.php
+
+  Use minilm (not nomic) - it's 4.5x faster and more stable.
