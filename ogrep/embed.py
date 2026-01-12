@@ -27,16 +27,84 @@ from typing import Literal, overload
 
 from openai import OpenAI
 
-from .models import resolve_dimensions, resolve_model
+from .models import get_max_batch_size, resolve_dimensions, resolve_model
 
 # Environment variable for batch size override
 ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
 
-# Default batch sizes to test for auto-tuning (powers of 2 from 8 to 96)
-BATCH_SIZES = [8, 16, 32, 64, 96]
+# Default batch sizes for local models (small context windows)
+LOCAL_BATCH_SIZES = [8, 16, 32, 64, 96]
 
 # Minimum texts to trigger batching (below this, send all at once)
 MIN_BATCH_THRESHOLD = 32
+
+# Threshold to distinguish local vs cloud models
+CLOUD_BATCH_THRESHOLD = 256
+
+
+def _get_batch_sizes_for_model(max_batch: int) -> list[int]:
+    """
+    Generate appropriate batch sizes to test for auto-tuning.
+
+    For local models (max_batch <= 96): use standard small sizes.
+    For cloud models (max_batch > 256): use 7 steps from 64 to max.
+
+    Args:
+        max_batch: Model's maximum batch size.
+
+    Returns:
+        List of batch sizes to test.
+    """
+    if max_batch <= 96:
+        # Local model - use standard sizes up to max
+        return [bs for bs in LOCAL_BATCH_SIZES if bs <= max_batch]
+
+    # Cloud model (OpenAI) - generate 7 steps from 64 to max
+    # Using roughly geometric progression
+    steps = 7
+    start = 64
+    end = max_batch
+
+    if end <= start:
+        return [end]
+
+    # Generate steps: 64, then 6 more up to max
+    batch_sizes = [start]
+    ratio = (end / start) ** (1 / (steps - 1))
+
+    for i in range(1, steps - 1):
+        next_size = int(start * (ratio ** i))
+        # Round to nice numbers (multiples of 64 or 128)
+        if next_size > 512:
+            next_size = (next_size // 128) * 128
+        else:
+            next_size = (next_size // 64) * 64
+        if next_size > batch_sizes[-1]:
+            batch_sizes.append(next_size)
+
+    # Always include the max
+    if batch_sizes[-1] != end:
+        batch_sizes.append(end)
+
+    return batch_sizes
+
+
+def _get_default_batch_size(max_batch: int) -> int:
+    """
+    Get the default fallback batch size for a model.
+
+    For local models: 16 (conservative)
+    For cloud models: 200 (OpenAI benefits from larger batches)
+
+    Args:
+        max_batch: Model's maximum batch size.
+
+    Returns:
+        Default batch size.
+    """
+    if max_batch > CLOUD_BATCH_THRESHOLD:
+        return min(200, max_batch)  # Cloud models default to 200
+    return min(16, max_batch)  # Local models default to 16
 
 # Cache for optimal batch size (per-session)
 _optimal_batch_size: int | None = None
@@ -122,7 +190,11 @@ def _find_optimal_batch_size(
     """
     Auto-tune batch size by testing different sizes.
 
-    Tests batch sizes 50, 100, 200 and picks the one with best throughput.
+    Tests batch sizes and picks the one with best throughput,
+    respecting the model's max_batch_size limit.
+
+    For local models: tests [8, 16, 32, 64, 96] up to max
+    For cloud models: tests 7 steps from 64 to max (e.g., 64, 128, 256, 512, 768, 1024, 2048)
 
     Args:
         client: OpenAI client instance.
@@ -131,29 +203,38 @@ def _find_optimal_batch_size(
         dimensions: Optional dimension override.
 
     Returns:
-        Optimal batch size.
+        Optimal batch size (capped to model's max_batch_size).
     """
     global _optimal_batch_size
 
-    # Use cached value if available
-    if _optimal_batch_size is not None:
-        return _optimal_batch_size
+    # Get model's max batch size limit
+    max_batch = get_max_batch_size(model)
 
-    # Check environment override
+    # Use cached value if available (still respect max)
+    if _optimal_batch_size is not None:
+        return min(_optimal_batch_size, max_batch)
+
+    # Check environment override (cap to model max)
     env_batch = os.environ.get(ENV_BATCH_SIZE)
     if env_batch:
-        _optimal_batch_size = int(env_batch)
+        _optimal_batch_size = min(int(env_batch), max_batch)
         return _optimal_batch_size
+
+    # Get appropriate default for this model type
+    default_size = _get_default_batch_size(max_batch)
 
     # Need at least 8 samples for meaningful timing
     if len(sample_texts) < 8:
-        _optimal_batch_size = 32  # Default
+        _optimal_batch_size = default_size
         return _optimal_batch_size
 
-    best_size = 32
+    best_size = default_size
     best_rate = 0.0
 
-    for batch_size in BATCH_SIZES:
+    # Get batch sizes appropriate for this model
+    valid_batch_sizes = _get_batch_sizes_for_model(max_batch)
+
+    for batch_size in valid_batch_sizes:
         if batch_size > len(sample_texts):
             continue
 

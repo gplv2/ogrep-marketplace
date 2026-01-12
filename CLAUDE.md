@@ -398,7 +398,7 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
 | `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
-| `OGREP_BATCH_SIZE` | Batch size for embedding requests (local servers) | Auto-tuned |
+| `OGREP_BATCH_SIZE` | Batch size for embedding requests | Auto-tuned** |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
 | `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
@@ -408,8 +408,14 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_INTEGRATION_TESTS` | Enable real API tests | - |
 
 **Smart Model Default:**
-- If `OGREP_BASE_URL` is set → `minilm` (local model, best accuracy)
+- If `OGREP_BASE_URL` is set → `nomic` (local model, best balance)
 - Otherwise → `text-embedding-3-small` (OpenAI)
+
+**Batch Size Auto-Tuning:**
+- Local models: default 16, max varies by model (16-32)
+- OpenAI models: default 200, max 2048
+- Auto-tuning tests multiple batch sizes and picks fastest
+- Manual override via `OGREP_BATCH_SIZE` (capped to model's max)
 
 ## Embedding Models
 
@@ -423,16 +429,28 @@ ogrep tune . -s 10     # Use 10 test samples
 
 ### Local Models (via LM Studio)
 
-| Model | Alias | Dimensions | Optimal Chunk | Accuracy | Use Case |
-|-------|-------|------------|---------------|----------|----------|
-| nomic-embed-text-v1.5 | `nomic` | 768 | 30 lines | 72% | Default local model |
-| all-MiniLM-L6-v2 | `minilm` | 384 | 30 lines | 96% | Fastest, highest accuracy |
-| bge-base-en-v1.5 | `bge` | 768 | 30 lines | 52% | Fallback option |
-| bge-m3 | `bge-m3` | 1024 | 60 lines | TBD | Multi-lingual (100+ languages) |
+| Model | Alias | Dimensions | Context | Max Batch | Optimal Chunk | Accuracy |
+|-------|-------|------------|---------|-----------|---------------|----------|
+| nomic-embed-text-v1.5 | `nomic` | 768 | 8192 | 32 | 30 lines | 72% |
+| all-MiniLM-L6-v2 | `minilm` | 384 | 256 | 16 | 30 lines | 96% |
+| bge-base-en-v1.5 | `bge` | 768 | 512 | 16 | 30 lines | 52% |
+| bge-m3 | `bge-m3` | 1024 | 8192 | 32 | 60 lines | TBD |
 
 **Smart Default:** When `OGREP_BASE_URL` is set, ogrep auto-selects `nomic` (best balance of accuracy and context).
 
 **Important:** Query model must match index model.
+
+### Batch Size Limits
+
+Each model has a `max_batch_size` to prevent context overflow:
+
+| Model Type | Default | Max | Auto-Tune Steps |
+|------------|---------|-----|-----------------|
+| Local (minilm, bge) | 16 | 16 | 8, 16 |
+| Local (nomic, bge-m3) | 16 | 32 | 8, 16, 32 |
+| OpenAI (all) | 200 | 2048 | 64, 128, 256, 512, 768, 1024, 2048 |
+
+OpenAI benefits greatly from larger batches (38x faster at batch 200 vs serial).
 
 ## Local Embedding Models
 

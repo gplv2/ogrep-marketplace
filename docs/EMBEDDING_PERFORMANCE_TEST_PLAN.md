@@ -281,19 +281,70 @@ Record results after each test session:
 
 | Date | Model | Short strings | PHP chunks | Notes |
 |------|-------|---------------|------------|-------|
+| 2026-01-12 (post-reboot) | minilm | 29ms/chunk | 38-50ms/chunk | ✓ All targets met |
+| 2026-01-12 (post-reboot) | nomic | 39ms/chunk | 259ms/chunk | Much improved from 318ms |
 | 2026-01-12 | minilm | 23ms/chunk | 72ms/chunk | After implementing batch chunking |
 | 2026-01-12 | nomic | 318ms/chunk | - | Much slower |
 | Previous | minilm | ~24ms/chunk | - | "Flew so fast" - target to match |
 
+## Batch Size Findings (2026-01-12)
+
+Testing with 200 real PHP chunks revealed:
+
+| Batch Size | ms/chunk | vs Serial | Recommendation |
+|------------|----------|-----------|----------------|
+| 1 (serial) | 50.2ms | baseline | - |
+| 4 | 41.2ms | 18% faster | - |
+| 8 | 42.1ms | 16% faster | - |
+| **16** | 42.1ms | 16% faster | **Default** |
+| 32 | 40.6ms | 19% faster | Good |
+| 64 | 39.0ms | 22% faster | Near context limits |
+| 128 | 38.7ms | 23% faster | May exceed context |
+
+**Key findings:**
+- Embedding quality is **identical** across all batch sizes (cosine similarity = 1.0)
+- Sweet spot is **batch size 16** - good speedup with safety margin
+- Larger batches approach context limits (~8K tokens for most models)
+- Default changed from 32 to 16 in `ogrep/embed.py`
+
 ## Success Criteria
 
 Performance is considered acceptable if:
-1. minilm achieves <50ms/chunk for real PHP code
-2. Full index of cgpsv85.php completes in <60s
-3. No crashes or "model unloaded" errors
+1. minilm achieves <50ms/chunk for real PHP code ✓ (38-50ms achieved)
+2. Full index of cgpsv85.php completes in <60s ✓ (54.55s achieved)
+3. No crashes or "model unloaded" errors ✓
 
 ## Next Steps After Testing
 
-1. If performance matches baseline: Document results, close investigation
+1. ~~If performance matches baseline: Document results, close investigation~~ **DONE**
 2. If still slow: Check LM Studio logs, try different quantization, check thermal throttling
 3. If inconsistent: May be related to model warm-up, queue depth, or memory pressure
+
+## OpenAI Comparison (2026-01-12)
+
+Testing with same PHP chunks (1230 chunks total):
+
+| Batch Size | ms/chunk | vs Serial | Notes |
+|------------|----------|-----------|-------|
+| 1 (serial) | 258ms | baseline | Network overhead per request |
+| 16 | 48ms | 5.4x faster | - |
+| 50 | 18ms | 14x faster | - |
+| 100 | 10ms | 26x faster | - |
+| **200** | 6.7ms | **38x faster** | **New default for OpenAI** |
+
+**Full index time:** 14.2s for 1230 chunks (vs 58s for minilm, 5:17 for nomic)
+
+## Resolution
+
+**Root cause**: Previous slow session (~72ms/chunk) was likely due to system state before reboot.
+After fresh reboot, performance returned to expected levels (~38-50ms/chunk).
+
+**Changes made:**
+1. Added `context_tokens` and `max_batch_size` to all model definitions
+2. Local models: default 16, max varies (16-32)
+3. OpenAI models: default 200, max 2048
+4. Auto-tuning now tests model-appropriate batch sizes:
+   - Local: [8, 16, 32] capped to model max
+   - OpenAI: [64, 128, 256, 512, 768, 1024, 2048]
+5. `OGREP_BATCH_SIZE` environment override now capped to model's max
+6. Investigation complete - performance optimized for both local and cloud models

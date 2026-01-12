@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ New Features
+
+#### Per-Model Batch Size Limits
+
+Added `context_tokens` and `max_batch_size` to model definitions to prevent context overflow and optimize throughput:
+
+| Model | Context | Max Batch | Default |
+|-------|---------|-----------|---------|
+| minilm | 256 | 16 | 16 |
+| bge | 512 | 16 | 16 |
+| nomic | 8192 | 32 | 16 |
+| bge-m3 | 8192 | 32 | 16 |
+| OpenAI (all) | 8191 | 2048 | 200 |
+
+- **Smart defaults**: Local models default to 16, OpenAI defaults to 200
+- **Auto-tuning**: Tests appropriate batch sizes per model type
+- **Environment override**: `OGREP_BATCH_SIZE` capped to model's max
+- OpenAI sees 38x speedup at batch 200 vs serial mode
+
+### 🔧 Changed
+
+- Default batch size for OpenAI increased from 16 to 200 (38x faster)
+- Auto-tune now tests 7 steps from 64 to 2048 for OpenAI models
+- `OGREP_BATCH_SIZE` now respects model's `max_batch_size` limit
+
 ## [0.5.0] - 2026-01-12
 
 ### ✨ New Features

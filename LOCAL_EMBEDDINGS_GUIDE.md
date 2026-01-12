@@ -8,6 +8,7 @@ This guide documents real-world observations from testing local embedding models
 - [Installing LM Studio](#installing-lm-studio)
 - [Downloading Embedding Models](#downloading-embedding-models)
 - [Model Comparison](#model-comparison)
+- [Batch Size Configuration](#batch-size-configuration)
 - [Why Local Models Outperform Cloud Models](#why-local-models-outperform-cloud-models)
 - [Chunk Size Tuning](#chunk-size-tuning)
 - [Overlap Optimization](#overlap-optimization)
@@ -201,6 +202,51 @@ We tested four local models on the ogrep codebase (29 source files, ~52-79 chunk
 - Higher dimensions (1024) for richer embeddings
 - Best choice for multi-lingual codebases or comments in non-English languages
 - Optimal with medium chunks (60 lines) and 10-line overlap
+
+---
+
+## Batch Size Configuration
+
+Batch size controls how many text chunks are sent per API request. Each model has limits based on its context window:
+
+### Model Batch Limits
+
+| Model | Context Tokens | Max Batch | Default | Auto-Tune Steps |
+|-------|---------------|-----------|---------|-----------------|
+| minilm | 256 | 16 | 16 | 8, 16 |
+| bge | 512 | 16 | 16 | 8, 16 |
+| nomic | 8192 | 32 | 16 | 8, 16, 32 |
+| bge-m3 | 8192 | 32 | 16 | 8, 16, 32 |
+| OpenAI (all) | 8191 | 2048 | 200 | 64, 128, 256, 512, 768, 1024, 2048 |
+
+### Performance Impact
+
+**Local models (minilm at batch 16):**
+```
+Batch 1:  60ms/chunk (serial)
+Batch 16: 42ms/chunk (30% faster)
+```
+
+**OpenAI (text-embedding-3-small):**
+```
+Batch 1:   258ms/chunk (serial)
+Batch 50:  18ms/chunk (14x faster)
+Batch 200: 6.7ms/chunk (38x faster)
+```
+
+OpenAI benefits dramatically from larger batches due to network overhead amortization.
+
+### Configuration
+
+```bash
+# Override batch size (capped to model's max)
+export OGREP_BATCH_SIZE=32
+
+# Let ogrep auto-tune (recommended)
+unset OGREP_BATCH_SIZE
+```
+
+Auto-tuning runs on first embedding request and caches the result for the session.
 
 ---
 

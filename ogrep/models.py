@@ -51,6 +51,10 @@ DEFAULT_CHUNK_LINES = 60
 DEFAULT_OVERLAP_LINES = 10
 
 
+# Default max batch size for models without specific tuning
+DEFAULT_MAX_BATCH_SIZE = 16
+
+
 @dataclass(frozen=True)
 class EmbeddingModel:
     """
@@ -67,6 +71,8 @@ class EmbeddingModel:
         notes: Additional notes or caveats.
         optimal_chunk_lines: Tuned chunk size for best accuracy (model-specific).
         optimal_overlap_lines: Tuned overlap between chunks (model-specific).
+        context_tokens: Model's context window size in tokens.
+        max_batch_size: Maximum batch size for embedding requests.
     """
 
     id: str
@@ -79,6 +85,8 @@ class EmbeddingModel:
     notes: str | None = None
     optimal_chunk_lines: int = DEFAULT_CHUNK_LINES
     optimal_overlap_lines: int = DEFAULT_OVERLAP_LINES
+    context_tokens: int = 8192  # Default context window
+    max_batch_size: int = DEFAULT_MAX_BATCH_SIZE
 
 
 # Available OpenAI embedding models
@@ -99,6 +107,8 @@ MODELS: dict[str, EmbeddingModel] = {
             "RAG applications",
         ),
         notes="Best balance of cost and performance. Recommended for most projects.",
+        context_tokens=8191,
+        max_batch_size=2048,  # OpenAI API limit
     ),
     "text-embedding-3-large": EmbeddingModel(
         id="text-embedding-3-large",
@@ -115,6 +125,8 @@ MODELS: dict[str, EmbeddingModel] = {
             "Production RAG systems",
         ),
         notes="54.9% avg on MIRACL (vs 31.4% for ada-002). Supports dimension reduction.",
+        context_tokens=8191,
+        max_batch_size=2048,  # OpenAI API limit
     ),
     "text-embedding-ada-002": EmbeddingModel(
         id="text-embedding-ada-002",
@@ -128,9 +140,12 @@ MODELS: dict[str, EmbeddingModel] = {
             "Existing indexes",
         ),
         notes="Legacy model. Consider migrating to text-embedding-3-small for better performance.",
+        context_tokens=8191,
+        max_batch_size=2048,  # OpenAI API limit
     ),
     # Local models via LM Studio
     # Optimal chunk sizes determined by tuning on real codebases
+    # Max batch sizes set conservatively based on context windows
     "bge-base-en-v1.5": EmbeddingModel(
         id="bge-base-en-v1.5",
         name="BGE Base English v1.5 (Local)",
@@ -146,6 +161,8 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Requires: lms server start. Set OGREP_BASE_URL=http://localhost:1234/v1",
         optimal_chunk_lines=30,  # Tuned: performs best with smaller chunks
         optimal_overlap_lines=5,  # Tuned: BGE prefers minimal overlap
+        context_tokens=512,
+        max_batch_size=16,  # Conservative for small context
     ),
     "nomic-embed-text-v1.5": EmbeddingModel(
         id="nomic-embed-text-v1.5",
@@ -162,6 +179,8 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Large context window (8192 tokens). Run: lms load nomic-ai/nomic-embed-text-v1.5",
         optimal_chunk_lines=30,  # Tuned: benchmark shows 30 lines optimal
         optimal_overlap_lines=15,  # Tuned: nomic benefits from more overlap
+        context_tokens=8192,
+        max_batch_size=32,  # Larger context allows bigger batches
     ),
     "text-embedding-all-minilm-l6-v2-embedding": EmbeddingModel(
         id="text-embedding-all-minilm-l6-v2-embedding",
@@ -178,6 +197,8 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Smallest model (~25MB) but truncates >256 tokens. Run: lms load all-minilm-l6-v2",
         optimal_chunk_lines=30,  # Tuned: small chunks fit context window
         optimal_overlap_lines=15,  # Tuned: more overlap helps with small context
+        context_tokens=256,
+        max_batch_size=16,  # Small model but fast, keep batches moderate
     ),
     "text-embedding-bge-m3": EmbeddingModel(
         id="text-embedding-bge-m3",
@@ -194,6 +215,8 @@ MODELS: dict[str, EmbeddingModel] = {
         notes="Supports dense, multi-vector, and sparse retrieval. Run: lms load bge-m3",
         optimal_chunk_lines=60,
         optimal_overlap_lines=10,  # Tuned: moderate overlap for larger chunks
+        context_tokens=8192,
+        max_batch_size=32,  # Large context allows bigger batches
     ),
 }
 
@@ -389,6 +412,51 @@ def get_optimal_overlap(model: str | None = None) -> int:
     # Fall back to model-specific default
     resolved = resolve_model(model)
     return MODELS[resolved].optimal_overlap_lines
+
+
+def get_max_batch_size(model: str | None = None) -> int:
+    """
+    Get the maximum batch size for a model.
+
+    Returns the model's max_batch_size to prevent exceeding context limits
+    or causing memory issues with local embedding servers.
+
+    Args:
+        model: Model ID, alias, or None to use default/env.
+
+    Returns:
+        Maximum batch size for embedding requests.
+
+    Examples:
+        >>> get_max_batch_size("minilm")
+        16
+        >>> get_max_batch_size("nomic")
+        32
+        >>> get_max_batch_size("small")
+        2048
+    """
+    resolved = resolve_model(model)
+    return MODELS[resolved].max_batch_size
+
+
+def get_context_tokens(model: str | None = None) -> int:
+    """
+    Get the context window size for a model in tokens.
+
+    Args:
+        model: Model ID, alias, or None to use default/env.
+
+    Returns:
+        Context window size in tokens.
+
+    Examples:
+        >>> get_context_tokens("minilm")
+        256
+        >>> get_context_tokens("nomic")
+        8192
+    """
+    resolved = resolve_model(model)
+    return MODELS[resolved].context_tokens
 
 
 def format_models_table() -> str:
