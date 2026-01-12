@@ -129,9 +129,7 @@ class TestCmdChunk:
         """Test retrieving chunk by raw ID."""
         # Get actual chunk ID from database
         con = connect(indexed_db)
-        chunk_id = con.execute(
-            "SELECT id FROM chunks WHERE chunk_index = 1"
-        ).fetchone()[0]
+        chunk_id = con.execute("SELECT id FROM chunks WHERE chunk_index = 1").fetchone()[0]
         con.close()
 
         args = type(

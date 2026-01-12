@@ -194,7 +194,7 @@ def _get_batch_sizes_for_model(max_batch: int) -> list[int]:
     ratio = (end / start) ** (1 / (steps - 1))
 
     for i in range(1, steps - 1):
-        next_size = int(start * (ratio ** i))
+        next_size = int(start * (ratio**i))
         # Round to nice numbers (multiples of 64 or 128)
         if next_size > 512:
             next_size = (next_size // 128) * 128
@@ -226,6 +226,7 @@ def _get_default_batch_size(max_batch: int) -> int:
     if max_batch > CLOUD_BATCH_THRESHOLD:
         return min(200, max_batch)  # Cloud models default to 200
     return min(16, max_batch)  # Local models default to 16
+
 
 # Cache for optimal batch size (per-session)
 _optimal_batch_size: int | None = None
@@ -304,7 +305,9 @@ def _embed_batch(
         if "maximum context length" in error_msg and _retry_count < 3:
             # Parse the error to find how much to reduce
             # Example: "maximum context length is 8192 tokens, however you requested 9047 tokens"
-            match = re.search(r"maximum context length is (\d+) tokens.*requested (\d+) tokens", error_msg)
+            match = re.search(
+                r"maximum context length is (\d+) tokens.*requested (\d+) tokens", error_msg
+            )
             if match:
                 max_allowed = int(match.group(1))
                 requested = int(match.group(2))
@@ -328,9 +331,7 @@ def _embed_batch(
                         truncated_texts.append(text)
 
                 # Retry with truncated texts
-                return _embed_batch(
-                    client, truncated_texts, model, dimensions, _retry_count + 1
-                )
+                return _embed_batch(client, truncated_texts, model, dimensions, _retry_count + 1)
         raise
 
     vectors: list[bytes] = []
@@ -428,8 +429,7 @@ def embed_texts(
     dimensions: int | None = None,
     *,
     return_timing: Literal[False] = False,
-) -> tuple[list[bytes], int]:
-    ...
+) -> tuple[list[bytes], int]: ...
 
 
 @overload
@@ -439,8 +439,7 @@ def embed_texts(
     dimensions: int | None = None,
     *,
     return_timing: Literal[True],
-) -> tuple[list[bytes], int, float]:
-    ...
+) -> tuple[list[bytes], int, float]: ...
 
 
 def embed_texts(
@@ -519,25 +518,19 @@ def embed_texts(
         batch_count = len(texts)
     elif is_local:
         # For local server, use auto-tuned batching
-        batch_count = _find_optimal_batch_size(
-            client, texts, resolved_model, resolved_dimensions
-        )
+        batch_count = _find_optimal_batch_size(client, texts, resolved_model, resolved_dimensions)
     else:
         # For cloud API with many texts, use model's max batch
         batch_count = max_batch
 
     # Create token-aware batches (respects both token limit and count limit)
-    batches = _create_token_aware_batches(
-        texts, max_tokens=max_tokens, max_count=batch_count
-    )
+    batches = _create_token_aware_batches(texts, max_tokens=max_tokens, max_count=batch_count)
 
     all_vectors: list[bytes] = []
     dim: int | None = None
 
     for batch in batches:
-        vectors, batch_dim = _embed_batch(
-            client, batch, resolved_model, resolved_dimensions
-        )
+        vectors, batch_dim = _embed_batch(client, batch, resolved_model, resolved_dimensions)
         all_vectors.extend(vectors)
         if dim is None:
             dim = batch_dim

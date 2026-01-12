@@ -33,7 +33,17 @@ def temp_db(tmp_path: Path) -> Path:
             """INSERT INTO chunks
                (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_id, i, i * 10, (i + 1) * 10, f"chunk {i} text", f"sha_{i}", b"\x00" * 1536 * 4, 1536, "test-model"),
+            (
+                file_id,
+                i,
+                i * 10,
+                (i + 1) * 10,
+                f"chunk {i} text",
+                f"sha_{i}",
+                b"\x00" * 1536 * 4,
+                1536,
+                "test-model",
+            ),
         )
 
     con.commit()
@@ -187,7 +197,9 @@ def test_health_full(temp_db: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "Full Integrity Check" in captured.out
 
 
-def test_health_shows_fts5_stats_after_rebuild(temp_db: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_health_shows_fts5_stats_after_rebuild(
+    temp_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test that FTS5 stats show after rebuild."""
     # First rebuild FTS5
     args = argparse.Namespace(
@@ -255,7 +267,9 @@ def temp_db_with_dedup(tmp_path: Path) -> Path:
     return db_path
 
 
-def test_health_shows_dedup_stats(temp_db_with_dedup: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_health_shows_dedup_stats(
+    temp_db_with_dedup: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test that health command shows deduplication statistics."""
     args = argparse.Namespace(
         db=temp_db_with_dedup,

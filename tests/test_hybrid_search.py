@@ -109,9 +109,7 @@ class TestFTS5Schema:
 
         # Now FTS should work
         assert has_fts5(con)
-        results = con.execute(
-            "SELECT rowid FROM chunks_fts WHERE text MATCH '\"test\"'"
-        ).fetchall()
+        results = con.execute("SELECT rowid FROM chunks_fts WHERE text MATCH '\"test\"'").fetchall()
         assert len(results) == 1
 
 
@@ -162,7 +160,17 @@ class TestSearchModes:
                 """INSERT INTO chunks
                    (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (file_id, i, i * 20 + 1, (i + 1) * 20, text, f"hash{i}", blob, dim, "text-embedding-3-small"),
+                (
+                    file_id,
+                    i,
+                    i * 20 + 1,
+                    (i + 1) * 20,
+                    text,
+                    f"hash{i}",
+                    blob,
+                    dim,
+                    "text-embedding-3-small",
+                ),
             )
         con.commit()
         con.close()

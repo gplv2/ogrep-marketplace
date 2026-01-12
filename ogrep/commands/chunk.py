@@ -52,9 +52,7 @@ def _parse_chunk_ref(ref: str) -> tuple[str | None, int | None, int | None]:
     return ref, None, None
 
 
-def _chunk_to_dict(
-    row: tuple, repo_root: Path
-) -> dict:
+def _chunk_to_dict(row: tuple, repo_root: Path) -> dict:
     """Convert a database row to a chunk dictionary."""
     chunk_id, chunk_index, path, start_line, end_line, text = row
 
@@ -132,10 +130,14 @@ def cmd_chunk(args: argparse.Namespace) -> int:
                 (chunk_index, f"%/{rel_path}", str(repo_root / rel_path)),
             ).fetchone()
         else:
-            print(json.dumps({
-                "error": f"Invalid chunk reference: {args.ref}. "
-                         "Use 'path/file.py:N' or raw chunk ID."
-            }))
+            print(
+                json.dumps(
+                    {
+                        "error": f"Invalid chunk reference: {args.ref}. "
+                        "Use 'path/file.py:N' or raw chunk ID."
+                    }
+                )
+            )
             return 1
 
         if row is None:
@@ -162,9 +164,7 @@ def cmd_chunk(args: argparse.Namespace) -> int:
                 (file_path, file_chunk_index, before_count),
             ).fetchall()
             # Reverse to get ascending order
-            before_chunks = [
-                _chunk_to_dict(r, repo_root) for r in reversed(before_rows)
-            ]
+            before_chunks = [_chunk_to_dict(r, repo_root) for r in reversed(before_rows)]
 
         if after_count > 0:
             after_rows = con.execute(

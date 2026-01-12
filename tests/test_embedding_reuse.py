@@ -362,9 +362,7 @@ def test_cross_file_integrity_check_dimension(temp_dir: Path) -> None:
 
     # Corrupt ONE chunk's dimension in database (file_a's chunk)
     con = sqlite3.connect(str(db_path))
-    file_a_row = con.execute(
-        "SELECT id FROM files WHERE path LIKE '%file_a.py'"
-    ).fetchone()
+    file_a_row = con.execute("SELECT id FROM files WHERE path LIKE '%file_a.py'").fetchone()
     if file_a_row:
         con.execute(
             "UPDATE chunks SET dim = 9999 WHERE file_id = ? AND chunk_index = 0",

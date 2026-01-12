@@ -42,9 +42,7 @@ def _get_table_stats(con: sqlite3.Connection) -> list[tuple[str, int, int]]:
     tables = [row[0] for row in cur.fetchall()]
 
     # Also check for FTS5 virtual tables
-    cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_fts'"
-    )
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_fts'")
     fts_tables = [row[0] for row in cur.fetchall()]
 
     for table in tables:
@@ -171,9 +169,7 @@ def _get_fts5_stats(con: sqlite3.Connection) -> dict | None:
     cur = con.cursor()
 
     # Check if FTS5 table exists
-    cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_fts'"
-    )
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='chunks_fts'")
     if not cur.fetchone():
         return None
 

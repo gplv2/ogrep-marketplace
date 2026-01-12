@@ -436,7 +436,7 @@ def check_credentials(user: str, pwd: str) -> bool:
 '''
         )
         (src_dir / "server.ts").write_text(
-            '''/**
+            """/**
  * Server module for handling HTTP requests.
  */
 export function startServer(port: number): void {
@@ -446,7 +446,7 @@ export function startServer(port: number): void {
 export function handleRequest(req: Request): Response {
     return new Response("OK");
 }
-'''
+"""
         )
 
         # Index the repo (explicitly use text-embedding-3-small for test consistency)
@@ -770,13 +770,15 @@ class TestGetIndexInfo:
         connect(db_path).close()
         con = sqlite3.connect(str(db_path))
         # Insert a chunk with model info
-        con.execute("INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
-                    ("/test.py", 123, 100, "abc"))
+        con.execute(
+            "INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
+            ("/test.py", 123, 100, "abc"),
+        )
         file_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
         con.execute(
             "INSERT INTO chunks (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, model, dim) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (file_id, 0, 1, 10, "test code", "sha", b"\x00" * 12, "nomic-embed-text-v1.5", 768)
+            (file_id, 0, 1, 10, "test code", "sha", b"\x00" * 12, "nomic-embed-text-v1.5", 768),
         )
         con.commit()
         con.close()
@@ -874,10 +876,26 @@ class TestFormatTextOutput:
     def test_formats_multiple_hits(self, capsys) -> None:
         """Test text output formatting for multiple hits."""
         hits = [
-            Hit(score=0.9, path="/a.py", start_line=1, end_line=10, text="first",
-                chunk_id=1, chunk_index=0, confidence="high"),
-            Hit(score=0.7, path="/b.py", start_line=5, end_line=15, text="second",
-                chunk_id=2, chunk_index=0, confidence="medium"),
+            Hit(
+                score=0.9,
+                path="/a.py",
+                start_line=1,
+                end_line=10,
+                text="first",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="high",
+            ),
+            Hit(
+                score=0.7,
+                path="/b.py",
+                start_line=5,
+                end_line=15,
+                text="second",
+                chunk_id=2,
+                chunk_index=0,
+                confidence="medium",
+            ),
         ]
 
         _format_text_output(hits)
@@ -892,13 +910,23 @@ class TestFormatTextOutput:
         """Test that long snippets are truncated to 240 chars."""
         long_text = "x" * 500
         hits = [
-            Hit(score=0.5, path="/test.py", start_line=1, end_line=10, text=long_text,
-                chunk_id=1, chunk_index=0, confidence="medium"),
+            Hit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text=long_text,
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
         ]
 
         _format_text_output(hits)
 
         captured = capsys.readouterr()
         # Snippet line should be truncated
-        snippet_line = [line for line in captured.out.split("\n") if line.strip().startswith("x")][0]
+        snippet_line = [line for line in captured.out.split("\n") if line.strip().startswith("x")][
+            0
+        ]
         assert len(snippet_line.strip()) <= 242  # "  " prefix + 240 chars

@@ -39,8 +39,14 @@ class TestHitDataclass:
     def test_hit_is_frozen(self) -> None:
         """Test that Hit is immutable."""
         hit = Hit(
-            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0, confidence="low"
+            score=0.5,
+            path="/test.py",
+            start_line=1,
+            end_line=5,
+            text="test",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
         )
         with pytest.raises(AttributeError):  # Frozen dataclass
             hit.score = 0.9  # type: ignore[misc]
@@ -48,24 +54,48 @@ class TestHitDataclass:
     def test_hit_comparison(self) -> None:
         """Test that hits with same values are equal."""
         hit1 = Hit(
-            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0, confidence="low"
+            score=0.5,
+            path="/test.py",
+            start_line=1,
+            end_line=5,
+            text="test",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
         )
         hit2 = Hit(
-            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0, confidence="low"
+            score=0.5,
+            path="/test.py",
+            start_line=1,
+            end_line=5,
+            text="test",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
         )
         assert hit1 == hit2
 
     def test_hit_different_scores(self) -> None:
         """Test that hits with different scores are not equal."""
         hit1 = Hit(
-            score=0.5, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0, confidence="low"
+            score=0.5,
+            path="/test.py",
+            start_line=1,
+            end_line=5,
+            text="test",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
         )
         hit2 = Hit(
-            score=0.6, path="/test.py", start_line=1, end_line=5, text="test",
-            chunk_id=1, chunk_index=0, confidence="low"
+            score=0.6,
+            path="/test.py",
+            start_line=1,
+            end_line=5,
+            text="test",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
         )
         assert hit1 != hit2
 
@@ -441,7 +471,17 @@ class TestMixedDimensionsDetection:
             """INSERT INTO chunks
                (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (file_id, 1, 6, 10, "second chunk", "hash2", fake_1536d, 1536, "text-embedding-3-small"),
+            (
+                file_id,
+                1,
+                6,
+                10,
+                "second chunk",
+                "hash2",
+                fake_1536d,
+                1536,
+                "text-embedding-3-small",
+            ),
         )
         con.commit()
 

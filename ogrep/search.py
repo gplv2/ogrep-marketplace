@@ -179,10 +179,7 @@ def _fulltext_search(
     min_score = min(scores) if scores else 0.0
     score_range = max_score - min_score if max_score != min_score else 1.0
 
-    return {
-        row[0]: ((-row[1]) - min_score) / score_range
-        for row in rows
-    }
+    return {row[0]: ((-row[1]) - min_score) / score_range for row in rows}
 
 
 def query(

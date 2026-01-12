@@ -279,10 +279,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
     if use_json:
         # Build JSON output using helper
-        results = [
-            _format_json_result(h, repo_root, rank)
-            for rank, h in enumerate(hits, 1)
-        ]
+        results = [_format_json_result(h, repo_root, rank) for rank, h in enumerate(hits, 1)]
 
         # Calculate confidence distribution
         confidence_summary = {"high": 0, "medium": 0, "low": 0, "very_low": 0}

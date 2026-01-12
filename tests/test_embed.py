@@ -243,9 +243,7 @@ class TestTokenAwareBatching:
         # All texts should be included
         assert sum(len(b) for b in batches) == 100
 
-    def test_oversized_single_chunk_is_truncated(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_oversized_single_chunk_is_truncated(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that a single chunk exceeding context is truncated with warning."""
         import warnings
 

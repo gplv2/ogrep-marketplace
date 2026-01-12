@@ -155,9 +155,7 @@ def rebuild_fts5(con: sqlite3.Connection) -> int:
     con.executescript(FTS5_SCHEMA)
 
     # Rebuild from chunks table
-    con.execute(
-        "INSERT INTO chunks_fts(rowid, text) SELECT id, text FROM chunks"
-    )
+    con.execute("INSERT INTO chunks_fts(rowid, text) SELECT id, text FROM chunks")
     con.commit()
 
     # Return count

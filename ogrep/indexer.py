@@ -439,9 +439,7 @@ def _check_model_consistency(con, model: str) -> None:
     Raises:
         ValueError: If index uses a different model.
     """
-    existing_model_row = con.execute(
-        "SELECT DISTINCT model FROM chunks LIMIT 1"
-    ).fetchone()
+    existing_model_row = con.execute("SELECT DISTINCT model FROM chunks LIMIT 1").fetchone()
     if existing_model_row and existing_model_row[0] != model:
         raise ValueError(
             f"Model mismatch: index uses '{existing_model_row[0]}' "
@@ -569,12 +567,7 @@ def _is_file_unchanged(con, rel_path: str, sha: str, mtime_ns: int, size: int) -
         (rel_path,),
     ).fetchone()
 
-    if (
-        row
-        and int(row[1]) == mtime_ns
-        and int(row[2]) == size
-        and str(row[3]) == sha
-    ):
+    if row and int(row[1]) == mtime_ns and int(row[2]) == size and str(row[3]) == sha:
         return True, row
 
     return False, row
@@ -693,9 +686,7 @@ def _classify_chunks_for_embedding(
             stats.chunks_reused_global += 1
         elif tsha in existing_embeddings:
             # Found in this file's previous version
-            reusable_indices.append(
-                (i, existing_embeddings[tsha][0], existing_embeddings[tsha][1])
-            )
+            reusable_indices.append((i, existing_embeddings[tsha][0], existing_embeddings[tsha][1]))
             stats.chunks_reused += 1
             stats.chunks_reused_local += 1
         else:
@@ -835,9 +826,7 @@ def index_path(
         rel = str(p.resolve())
 
         # Check if file is already indexed and unchanged
-        is_unchanged, existing_row = _is_file_unchanged(
-            con, rel, sha, st.st_mtime_ns, st.st_size
-        )
+        is_unchanged, existing_row = _is_file_unchanged(con, rel, sha, st.st_mtime_ns, st.st_size)
         if is_unchanged:
             stats.files_skipped += 1
             continue
@@ -850,9 +839,7 @@ def index_path(
             existing_embeddings = _cache_existing_embeddings(con, int(existing_row[0]))
 
         # Insert or update file record
-        file_id = _upsert_file_record(
-            con, rel, st.st_mtime_ns, st.st_size, sha, existing_row
-        )
+        file_id = _upsert_file_record(con, rel, st.st_mtime_ns, st.st_size, sha, existing_row)
 
         # Chunk the file content
         text = b.decode("utf-8", errors="ignore")
@@ -868,9 +855,7 @@ def index_path(
         # Query global embeddings for all hashes (cross-file deduplication)
         global_embeddings: dict[str, tuple[bytes, int]] = {}
         if expected_dim is not None:
-            global_embeddings = _find_global_embeddings(
-                con, chunk_hashes, model, expected_dim
-            )
+            global_embeddings = _find_global_embeddings(con, chunk_hashes, model, expected_dim)
 
         # Classify chunks as reusable or needing embedding
         chunks_to_embed, reusable_indices = _classify_chunks_for_embedding(
@@ -889,10 +874,7 @@ def index_path(
                 expected_dim = dim
 
         # Store all chunks with embeddings
-        _store_chunks(
-            con, file_id, chunks, chunk_hashes,
-            new_embeddings, reusable_indices, model
-        )
+        _store_chunks(con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model)
 
         con.commit()
 
