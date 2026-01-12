@@ -11,9 +11,16 @@ from pathlib import Path
 import pytest
 
 from ogrep.commands._common import detect_language
-from ogrep.commands.query import _check_stale_files, cmd_query
+from ogrep.commands.query import (
+    _check_stale_files,
+    _format_json_result,
+    _format_text_output,
+    _get_index_info,
+    cmd_query,
+)
 from ogrep.db import connect
 from ogrep.indexer import index_path
+from ogrep.search import Hit
 
 
 class TestCheckStaleFiles:
@@ -752,3 +759,146 @@ export function handleRequest(req: Request): Response {
         # chunk_id should be a positive integer
         assert isinstance(first_result["chunk_id"], int)
         assert first_result["chunk_id"] > 0
+
+
+class TestGetIndexInfo:
+    """Tests for _get_index_info helper function."""
+
+    def test_returns_model_and_dim_from_populated_index(self, temp_dir: Path) -> None:
+        """Test that function returns model and dimensions from index."""
+        db_path = temp_dir / "index.sqlite"
+        connect(db_path).close()
+        con = sqlite3.connect(str(db_path))
+        # Insert a chunk with model info
+        con.execute("INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
+                    ("/test.py", 123, 100, "abc"))
+        file_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+        con.execute(
+            "INSERT INTO chunks (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, model, dim) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (file_id, 0, 1, 10, "test code", "sha", b"\x00" * 12, "nomic-embed-text-v1.5", 768)
+        )
+        con.commit()
+        con.close()
+
+        model, dim = _get_index_info(db_path)
+        assert model == "nomic-embed-text-v1.5"
+        assert dim == 768
+
+    def test_returns_none_for_empty_index(self, temp_dir: Path) -> None:
+        """Test that function returns None for empty index."""
+        db_path = temp_dir / "index.sqlite"
+        connect(db_path).close()
+
+        result = _get_index_info(db_path)
+        assert result is None
+
+
+class TestFormatJsonResult:
+    """Tests for _format_json_result helper function."""
+
+    def test_formats_hit_correctly(self, temp_dir: Path) -> None:
+        """Test that hit is formatted into correct JSON structure."""
+        hit = Hit(
+            score=0.8765,
+            path=str(temp_dir / "src" / "auth.py"),
+            start_line=10,
+            end_line=25,
+            text="def authenticate():\n    pass",
+            chunk_id=42,
+            chunk_index=2,
+            confidence="high",
+        )
+
+        result = _format_json_result(hit, repo_root=temp_dir, rank=1)
+
+        assert result["rank"] == 1
+        assert result["chunk_id"] == 42
+        assert result["chunk_ref"] == "src/auth.py:2"
+        assert result["path"] == str(temp_dir / "src" / "auth.py")
+        assert result["relative_path"] == "src/auth.py"
+        assert result["start_line"] == 10
+        assert result["end_line"] == 25
+        assert result["score"] == 0.8765
+        assert result["confidence"] == "high"
+        assert result["language"] == "python"
+        assert result["text"] == "def authenticate():\n    pass"
+
+    def test_handles_path_outside_repo_root(self) -> None:
+        """Test graceful fallback when path is outside repo root."""
+        hit = Hit(
+            score=0.5,
+            path="/other/location/file.py",
+            start_line=1,
+            end_line=5,
+            text="code",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="low",
+        )
+
+        result = _format_json_result(hit, repo_root=Path("/home/user/project"), rank=1)
+
+        # Should fall back to absolute path
+        assert result["relative_path"] == "/other/location/file.py"
+
+
+class TestFormatTextOutput:
+    """Tests for _format_text_output helper function."""
+
+    def test_formats_single_hit(self, capsys) -> None:
+        """Test text output formatting for a single hit."""
+        hits = [
+            Hit(
+                score=0.9123,
+                path="/project/src/main.py",
+                start_line=15,
+                end_line=30,
+                text="def main():\n    print('hello')\n    return 0",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="high",
+            )
+        ]
+
+        _format_text_output(hits)
+
+        captured = capsys.readouterr()
+        assert "/project/src/main.py:15-30" in captured.out
+        assert "score=0.9123" in captured.out
+        assert "(high)" in captured.out
+        # Snippet should be on second line, newlines escaped
+        assert "def main():" in captured.out
+        assert "\\n" in captured.out  # newlines should be escaped in text output
+
+    def test_formats_multiple_hits(self, capsys) -> None:
+        """Test text output formatting for multiple hits."""
+        hits = [
+            Hit(score=0.9, path="/a.py", start_line=1, end_line=10, text="first",
+                chunk_id=1, chunk_index=0, confidence="high"),
+            Hit(score=0.7, path="/b.py", start_line=5, end_line=15, text="second",
+                chunk_id=2, chunk_index=0, confidence="medium"),
+        ]
+
+        _format_text_output(hits)
+
+        captured = capsys.readouterr()
+        assert "/a.py:1-10" in captured.out
+        assert "/b.py:5-15" in captured.out
+        assert "first" in captured.out
+        assert "second" in captured.out
+
+    def test_truncates_long_snippets(self, capsys) -> None:
+        """Test that long snippets are truncated to 240 chars."""
+        long_text = "x" * 500
+        hits = [
+            Hit(score=0.5, path="/test.py", start_line=1, end_line=10, text=long_text,
+                chunk_id=1, chunk_index=0, confidence="medium"),
+        ]
+
+        _format_text_output(hits)
+
+        captured = capsys.readouterr()
+        # Snippet line should be truncated
+        snippet_line = [line for line in captured.out.split("\n") if line.strip().startswith("x")][0]
+        assert len(snippet_line.strip()) <= 242  # "  " prefix + 240 chars

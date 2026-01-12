@@ -25,8 +25,78 @@ import sys
 import time
 from pathlib import Path
 
+from ..search import Hit
 from ..search import query as query_db
 from ._common import detect_language, require_embedding_config, resolve_db_path
+
+
+def _get_index_info(db_path: Path) -> tuple[str, int] | None:
+    """
+    Get model and dimensions from the index.
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        Tuple of (model_name, dimensions) or None if index is empty.
+    """
+    con = sqlite3.connect(str(db_path))
+    try:
+        row = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
+        if row:
+            return row[0], row[1]
+        return None
+    finally:
+        con.close()
+
+
+def _format_json_result(hit: Hit, repo_root: Path, rank: int) -> dict:
+    """
+    Format a single Hit for JSON output.
+
+    Args:
+        hit: The search result Hit object.
+        repo_root: Repository root for relative path calculation.
+        rank: The 1-indexed rank of this result.
+
+    Returns:
+        Dictionary with formatted result fields.
+    """
+    # Calculate relative path from repo root
+    try:
+        rel_path = str(Path(hit.path).relative_to(repo_root))
+    except ValueError:
+        rel_path = hit.path  # Fallback to absolute if not relative to root
+
+    # Build chunk_ref: relative_path:chunk_index
+    chunk_ref = f"{rel_path}:{hit.chunk_index}"
+
+    return {
+        "rank": rank,
+        "chunk_ref": chunk_ref,
+        "chunk_id": hit.chunk_id,
+        "path": hit.path,
+        "relative_path": rel_path,
+        "start_line": hit.start_line,
+        "end_line": hit.end_line,
+        "score": round(hit.score, 4),
+        "confidence": hit.confidence,
+        "language": detect_language(hit.path),
+        "text": hit.text,
+    }
+
+
+def _format_text_output(hits: list[Hit]) -> None:
+    """
+    Print hits in human-readable text format.
+
+    Args:
+        hits: List of Hit objects to format and print.
+    """
+    for h in hits:
+        print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f} ({h.confidence})")
+        snippet = h.text.strip().replace("\n", "\\n")
+        print(f"  {snippet[:240]}")
 
 
 def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
@@ -122,12 +192,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
     # Get index model/dimensions BEFORE any operations
     # This ensures --refresh uses the correct model, not CLI defaults
-    con = sqlite3.connect(str(db))
-    try:
-        index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
-    finally:
-        con.close()
-
+    index_info = _get_index_info(db)
     if index_info:
         index_model, index_dim = index_info
     else:
@@ -203,31 +268,11 @@ def cmd_query(args: argparse.Namespace) -> int:
         con.close()
 
     if use_json:
-        # Build JSON output
-        results = []
-        for rank, h in enumerate(hits, 1):
-            # Calculate relative path from repo root
-            try:
-                rel_path = str(Path(h.path).relative_to(repo_root))
-            except ValueError:
-                rel_path = h.path  # Fallback to absolute if not relative to root
-
-            # Build chunk_ref: relative_path:chunk_index (human-readable reference)
-            chunk_ref = f"{rel_path}:{h.chunk_index}"
-
-            results.append({
-                "rank": rank,
-                "chunk_ref": chunk_ref,
-                "chunk_id": h.chunk_id,
-                "path": h.path,
-                "relative_path": rel_path,
-                "start_line": h.start_line,
-                "end_line": h.end_line,
-                "score": round(h.score, 4),
-                "confidence": h.confidence,
-                "language": detect_language(h.path),
-                "text": h.text,
-            })
+        # Build JSON output using helper
+        results = [
+            _format_json_result(h, repo_root, rank)
+            for rank, h in enumerate(hits, 1)
+        ]
 
         # Calculate confidence distribution
         confidence_summary = {"high": 0, "medium": 0, "low": 0, "very_low": 0}
@@ -251,10 +296,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         }
         print(json.dumps(output, indent=2))
     else:
-        # Human-readable output (truncated snippets)
-        for h in hits:
-            print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f} ({h.confidence})")
-            snippet = h.text.strip().replace("\n", "\\n")
-            print(f"  {snippet[:240]}")
+        # Human-readable output using helper
+        _format_text_output(hits)
 
     return 0
