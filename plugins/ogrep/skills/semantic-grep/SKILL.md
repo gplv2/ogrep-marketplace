@@ -19,9 +19,21 @@ Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
 # Index the repo (run once, or after major changes)
 ogrep index .
 
-# Semantic search (ALWAYS use --refresh and --json for AI tools)
-ogrep query "where is authentication handled?" -n 15 --refresh --json
+# Semantic search with JSON output (recommended for AI tools)
+ogrep query "where is authentication handled?" -n 15 --json
+
+# Use --refresh to ensure freshness after recent edits
+ogrep query "database connection logic" -n 10 --refresh --json
 ```
+
+### When to Use --refresh
+
+The `--refresh` flag checks for changed files and reindexes them before searching:
+
+- **Use --refresh**: After editing files, or when you need guaranteed fresh results
+- **Skip --refresh**: For faster queries when you know files haven't changed recently
+
+The refresh operation is fast due to smart embedding reuse (unchanged chunks keep their embeddings).
 
 ## Search Modes
 
@@ -33,17 +45,17 @@ ogrep supports three search modes via `--mode` (or `-M`):
 | `fulltext` | Exact identifiers | "def validate_token" |
 | `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
 
-**Default behavior:**
-- Uses `OGREP_SEARCH_MODE` env var if set
-- Falls back to `hybrid` if not set
-- Gracefully degrades to `semantic` if FTS5 unavailable
-
 ```bash
 # Explicit mode selection
 ogrep query "authenticate" --mode semantic --json   # Embeddings only
 ogrep query "def authenticate" --mode fulltext --json  # Keywords only
 ogrep query "user login" --mode hybrid --json       # Combined (default)
 ```
+
+**Default behavior:**
+- Uses `OGREP_SEARCH_MODE` env var if set
+- Falls back to `hybrid` if not set
+- Gracefully degrades to `semantic` if FTS5 unavailable
 
 ### When to Use Each Mode
 
@@ -91,7 +103,7 @@ ogrep chunk "handler.py:2" --after 2
 #### Pattern 3: Understand Full Module Section
 ```bash
 # Found interesting code, want full surrounding context
-ogrep chunk "auth.py:4" --context 1
+ogrep chunk "auth.py:4" --context 2
 ```
 
 #### Pattern 4: Quick Keyword Lookup
@@ -161,26 +173,53 @@ The `--json` flag returns structured data:
 ```
 
 **Key fields:**
-- `chunk_ref`: Primary reference for `ogrep chunk` command
-- `chunk_id`: Internal ID (also works with `ogrep chunk`)
-- `confidence`: Human-readable confidence level (high, medium, low, very_low)
+- `chunk_ref`: Primary reference for `ogrep chunk` command (e.g., `src/auth.py:2`)
+- `chunk_id`: Internal ID (also works with `ogrep chunk 42`)
+- `confidence`: Human-readable confidence level
 - `relative_path`: Easier to read than absolute paths
 - `language`: Programming language detected from extension
 - `text`: **Full chunk content** (not truncated)
 - `fts_available`: Whether hybrid/fulltext search was possible
 - `confidence_summary`: Distribution of confidence levels across results
+- `refreshed_files`: Number of files reindexed (when using --refresh)
+
+### Chunk Command JSON Output
+
+```json
+{
+  "requested": {
+    "chunk_ref": "src/auth.py:2",
+    "chunk_id": 42,
+    "chunk_index": 2,
+    "path": "/home/user/repo/src/auth.py",
+    "relative_path": "src/auth.py",
+    "start_line": 61,
+    "end_line": 120,
+    "language": "python",
+    "text": "def authenticate_user(...)..."
+  },
+  "before": [ /* array of chunk objects */ ],
+  "after": [ /* array of chunk objects */ ]
+}
+```
 
 ## Commands Reference
 
 | Command | Description |
 |---------|-------------|
 | `ogrep index .` | Index current directory |
-| `ogrep query "text" -n 15 -r --json` | Search with refresh (recommended) |
+| `ogrep index . --list` | Preview files that would be indexed (dry run) |
+| `ogrep query "text" -n 15 --json` | Search (add -r for refresh) |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
-| `ogrep status` | Show index info |
-| `ogrep reindex .` | Rebuild index (enables FTS5) |
+| `ogrep status` | Show index info (files, chunks, model, size) |
+| `ogrep health` | Full database diagnostics |
+| `ogrep health --vacuum` | Reclaim space and defragment |
+| `ogrep health --rebuild-fts` | Rebuild FTS5 index |
+| `ogrep reindex .` | Rebuild index from scratch (enables FTS5) |
 | `ogrep reset -f` | Delete index |
 | `ogrep models` | List embedding models |
+| `ogrep tune .` | Auto-tune chunk size for optimal accuracy |
+| `ogrep benchmark .` | Compare all embedding models |
 
 ## Flag Reference
 
@@ -189,7 +228,7 @@ The `--json` flag returns structured data:
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--refresh` | `-r` | Reindex changed files before search |
-| `--json` | | Full JSON output (recommended for AI) |
+| `--json` | | Full JSON output (recommended for AI tools) |
 | `--mode MODE` | `-M` | Search mode: semantic, fulltext, hybrid |
 | `--top N` | `-n` | Number of results (default: 10) |
 | `--model MODEL` | `-m` | Embedding model (must match index) |
@@ -202,32 +241,53 @@ The `--json` flag returns structured data:
 | `--after N` | `-A` | Include N chunks after |
 | `--context N` | `-C` | Include N chunks before AND after |
 
-## IMPORTANT: Always Use --refresh and --json
+### Index Flags
 
-**When querying from AI tools, ALWAYS use both flags:**
-
-```bash
-ogrep query "your search" --refresh --json
-```
-
-- `--refresh` checks for changed files and reindexes them before searching
-- `--json` returns structured output with full chunk text and metadata
-
-This is especially critical in AI tool contexts where files are being edited
-between queries. The `--refresh` operation is fast due to smart embedding reuse.
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--list` | `-l` | Preview files (dry run, doesn't index) |
+| `--exclude PATTERN` | `-e` | Add exclude pattern |
+| `--include PATTERN` | `-i` | Override default excludes |
+| `--model MODEL` | `-m` | Embedding model |
+| `--chunk-lines N` | | Lines per chunk (model-specific default) |
+| `--overlap N` | | Overlap between chunks |
+| `--no-detect` | | Skip MIME detection (faster) |
 
 ## Environment Variables
+
+### Core Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | - | Required for OpenAI embeddings |
+| `OGREP_BASE_URL` | - | Local server URL (e.g., `http://localhost:1234/v1`) |
+| `OGREP_MODEL` | `text-embedding-3-small`* | Default embedding model |
+| `OGREP_DIMENSIONS` | model default | Embedding dimensions |
+
+*When `OGREP_BASE_URL` is set, defaults to `nomic-embed-text-v1.5` (local model)
+
+### Chunk Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_CHUNK_LINES` | model-specific | Lines per chunk (60 for OpenAI, 30 for local) |
+| `OGREP_OVERLAP_LINES` | model-specific | Overlap between chunks |
+| `OGREP_BATCH_SIZE` | auto-tuned | Batch size for embedding requests |
+
+### Search Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
 | `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight in hybrid (0.0-1.0) |
+
+### Confidence Thresholds
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `OGREP_CONFIDENCE_HIGH` | `0.85` | Threshold for "high" confidence |
 | `OGREP_CONFIDENCE_MEDIUM` | `0.70` | Threshold for "medium" confidence |
 | `OGREP_CONFIDENCE_LOW` | `0.50` | Threshold for "low" confidence |
-| `OPENAI_API_KEY` | - | Required for embeddings |
-| `OGREP_MODEL` | `text-embedding-3-small` | Default embedding model |
-| `OGREP_BASE_URL` | - | Local server URL (e.g., LM Studio) |
 
 ## FTS5 Availability
 
@@ -241,8 +301,85 @@ Hybrid and fulltext modes require FTS5 index. If missing:
 ogrep reindex .   # Rebuilds index with FTS5
 ```
 
+**Check FTS5 status:**
+```bash
+ogrep health      # Shows "FTS5 Stats" section
+```
+
 ## Operational Notes
 
-- Model must match between index and query (use same `-m` flag)
+### Model Consistency
+- Model must match between index and query
 - Run `ogrep status` to check current index model
-- Use `ogrep reindex .` after upgrading to get FTS5 support
+- Use same `-m` flag or environment variable
+
+### Smart Embedding Reuse
+ogrep minimizes API costs through intelligent caching:
+- Unchanged files are skipped entirely
+- Modified files reuse embeddings for unchanged chunks
+- Cross-file deduplication: identical chunks share embeddings
+
+### Local Models (LM Studio)
+For offline/free usage:
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index . -m nomic   # Uses local model
+```
+
+### Token-Aware Batching
+Large batches are automatically split to respect model context limits. No configuration needed.
+
+### Database Health
+```bash
+ogrep health              # Full diagnostics
+ogrep health --vacuum     # Reclaim space
+ogrep health --integrity  # Full integrity check
+```
+
+## Workflow Examples
+
+### Example 1: Initial Search
+```bash
+# First time setup
+ogrep index .
+ogrep query "how does the API handle errors" -n 10 --json
+```
+
+### Example 2: Deep Dive After Finding Something
+```bash
+# Found error handling in handler.py:3
+ogrep chunk "handler.py:3" --context 2
+
+# Look for related error types
+ogrep query "error types" --mode fulltext --json
+```
+
+### Example 3: After Editing Files
+```bash
+# Ensure fresh results after making changes
+ogrep query "the function I just modified" --refresh --json
+```
+
+### Example 4: Exploring Unknown Codebase
+```bash
+# Conceptual search first
+ogrep query "where is user data stored" --json
+
+# Then keyword search for specifics
+ogrep query "UserRepository" --mode fulltext --json
+
+# Expand context on interesting results
+ogrep chunk "models/user.py:2" -C 1
+```
+
+### Example 5: Debugging Session
+```bash
+# Find error handling
+ogrep query "exception handling for network requests" --json
+
+# Look at surrounding code
+ogrep chunk "client.py:4" --before 2 --after 1
+
+# Find all catch blocks
+ogrep query "except Exception" --mode fulltext --json
+```
