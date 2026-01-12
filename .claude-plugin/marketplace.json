@@ -1,23 +1,16 @@
 {
   "name": "ogrep-marketplace",
   "version": "0.6.3",
-  "description": "Claude Code marketplace for ogrep - semantic code search with multiple modes: semantic (conceptual), fulltext (FTS5), and hybrid. Supports local models via LM Studio (offline, free) or OpenAI embeddings.",
+  "description": "Claude Code marketplace for ogrep - semantic grep with local models (LM Studio) or OpenAI",
   "owner": {
     "name": "gplv2",
-    "email": "glenn@bitless.be",
     "url": "https://github.com/gplv2"
   },
   "plugins": [
     {
       "name": "ogrep",
       "source": "./plugins/ogrep",
-      "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). JSON output for AI tools.",
-      "version": "0.6.3",
-      "author": {
-        "name": "gplv2",
-        "email": "glenn@bitless.be"
-      },
-      "category": "development"
+      "description": "Semantic grep with local embedding models (offline, free) or OpenAI embeddings"
     }
   ]
 }
