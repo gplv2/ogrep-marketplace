@@ -248,20 +248,38 @@ unset OGREP_BATCH_SIZE
 
 Auto-tuning runs on first embedding request and caches the result for the session.
 
-### Token-Aware Batching
+### Token-Aware Batching with Auto-Retry
 
 In addition to count-based limits, ogrep automatically splits batches to stay under each model's token context limit:
 
-- **Token estimation**: ~4 characters per token (typical for code)
+- **Token estimation**: ~3 characters per token (conservative baseline for code)
 - **Safety margin**: 10% under the limit for estimation variance
+- **Auto-retry**: If API returns context overflow, parses error, truncates more, retries (up to 3x)
 - **Automatic handling**: No configuration needed
 
-This prevents errors like:
+**Token limits by model:**
+
+| Model | Context Tokens | Max Batch Size |
+|-------|----------------|----------------|
+| OpenAI (all) | 8,191 | 2,048 |
+| nomic | 8,192 | 32 |
+| bge-m3 | 8,192 | 32 |
+| minilm | 256 | 16 |
+| bge | 512 | 16 |
+
+**Example warnings:**
+
 ```
-This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+# Upfront estimation catches ~95% of cases
+Text truncated from ~10304 tokens to ~7371 tokens to fit context window
+
+# If estimation is off (dense code, special chars), auto-retry kicks in
+Context overflow (9047 > 8192 tokens). Truncating to 77% and retrying...
 ```
 
-**Oversized chunks**: If a single code chunk exceeds the model's context limit, it's automatically truncated with a warning. This is rare with default chunk sizes but can occur with very long functions or files.
+**Oversized chunks**: If a single code chunk exceeds the model's context limit, it's automatically truncated with a warning. This is rare with default chunk sizes but can occur with very long functions, dense code, or files with special characters that tokenize more densely.
+
+**Why 3 chars/token**: OpenAI typically uses ~4 chars/token for English text, but code with operators, whitespace patterns, and special characters can tokenize to fewer chars/token. Using 3 chars/token as baseline prevents most overflows; auto-retry handles edge cases.
 
 ---
 

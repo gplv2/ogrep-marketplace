@@ -72,21 +72,36 @@ Added `context_tokens` and `max_batch_size` to model definitions to prevent cont
 - **Environment override**: `OGREP_BATCH_SIZE` capped to model's max
 - OpenAI sees 38x speedup at batch 200 vs serial mode
 
-#### Token-Aware Batching
+#### Token-Aware Batching with Auto-Retry
 
-Embedding batches now respect model context limits, preventing "context length exceeded" errors:
+Embedding batches now respect model context limits with automatic recovery:
 
 ```
-This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+# Upfront estimation prevents most overflows
+Text truncated from ~10304 tokens to ~7371 tokens to fit context window
+
+# If estimation is off, auto-retry kicks in
+Context overflow (9047 > 8192 tokens). Truncating to 77% and retrying...
 ```
 
 **How it works:**
-- Estimates tokens per chunk (~4 chars/token for code)
+- Estimates tokens per chunk (~3 chars/token for code)
 - Splits batches to stay under model's `context_tokens` limit (with 10% safety margin)
 - Oversized single chunks are automatically truncated with a warning
+- **Auto-retry**: If OpenAI still returns 400, parses error, truncates more, retries (up to 3x)
 - Works for both OpenAI and local models
 
-**No configuration needed** — token-aware batching is automatic.
+**Token limits by model:**
+
+| Model | Context Tokens | Max Batch Size |
+|-------|----------------|----------------|
+| OpenAI (all) | 8,191 | 2,048 |
+| nomic | 8,192 | 32 |
+| bge-m3 | 8,192 | 32 |
+| minilm | 256 | 16 |
+| bge | 512 | 16 |
+
+**No configuration needed** — token-aware batching and auto-retry are automatic.
 
 #### Friendly Model Mismatch Errors
 

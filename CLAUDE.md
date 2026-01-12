@@ -485,19 +485,37 @@ Each model has a `max_batch_size` to prevent context overflow:
 
 OpenAI benefits greatly from larger batches (38x faster at batch 200 vs serial).
 
-### Token-Aware Batching
+### Token-Aware Batching with Auto-Retry
 
 Batches are automatically split to respect model context limits:
 
-- **Token estimation**: ~4 chars per token for code
+- **Token estimation**: ~3 chars per token for code (conservative baseline)
 - **Safety margin**: 10% under the limit to account for estimation variance
 - **Oversized chunks**: Single chunks exceeding context are truncated with a warning
+- **Auto-retry**: If API returns context overflow, parses error, truncates further, retries (up to 3x)
 - **No configuration needed**: Works automatically for all models
 
-This prevents errors like:
+**Token limits by model:**
+
+| Model | Context Tokens | Max Batch Size |
+|-------|----------------|----------------|
+| OpenAI (all) | 8,191 | 2,048 |
+| nomic | 8,192 | 32 |
+| bge-m3 | 8,192 | 32 |
+| minilm | 256 | 16 |
+| bge | 512 | 16 |
+
+**Example warnings:**
+
 ```
-This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+# Upfront estimation catches most overflows
+Text truncated from ~10304 tokens to ~7371 tokens to fit context window
+
+# If estimation is off, auto-retry kicks in
+Context overflow (9047 > 8192 tokens). Truncating to 77% and retrying...
 ```
+
+This prevents crashes on large codebases with very long functions or dense code.
 
 ## Local Embedding Models
 
