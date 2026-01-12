@@ -50,31 +50,10 @@ from .commands import (
     cmd_status,
     cmd_tune,
 )
+from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
-from .models import DEFAULT_MODEL
 
 __version__ = "0.5.0"
-
-
-def _add_model_args(parser: argparse.ArgumentParser, for_query: bool = False) -> None:
-    """Add model-related arguments to a parser."""
-    match_note = " (must match indexed model)" if for_query else ""
-    parser.add_argument(
-        "--model",
-        "-m",
-        default=None,
-        metavar="MODEL",
-        help=f"Embedding model or alias: small, large, ada{match_note}. "
-        f"Default: $OGREP_MODEL or {DEFAULT_MODEL}",
-    )
-    parser.add_argument(
-        "--dimensions",
-        "-d",
-        type=int,
-        default=None,
-        metavar="DIM",
-        help="Embedding dimensions. Default: $OGREP_DIMENSIONS or model default",
-    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -103,42 +82,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_index.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
     add_scope_args(p_index)
-    _add_model_args(p_index)
-    p_index.add_argument(
-        "--chunk-lines",
-        type=int,
-        default=None,
-        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 30 for nomic/bge)",
-    )
-    p_index.add_argument(
-        "--overlap",
-        type=int,
-        default=None,
-        help="Overlapping lines between chunks (default: model-specific, e.g., 15 for nomic, 5 for bge)",
-    )
-    p_index.add_argument(
-        "--max-bytes",
-        type=int,
-        default=2_000_000,
-        help="Max file size in bytes (default: 2MB)",
-    )
-    p_index.add_argument(
-        "--exclude",
-        "-e",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Additional exclude patterns (added to defaults)",
-    )
-    p_index.add_argument(
-        "--include",
-        "-i",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Include patterns (override default excludes). "
-        "Example: -i '*.md' to index markdown files",
-    )
+    add_model_args(p_index)
+    add_indexing_args(p_index)
     p_index.add_argument(
         "--list",
         "-l",
@@ -190,7 +135,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Search mode: semantic (embeddings only), fulltext (FTS5 keywords), "
         "hybrid (combined, default). Uses OGREP_SEARCH_MODE env var if not specified.",
     )
-    _add_model_args(p_query, for_query=True)
+    add_model_args(p_query, for_query=True)
     p_query.set_defaults(func=cmd_query)
 
     # chunk command
@@ -254,41 +199,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_reindex.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
     add_scope_args(p_reindex)
-    _add_model_args(p_reindex)
-    p_reindex.add_argument(
-        "--chunk-lines",
-        type=int,
-        default=None,
-        help="Lines per chunk (default: model-specific, e.g., 60 for OpenAI, 30 for nomic/bge)",
-    )
-    p_reindex.add_argument(
-        "--overlap",
-        type=int,
-        default=None,
-        help="Overlapping lines between chunks (default: model-specific, e.g., 15 for nomic, 5 for bge)",
-    )
-    p_reindex.add_argument(
-        "--max-bytes",
-        type=int,
-        default=2_000_000,
-        help="Max file size in bytes",
-    )
-    p_reindex.add_argument(
-        "--exclude",
-        "-e",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Additional exclude patterns (added to defaults)",
-    )
-    p_reindex.add_argument(
-        "--include",
-        "-i",
-        action="append",
-        default=[],
-        metavar="PATTERN",
-        help="Include patterns (override default excludes)",
-    )
+    add_model_args(p_reindex)
+    add_indexing_args(p_reindex)
     p_reindex.set_defaults(func=cmd_reindex)
 
     # clean command
@@ -366,7 +278,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_tune.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
     add_scope_args(p_tune)
-    _add_model_args(p_tune)
+    add_model_args(p_tune)
     p_tune.add_argument(
         "--samples",
         "-s",
@@ -394,56 +306,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Comprehensive benchmark comparing accuracy, speed, and optimal settings across all available models.",
     )
     p_bench.add_argument("path", nargs="?", default=".", help="Root path (default: .)")
-    p_bench.add_argument(
-        "--samples",
-        "-s",
-        type=int,
-        default=10,
-        help="Number of code patterns to test (default: 10)",
-    )
-    p_bench.add_argument(
-        "--models",
-        "-m",
-        nargs="+",
-        metavar="MODEL",
-        help="Specific models to test (default: all available)",
-    )
-    p_bench.add_argument(
-        "--local-only",
-        action="store_true",
-        help="Only test local models (via OGREP_BASE_URL)",
-    )
-    p_bench.add_argument(
-        "--cloud-only",
-        action="store_true",
-        help="Only test cloud models (OpenAI)",
-    )
-    p_bench.add_argument(
-        "--chunks",
-        default="30,60,90",
-        help="Chunk sizes to test (comma-separated, default: 30,60,90)",
-    )
-    p_bench.add_argument(
-        "--overlaps",
-        default="5,10,15",
-        help="Overlap values to test (comma-separated, default: 5,10,15)",
-    )
-    p_bench.add_argument(
-        "--save",
-        action="store_true",
-        help="Save optimal settings to .env file",
-    )
-    p_bench.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON",
-    )
-    p_bench.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed per-configuration results",
-    )
+    add_benchmark_args(p_bench)
     p_bench.set_defaults(func=cmd_benchmark)
 
     return p
