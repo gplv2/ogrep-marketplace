@@ -42,17 +42,19 @@ MIN_BATCH_THRESHOLD = 32
 CLOUD_BATCH_THRESHOLD = 256
 
 # Characters per token estimate for code
-# OpenAI uses ~4 chars/token for English, code is slightly denser
-CHARS_PER_TOKEN = 4
+# OpenAI uses ~4 chars/token for English, but code with special chars,
+# whitespace patterns, and non-ASCII can tokenize to fewer chars/token.
+# Using 3 chars/token for safety margin (observed ~3.2 in practice).
+CHARS_PER_TOKEN = 3
 
 
 def _estimate_tokens(text: str) -> int:
     """
     Estimate the number of tokens in a text.
 
-    Uses a rough approximation of ~4 characters per token, which is
-    reasonable for code. This is used to prevent exceeding model
-    context limits when batching embedding requests.
+    Uses a conservative approximation of ~3 characters per token for code.
+    This accounts for special characters, operators, and whitespace patterns
+    that tokenize more densely than plain English text.
 
     Args:
         text: Text to estimate tokens for.
