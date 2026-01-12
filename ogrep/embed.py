@@ -27,7 +27,7 @@ from typing import Literal, overload
 
 from openai import OpenAI
 
-from .models import get_max_batch_size, resolve_dimensions, resolve_model
+from .models import get_context_tokens, get_max_batch_size, resolve_dimensions, resolve_model
 
 # Environment variable for batch size override
 ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
@@ -40,6 +40,125 @@ MIN_BATCH_THRESHOLD = 32
 
 # Threshold to distinguish local vs cloud models
 CLOUD_BATCH_THRESHOLD = 256
+
+# Characters per token estimate for code
+# OpenAI uses ~4 chars/token for English, code is slightly denser
+CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(text: str) -> int:
+    """
+    Estimate the number of tokens in a text.
+
+    Uses a rough approximation of ~4 characters per token, which is
+    reasonable for code. This is used to prevent exceeding model
+    context limits when batching embedding requests.
+
+    Args:
+        text: Text to estimate tokens for.
+
+    Returns:
+        Estimated number of tokens.
+    """
+    if not text:
+        return 0
+    return max(1, len(text) // CHARS_PER_TOKEN)
+
+
+def _truncate_to_tokens(text: str, max_tokens: int) -> str:
+    """
+    Truncate text to fit within a token limit.
+
+    Args:
+        text: Text to truncate.
+        max_tokens: Maximum number of tokens.
+
+    Returns:
+        Truncated text.
+    """
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    # Truncate with some margin and add indicator
+    truncated = text[: max_chars - 20] + "\n[...truncated...]"
+    return truncated
+
+
+def _create_token_aware_batches(
+    texts: list[str],
+    max_tokens: int,
+    max_count: int | None = None,
+) -> list[list[str]]:
+    """
+    Create batches of texts that respect token limits.
+
+    Splits texts into batches where the total estimated tokens per batch
+    doesn't exceed the model's context limit. Also handles single texts
+    that exceed the limit by truncating them.
+
+    Args:
+        texts: List of texts to batch.
+        max_tokens: Maximum tokens per batch (model's context limit).
+        max_count: Optional maximum number of texts per batch.
+
+    Returns:
+        List of batches, where each batch is a list of texts.
+
+    Warns:
+        UserWarning: When a single text exceeds the context limit and is truncated.
+    """
+    import warnings
+
+    if not texts:
+        return []
+
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    # Leave some margin for safety (10%)
+    effective_limit = int(max_tokens * 0.9)
+
+    for text in texts:
+        text_tokens = _estimate_tokens(text)
+
+        # Handle oversized single text
+        if text_tokens > effective_limit:
+            # Flush current batch if any
+            if current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+
+            # Truncate the text
+            truncated = _truncate_to_tokens(text, effective_limit)
+            warnings.warn(
+                f"Text truncated from ~{text_tokens} tokens to ~{effective_limit} "
+                f"tokens to fit context window ({len(text)} -> {len(truncated)} chars)",
+                UserWarning,
+                stacklevel=2,
+            )
+            batches.append([truncated])
+            continue
+
+        # Check if adding this text would exceed limits
+        would_exceed_tokens = current_tokens + text_tokens > effective_limit
+        would_exceed_count = max_count is not None and len(current_batch) >= max_count
+
+        if current_batch and (would_exceed_tokens or would_exceed_count):
+            # Start a new batch
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(text)
+        current_tokens += text_tokens
+
+    # Don't forget the last batch
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
 
 
 def _get_batch_sizes_for_model(max_batch: int) -> list[int]:
@@ -341,27 +460,35 @@ def embed_texts(
     # Create client
     client, is_local = _create_client()
 
-    # Check for explicit batch size override (supports serial mode with OGREP_BATCH_SIZE=1)
+    # Get model limits
+    max_tokens = get_context_tokens(resolved_model)
+    max_batch = get_max_batch_size(resolved_model)
+
+    # Determine count-based batch size
     env_batch = os.environ.get(ENV_BATCH_SIZE)
     if env_batch:
-        batch_size = int(env_batch)
-    elif len(texts) <= MIN_BATCH_THRESHOLD or not is_local:
-        # For small batches or cloud API, send all at once
-        vectors, dim = _embed_batch(client, texts, resolved_model, resolved_dimensions)
-        if return_timing:
-            return vectors, dim, time.perf_counter() - start_time
-        return vectors, dim
-    else:
-        # For large batches with local server, use auto-tuned batching
-        batch_size = _find_optimal_batch_size(
+        batch_count = int(env_batch)
+    elif len(texts) <= MIN_BATCH_THRESHOLD and not is_local:
+        # For small cloud batches, use all texts (still subject to token limit)
+        batch_count = len(texts)
+    elif is_local:
+        # For local server, use auto-tuned batching
+        batch_count = _find_optimal_batch_size(
             client, texts, resolved_model, resolved_dimensions
         )
+    else:
+        # For cloud API with many texts, use model's max batch
+        batch_count = max_batch
+
+    # Create token-aware batches (respects both token limit and count limit)
+    batches = _create_token_aware_batches(
+        texts, max_tokens=max_tokens, max_count=batch_count
+    )
 
     all_vectors: list[bytes] = []
     dim: int | None = None
 
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    for batch in batches:
         vectors, batch_dim = _embed_batch(
             client, batch, resolved_model, resolved_dimensions
         )

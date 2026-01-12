@@ -248,6 +248,21 @@ unset OGREP_BATCH_SIZE
 
 Auto-tuning runs on first embedding request and caches the result for the session.
 
+### Token-Aware Batching
+
+In addition to count-based limits, ogrep automatically splits batches to stay under each model's token context limit:
+
+- **Token estimation**: ~4 characters per token (typical for code)
+- **Safety margin**: 10% under the limit for estimation variance
+- **Automatic handling**: No configuration needed
+
+This prevents errors like:
+```
+This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+```
+
+**Oversized chunks**: If a single code chunk exceeds the model's context limit, it's automatically truncated with a warning. This is rare with default chunk sizes but can occur with very long functions or files.
+
 ---
 
 ## Why Local Models Outperform Cloud Models

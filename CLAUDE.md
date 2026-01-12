@@ -485,6 +485,20 @@ Each model has a `max_batch_size` to prevent context overflow:
 
 OpenAI benefits greatly from larger batches (38x faster at batch 200 vs serial).
 
+### Token-Aware Batching
+
+Batches are automatically split to respect model context limits:
+
+- **Token estimation**: ~4 chars per token for code
+- **Safety margin**: 10% under the limit to account for estimation variance
+- **Oversized chunks**: Single chunks exceeding context are truncated with a warning
+- **No configuration needed**: Works automatically for all models
+
+This prevents errors like:
+```
+This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+```
+
 ## Local Embedding Models
 
 Use local embedding models for offline operation, privacy, or cost-free usage.

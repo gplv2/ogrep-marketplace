@@ -59,11 +59,32 @@ Added `context_tokens` and `max_batch_size` to model definitions to prevent cont
 - **Environment override**: `OGREP_BATCH_SIZE` capped to model's max
 - OpenAI sees 38x speedup at batch 200 vs serial mode
 
+#### Token-Aware Batching
+
+Embedding batches now respect model context limits, preventing "context length exceeded" errors:
+
+```
+This model's maximum context length is 8192 tokens, however you requested 10118 tokens
+```
+
+**How it works:**
+- Estimates tokens per chunk (~4 chars/token for code)
+- Splits batches to stay under model's `context_tokens` limit (with 10% safety margin)
+- Oversized single chunks are automatically truncated with a warning
+- Works for both OpenAI and local models
+
+**No configuration needed** — token-aware batching is automatic.
+
 ### 🔧 Changed
 
 - Default batch size for OpenAI increased from 16 to 200 (38x faster)
 - Auto-tune now tests 7 steps from 64 to 2048 for OpenAI models
 - `OGREP_BATCH_SIZE` now respects model's `max_batch_size` limit
+- Batching now respects both count limits AND token limits
+
+### 🐛 Fixes
+
+- **Context overflow crash fixed**: Large code chunks no longer crash indexing with "maximum context length" errors. Batches are automatically split to respect model token limits.
 
 ## [0.5.0] - 2026-01-12
 
