@@ -120,6 +120,20 @@ def cmd_query(args: argparse.Namespace) -> int:
     # Track refresh stats for JSON output
     refreshed_files = 0
 
+    # Get index model/dimensions BEFORE any operations
+    # This ensures --refresh uses the correct model, not CLI defaults
+    con = sqlite3.connect(str(db))
+    try:
+        index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
+    finally:
+        con.close()
+
+    if index_info:
+        index_model, index_dim = index_info
+    else:
+        # Empty index - use CLI args
+        index_model, index_dim = args.model, args.dimensions
+
     # Handle --refresh: check for stale files and reindex if needed
     if getattr(args, "refresh", False):
         stale_files = _check_stale_files(db, repo_root)
@@ -127,13 +141,21 @@ def cmd_query(args: argparse.Namespace) -> int:
             # Import here to avoid circular imports
             from ..indexer import index_path
 
+            # Warn if user specified a different model than the index uses
+            if args.model != index_model and index_info is not None:
+                if not use_json:
+                    print(
+                        f"Note: Using index model ({index_model}), not -m {args.model}",
+                        file=sys.stderr,
+                    )
+
             if not use_json:
                 print(f"Refreshing index ({len(stale_files)} changed files)...", file=sys.stderr)
             stats = index_path(
                 root=repo_root,
                 db_path=db,
-                model=args.model,
-                dimensions=args.dimensions,
+                model=index_model,
+                dimensions=index_dim,
             )
             refreshed_files = stats.files_indexed
             if not use_json and (stats.files_indexed > 0 or stats.chunks_reused > 0):
@@ -154,8 +176,8 @@ def cmd_query(args: argparse.Namespace) -> int:
         db_path=db,
         q=args.query,
         top_k=args.top,
-        model=args.model,
-        dimensions=args.dimensions,
+        model=index_model,
+        dimensions=index_dim,
         mode=search_mode,
     )
 
@@ -173,16 +195,12 @@ def cmd_query(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
-    # Get index metadata for stats
+    # Get total chunk count for stats (model/dim already fetched above)
     con = sqlite3.connect(str(db))
     try:
-        index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
         total_chunks = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     finally:
         con.close()
-
-    index_model = index_info[0] if index_info else None
-    index_dim = index_info[1] if index_info else None
 
     if use_json:
         # Build JSON output
