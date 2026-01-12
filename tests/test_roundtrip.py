@@ -251,3 +251,60 @@ def test_cmd_index_model_mismatch_friendly_error(
     # Should NOT show Python traceback
     assert "Traceback" not in captured.out
     assert "Traceback" not in captured.err
+
+
+def test_cmd_index_keyboard_interrupt(
+    temp_dir: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that Ctrl-C during indexing is handled gracefully."""
+    import argparse
+    from unittest.mock import patch
+
+    from ogrep.commands.index import cmd_index
+
+    db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+    # Create multiple files to index (enough to trigger the interrupt mid-process)
+    for i in range(5):
+        (temp_dir / f"file{i}.py").write_text(f"def func{i}():\n    return {i}\n")
+
+    # Mock embed_texts to raise KeyboardInterrupt on first call
+    call_count = 0
+
+    def mock_embed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise KeyboardInterrupt()
+        # Return mock embedding for any subsequent calls
+        texts = args[0] if args else kwargs.get("texts", [])
+        return [b"\x00" * 6144] * len(texts), 1536
+
+    with patch("ogrep.indexer.embed_texts", side_effect=mock_embed):
+        args = argparse.Namespace(
+            path=str(temp_dir),
+            repo_root=temp_dir,
+            db=db_path,
+            profile=None,
+            global_cache=False,
+            model="text-embedding-3-small",
+            dimensions=None,
+            chunk_lines=50,
+            overlap=10,
+            max_bytes=1_000_000,
+            exclude=[],
+            include=[],
+            list=False,
+            no_detect=True,
+        )
+        result = cmd_index(args)
+
+    # Should return non-zero exit code
+    assert result == 130  # Standard exit code for SIGINT
+
+    captured = capsys.readouterr()
+    # Should show graceful message
+    assert "Interrupted" in captured.out or "cancelled" in captured.out.lower()
+    # Should NOT show Python traceback
+    assert "Traceback" not in captured.out
+    assert "Traceback" not in captured.err

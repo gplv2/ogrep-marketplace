@@ -457,7 +457,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             - list: If True, list files that would be indexed (dry run)
 
     Returns:
-        Exit code (0 for success, 1 for configuration error).
+        Exit code (0 for success, 1 for configuration error, 130 for interrupt).
     """
     root = Path(args.path).resolve()
     detect = not getattr(args, "no_detect", False)
@@ -486,6 +486,11 @@ def cmd_index(args: argparse.Namespace) -> int:
             include=args.include,
             detect=detect,
         )
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Partial progress may have been saved to the index.")
+        print("Run 'ogrep index .' again to continue from where you left off.")
+        return 130  # Standard SIGINT exit code (128 + 2)
     except ValueError as e:
         if "Model mismatch" in str(e):
             _print_model_mismatch_help(str(e), args.model)

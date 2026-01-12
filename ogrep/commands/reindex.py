@@ -66,17 +66,23 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         print(f"Removed existing index at {db}")
 
     # Reindex
-    stats = index_path(
-        root=root,
-        db_path=db,
-        model=args.model,
-        dimensions=args.dimensions,
-        chunk_lines=chunk_lines,
-        overlap=overlap,
-        max_bytes=args.max_bytes,
-        exclude=args.exclude,
-        include=args.include,
-    )
+    try:
+        stats = index_path(
+            root=root,
+            db_path=db,
+            model=args.model,
+            dimensions=args.dimensions,
+            chunk_lines=chunk_lines,
+            overlap=overlap,
+            max_bytes=args.max_bytes,
+            exclude=args.exclude,
+            include=args.include,
+        )
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C).")
+        print("Partial progress may have been saved to the index.")
+        print("Run 'ogrep reindex .' again to rebuild from scratch.")
+        return 130  # Standard SIGINT exit code (128 + 2)
 
     # Display indexing statistics
     print(f"Reindexed into {db}")

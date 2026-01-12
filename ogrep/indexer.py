@@ -428,6 +428,321 @@ def _find_global_embeddings(
     return result
 
 
+def _check_model_consistency(con, model: str) -> None:
+    """
+    Verify the requested model matches the index's existing model.
+
+    Args:
+        con: Database connection.
+        model: Requested embedding model name.
+
+    Raises:
+        ValueError: If index uses a different model.
+    """
+    existing_model_row = con.execute(
+        "SELECT DISTINCT model FROM chunks LIMIT 1"
+    ).fetchone()
+    if existing_model_row and existing_model_row[0] != model:
+        raise ValueError(
+            f"Model mismatch: index uses '{existing_model_row[0]}' "
+            f"but requested '{model}'. "
+            f"Use --force to reindex with new model."
+        )
+
+
+def _get_expected_dimension(con, model: str, dimensions: int | None) -> int | None:
+    """
+    Determine expected embedding dimension for the model.
+
+    Priority:
+    1. Explicit dimensions argument
+    2. Most common dimension in existing chunks for this model
+    3. Model definition default
+    4. None (learn from first embed)
+
+    Args:
+        con: Database connection.
+        model: Embedding model name.
+        dimensions: Explicit dimensions override (or None).
+
+    Returns:
+        Expected dimension, or None if unknown.
+    """
+    if dimensions is not None:
+        return dimensions
+
+    # Check what dimension the majority of existing chunks use
+    existing_dim_row = con.execute(
+        """SELECT dim, COUNT(*) as cnt FROM chunks
+           WHERE model = ?
+           GROUP BY dim
+           ORDER BY cnt DESC, dim ASC
+           LIMIT 1""",
+        (model,),
+    ).fetchone()
+    if existing_dim_row:
+        return existing_dim_row[0]
+
+    # Fall back to model definition
+    try:
+        model_info = get_model(model)
+        return model_info.dimensions
+    except KeyError:
+        # Unknown model - will learn from first embed
+        return None
+
+
+def _read_file_if_indexable(
+    path: Path,
+    max_bytes: int,
+    detection_results: dict,
+    stats: IndexStats,
+) -> bytes | None:
+    """
+    Read file contents if the file is indexable.
+
+    Checks:
+    - File exists
+    - Not too large
+    - Not binary (no null bytes)
+    - Passes MIME detection (if enabled)
+
+    Args:
+        path: File to read.
+        max_bytes: Maximum file size.
+        detection_results: MIME detection results (may be empty).
+        stats: IndexStats to update on skip.
+
+    Returns:
+        File contents as bytes, or None if file should be skipped.
+    """
+    if not path.is_file():
+        return None
+
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+
+    # Skip large files
+    if st.st_size > max_bytes:
+        stats.files_skipped += 1
+        return None
+
+    # Read file contents
+    try:
+        b = path.read_bytes()
+    except Exception:
+        stats.files_skipped += 1
+        return None
+
+    # Skip binary files (null-byte check)
+    if not _is_probably_text(b):
+        stats.files_skipped += 1
+        return None
+
+    # Skip files that failed MIME type detection
+    if path in detection_results and not detection_results[path].is_text:
+        stats.files_skipped += 1
+        return None
+
+    return b
+
+
+def _is_file_unchanged(con, rel_path: str, sha: str, mtime_ns: int, size: int) -> tuple:
+    """
+    Check if file is already indexed and unchanged.
+
+    Args:
+        con: Database connection.
+        rel_path: Resolved file path.
+        sha: SHA-256 hash of file contents.
+        mtime_ns: Modification time in nanoseconds.
+        size: File size in bytes.
+
+    Returns:
+        Tuple of (is_unchanged, existing_row).
+        existing_row is None if file not in database.
+    """
+    row = con.execute(
+        "SELECT id, mtime_ns, size, sha256 FROM files WHERE path=?",
+        (rel_path,),
+    ).fetchone()
+
+    if (
+        row
+        and int(row[1]) == mtime_ns
+        and int(row[2]) == size
+        and str(row[3]) == sha
+    ):
+        return True, row
+
+    return False, row
+
+
+def _cache_existing_embeddings(con, file_id: int) -> dict[str, tuple[bytes, int]]:
+    """
+    Cache embeddings from existing file chunks before deletion.
+
+    Args:
+        con: Database connection.
+        file_id: File ID to cache embeddings for.
+
+    Returns:
+        Dict mapping text_sha256 -> (embedding_bytes, dim).
+    """
+    embeddings = {}
+    for r in con.execute(
+        "SELECT text_sha256, embedding, dim FROM chunks WHERE file_id=?",
+        (file_id,),
+    ):
+        embeddings[str(r[0])] = (r[1], int(r[2]))
+    return embeddings
+
+
+def _upsert_file_record(
+    con,
+    rel_path: str,
+    mtime_ns: int,
+    size: int,
+    sha: str,
+    existing_row: tuple | None,
+) -> int:
+    """
+    Insert or update file record in database.
+
+    Args:
+        con: Database connection.
+        rel_path: Resolved file path.
+        mtime_ns: Modification time in nanoseconds.
+        size: File size in bytes.
+        sha: SHA-256 hash of file contents.
+        existing_row: Existing row from files table (or None).
+
+    Returns:
+        File ID.
+    """
+    if existing_row:
+        file_id = int(existing_row[0])
+        con.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
+        con.execute(
+            "UPDATE files SET mtime_ns=?, size=?, sha256=? WHERE id=?",
+            (mtime_ns, size, sha, file_id),
+        )
+    else:
+        cur = con.execute(
+            "INSERT INTO files(path, mtime_ns, size, sha256) VALUES(?,?,?,?)",
+            (rel_path, mtime_ns, size, sha),
+        )
+        file_id = int(cur.lastrowid)
+    return file_id
+
+
+def _compute_chunk_hashes(chunks) -> tuple[list[str], list[str]]:
+    """
+    Compute SHA-256 hashes for all chunks.
+
+    Args:
+        chunks: List of Chunk objects.
+
+    Returns:
+        Tuple of (chunk_hashes, normalized_texts).
+    """
+    chunk_hashes = []
+    normalized_texts = []
+    for c in chunks:
+        normalized_text = c.text.replace("\r\n", "\n")
+        tsha = hashlib.sha256(normalized_text.encode("utf-8", errors="ignore")).hexdigest()
+        chunk_hashes.append(tsha)
+        normalized_texts.append(normalized_text)
+    return chunk_hashes, normalized_texts
+
+
+def _classify_chunks_for_embedding(
+    chunk_hashes: list[str],
+    normalized_texts: list[str],
+    global_embeddings: dict[str, tuple[bytes, int]],
+    existing_embeddings: dict[str, tuple[bytes, int]],
+    stats: IndexStats,
+) -> tuple[list[tuple[int, str]], list[tuple[int, bytes, int]]]:
+    """
+    Classify chunks as reusable or needing new embeddings.
+
+    Priority: global reuse > local reuse > new embedding.
+
+    Args:
+        chunk_hashes: List of text_sha256 hashes.
+        normalized_texts: List of normalized chunk texts.
+        global_embeddings: Embeddings from other files.
+        existing_embeddings: Embeddings from this file's previous version.
+        stats: IndexStats to update.
+
+    Returns:
+        Tuple of (chunks_to_embed, reusable_indices).
+        chunks_to_embed: List of (index, text) needing embedding.
+        reusable_indices: List of (index, embedding, dim) to reuse.
+    """
+    chunks_to_embed = []
+    reusable_indices = []
+
+    for i, tsha in enumerate(chunk_hashes):
+        if tsha in global_embeddings:
+            # Found in another file - reuse with verified integrity
+            reusable_indices.append((i, *global_embeddings[tsha]))
+            stats.chunks_reused += 1
+            stats.chunks_reused_global += 1
+        elif tsha in existing_embeddings:
+            # Found in this file's previous version
+            reusable_indices.append(
+                (i, existing_embeddings[tsha][0], existing_embeddings[tsha][1])
+            )
+            stats.chunks_reused += 1
+            stats.chunks_reused_local += 1
+        else:
+            # Truly new chunk - needs embedding
+            chunks_to_embed.append((i, normalized_texts[i]))
+            stats.chunks_embedded += 1
+
+    return chunks_to_embed, reusable_indices
+
+
+def _store_chunks(
+    con,
+    file_id: int,
+    chunks,
+    chunk_hashes: list[str],
+    new_embeddings: dict[int, tuple[bytes, int]],
+    reusable_indices: list[tuple[int, bytes, int]],
+    model: str,
+) -> None:
+    """
+    Store all chunks with embeddings in the database.
+
+    Args:
+        con: Database connection.
+        file_id: File ID to associate chunks with.
+        chunks: List of Chunk objects.
+        chunk_hashes: List of text_sha256 hashes.
+        new_embeddings: Dict mapping index -> (embedding, dim) for new chunks.
+        reusable_indices: List of (index, embedding, dim) for reused chunks.
+        model: Embedding model name.
+    """
+    for i, c in enumerate(chunks):
+        tsha = chunk_hashes[i]
+        if i in new_embeddings:
+            emb, dim = new_embeddings[i]
+        else:
+            # Find in reusable
+            emb, dim = next((e, d) for idx, e, d in reusable_indices if idx == i)
+
+        con.execute(
+            """INSERT INTO chunks(file_id, chunk_index, start_line, end_line,
+               text, text_sha256, embedding, dim, model)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (file_id, c.chunk_index, c.start_line, c.end_line, c.text, tsha, emb, dim, model),
+        )
+
+
 def index_path(
     root: Path,
     db_path: Path,
@@ -496,41 +811,10 @@ def index_path(
     con = connect(db_path)
 
     # Model consistency check - prevent mixing models in the same index
-    existing_model_row = con.execute(
-        "SELECT DISTINCT model FROM chunks LIMIT 1"
-    ).fetchone()
-    if existing_model_row and existing_model_row[0] != model:
-        raise ValueError(
-            f"Model mismatch: index uses '{existing_model_row[0]}' "
-            f"but requested '{model}'. "
-            f"Use --force to reindex with new model."
-        )
+    _check_model_consistency(con, model)
 
-    # Get expected dimensions - prefer actual DB dimension over model definition
-    # This handles mocks and custom dimension overrides correctly
-    # Use the MOST COMMON dimension to handle corrupted entries gracefully
-    # In case of ties, prefer smaller dimension (more likely to be a standard model dimension)
-    expected_dim = dimensions
-    if expected_dim is None:
-        # Check what dimension the majority of existing chunks use
-        existing_dim_row = con.execute(
-            """SELECT dim, COUNT(*) as cnt FROM chunks
-               WHERE model = ?
-               GROUP BY dim
-               ORDER BY cnt DESC, dim ASC
-               LIMIT 1""",
-            (model,),
-        ).fetchone()
-        if existing_dim_row:
-            expected_dim = existing_dim_row[0]
-        else:
-            # Fall back to model definition
-            try:
-                model_info = get_model(model)
-                expected_dim = model_info.dimensions
-            except KeyError:
-                # Unknown model - will learn from first embed
-                expected_dim = None
+    # Get expected dimensions
+    expected_dim = _get_expected_dimension(con, model, dimensions)
 
     files = list(iter_files(root, exclude=all_exclude, include=include))
     stats.files_scanned = len(files)
@@ -541,77 +825,34 @@ def index_path(
         detection_results = detect_file_types_batch(files)
 
     for p in tqdm(files, desc="Indexing"):
-        if not p.is_file():
+        # Read file if indexable
+        b = _read_file_if_indexable(p, max_bytes, detection_results, stats)
+        if b is None:
             continue
 
-        # Get file stats
-        try:
-            st = p.stat()
-        except FileNotFoundError:
-            continue
-
-        # Skip large files
-        if st.st_size > max_bytes:
-            stats.files_skipped += 1
-            continue
-
-        # Read file contents
-        try:
-            b = p.read_bytes()
-        except Exception:
-            stats.files_skipped += 1
-            continue
-
-        # Skip binary files (null-byte check)
-        if not _is_probably_text(b):
-            stats.files_skipped += 1
-            continue
-
-        # Skip files that failed MIME type detection
-        if p in detection_results and not detection_results[p].is_text:
-            stats.files_skipped += 1
-            continue
-
+        st = p.stat()
         sha = _sha256_bytes(b)
         rel = str(p.resolve())
 
         # Check if file is already indexed and unchanged
-        row = con.execute(
-            "SELECT id, mtime_ns, size, sha256 FROM files WHERE path=?",
-            (rel,),
-        ).fetchone()
-
-        if (
-            row
-            and int(row[1]) == st.st_mtime_ns
-            and int(row[2]) == st.st_size
-            and str(row[3]) == sha
-        ):
+        is_unchanged, existing_row = _is_file_unchanged(
+            con, rel, sha, st.st_mtime_ns, st.st_size
+        )
+        if is_unchanged:
             stats.files_skipped += 1
-            continue  # File unchanged, skip
+            continue
 
         stats.files_indexed += 1
 
         # Cache existing embeddings before deletion (for reuse)
         existing_embeddings: dict[str, tuple[bytes, int]] = {}
-        if row:
-            file_id = int(row[0])
-            for r in con.execute(
-                "SELECT text_sha256, embedding, dim FROM chunks WHERE file_id=?",
-                (file_id,),
-            ):
-                existing_embeddings[str(r[0])] = (r[1], int(r[2]))
-            con.execute("DELETE FROM chunks WHERE file_id=?", (file_id,))
-            con.execute(
-                "UPDATE files SET mtime_ns=?, size=?, sha256=? WHERE id=?",
-                (st.st_mtime_ns, st.st_size, sha, file_id),
-            )
-        else:
-            cur = con.execute(
-                "INSERT INTO files(path, mtime_ns, size, sha256) VALUES(?,?,?,?)",
-                (rel, st.st_mtime_ns, st.st_size, sha),
-            )
-            file_id = int(cur.lastrowid)
+        if existing_row:
+            existing_embeddings = _cache_existing_embeddings(con, int(existing_row[0]))
+
+        # Insert or update file record
+        file_id = _upsert_file_record(
+            con, rel, st.st_mtime_ns, st.st_size, sha, existing_row
+        )
 
         # Chunk the file content
         text = b.decode("utf-8", errors="ignore")
@@ -621,14 +862,8 @@ def index_path(
 
         stats.chunks_total += len(chunks)
 
-        # Compute text hashes for all chunks first
-        chunk_hashes = []
-        normalized_texts = []
-        for c in chunks:
-            normalized_text = c.text.replace("\r\n", "\n")
-            tsha = hashlib.sha256(normalized_text.encode("utf-8", errors="ignore")).hexdigest()
-            chunk_hashes.append(tsha)
-            normalized_texts.append(normalized_text)
+        # Compute text hashes for all chunks
+        chunk_hashes, normalized_texts = _compute_chunk_hashes(chunks)
 
         # Query global embeddings for all hashes (cross-file deduplication)
         global_embeddings: dict[str, tuple[bytes, int]] = {}
@@ -637,27 +872,10 @@ def index_path(
                 con, chunk_hashes, model, expected_dim
             )
 
-        # Identify reusable vs new chunks (global first, then local)
-        chunks_to_embed = []
-        reusable_indices = []  # (chunk_index, cached_embedding, cached_dim)
-
-        for i, tsha in enumerate(chunk_hashes):
-            if tsha in global_embeddings:
-                # Found in another file - reuse with verified integrity
-                reusable_indices.append((i, *global_embeddings[tsha]))
-                stats.chunks_reused += 1
-                stats.chunks_reused_global += 1
-            elif tsha in existing_embeddings:
-                # Found in this file's previous version
-                reusable_indices.append(
-                    (i, existing_embeddings[tsha][0], existing_embeddings[tsha][1])
-                )
-                stats.chunks_reused += 1
-                stats.chunks_reused_local += 1
-            else:
-                # Truly new chunk - needs embedding
-                chunks_to_embed.append((i, normalized_texts[i]))
-                stats.chunks_embedded += 1
+        # Classify chunks as reusable or needing embedding
+        chunks_to_embed, reusable_indices = _classify_chunks_for_embedding(
+            chunk_hashes, normalized_texts, global_embeddings, existing_embeddings, stats
+        )
 
         # Generate embeddings only for new chunks
         new_embeddings: dict[int, tuple[bytes, int]] = {}
@@ -670,21 +888,11 @@ def index_path(
             if expected_dim is None:
                 expected_dim = dim
 
-        # Store all chunks with embeddings (reused or new)
-        for i, c in enumerate(chunks):
-            tsha = chunk_hashes[i]
-            if i in new_embeddings:
-                emb, dim = new_embeddings[i]
-            else:
-                # Find in reusable
-                emb, dim = next((e, d) for idx, e, d in reusable_indices if idx == i)
-
-            con.execute(
-                """INSERT INTO chunks(file_id, chunk_index, start_line, end_line,
-                   text, text_sha256, embedding, dim, model)
-                   VALUES(?,?,?,?,?,?,?,?,?)""",
-                (file_id, c.chunk_index, c.start_line, c.end_line, c.text, tsha, emb, dim, model),
-            )
+        # Store all chunks with embeddings
+        _store_chunks(
+            con, file_id, chunks, chunk_hashes,
+            new_embeddings, reusable_indices, model
+        )
 
         con.commit()
 

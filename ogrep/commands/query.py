@@ -216,12 +216,22 @@ def cmd_query(args: argparse.Namespace) -> int:
 
             if not use_json:
                 print(f"Refreshing index ({len(stale_files)} changed files)...", file=sys.stderr)
-            stats = index_path(
-                root=repo_root,
-                db_path=db,
-                model=index_model,
-                dimensions=index_dim,
-            )
+
+            try:
+                stats = index_path(
+                    root=repo_root,
+                    db_path=db,
+                    model=index_model,
+                    dimensions=index_dim,
+                )
+            except KeyboardInterrupt:
+                if use_json:
+                    print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+                else:
+                    print("\n\nInterrupted by user (Ctrl-C).", file=sys.stderr)
+                    print("Partial refresh may have been saved.", file=sys.stderr)
+                return 130  # Standard SIGINT exit code (128 + 2)
+
             refreshed_files = stats.files_indexed
             if not use_json and (stats.files_indexed > 0 or stats.chunks_reused > 0):
                 print(
