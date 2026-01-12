@@ -97,11 +97,12 @@ Error: Model mismatch: index uses 'text-embedding-3-small' but requested 'nomic-
 
 Note: OGREP_BASE_URL is set to 'http://localhost:1234/v1'
       This defaults to 'nomic-embed-text-v1.5' for local models.
+      Unsetting it will default to OpenAI (text-embedding-3-small).
 
 Options:
 
   1. Use the same model as the existing index:
-     unset OGREP_BASE_URL
+     unset OGREP_BASE_URL  # defaults to OpenAI
      ogrep index .
 
   2. Switch to new model (rebuilds entire index):

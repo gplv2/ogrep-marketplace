@@ -36,13 +36,14 @@ def _print_model_mismatch_help(error_msg: str, requested_model: str | None) -> N
     base_url = os.environ.get("OGREP_BASE_URL")
     if base_url:
         print(f"Note: OGREP_BASE_URL is set to '{base_url}'")
-        print("      This defaults to 'nomic-embed-text-v1.5' for local models.\n")
+        print("      This defaults to 'nomic-embed-text-v1.5' for local models.")
+        print("      Unsetting it will default to OpenAI (text-embedding-3-small).\n")
 
     print("Options:")
     print()
     print("  1. Use the same model as the existing index:")
     if base_url:
-        print("     unset OGREP_BASE_URL")
+        print("     unset OGREP_BASE_URL  # defaults to OpenAI")
     print("     ogrep index .")
     print()
     print("  2. Switch to new model (rebuilds entire index):")
