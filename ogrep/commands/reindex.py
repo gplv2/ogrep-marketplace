@@ -42,7 +42,13 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         return 1
 
     root = Path(args.path).resolve()
-    repo_root = args.repo_root.resolve() if args.repo_root else root
+    # If root is a file, use its parent directory for repo_root
+    if args.repo_root:
+        repo_root = args.repo_root.resolve()
+    elif root.is_file():
+        repo_root = root.parent
+    else:
+        repo_root = root
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
     # Use model-specific optimal settings if not explicitly specified

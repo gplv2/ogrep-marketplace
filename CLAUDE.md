@@ -398,6 +398,7 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_DIMENSIONS` | Default dimensions | Model default |
 | `OGREP_CHUNK_LINES` | Chunk size from tuning (overrides model default) | Model-specific |
+| `OGREP_BATCH_SIZE` | Batch size for embedding requests (local servers) | Auto-tuned |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
 | `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |

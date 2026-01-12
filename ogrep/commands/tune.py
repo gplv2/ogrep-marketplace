@@ -248,7 +248,13 @@ def cmd_tune(args: argparse.Namespace) -> int:
     if args.apply:
         from ._common import resolve_db_path
 
-        repo_root = args.repo_root.resolve() if args.repo_root else root
+        # If root is a file, use its parent directory for repo_root
+        if args.repo_root:
+            repo_root = args.repo_root.resolve()
+        elif root.is_file():
+            repo_root = root.parent
+        else:
+            repo_root = root
         db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
         print(f"\nReindexing with optimal chunk size ({best_chunk})...")

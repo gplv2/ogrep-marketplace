@@ -327,7 +327,13 @@ def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
         Tuple of (root_path, db_path).
     """
     root = Path(args.path).resolve()
-    repo_root = args.repo_root.resolve() if args.repo_root else root
+    # If root is a file, use its parent directory for repo_root
+    if args.repo_root:
+        repo_root = args.repo_root.resolve()
+    elif root.is_file():
+        repo_root = root.parent
+    else:
+        repo_root = root
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
     return root, db
 
