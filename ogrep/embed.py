@@ -44,7 +44,7 @@ CLOUD_BATCH_THRESHOLD = 256
 # Characters per token estimate for code
 # OpenAI uses ~4 chars/token for English, but code with special chars,
 # whitespace patterns, and non-ASCII can tokenize to fewer chars/token.
-# Using 3 chars/token for safety margin (observed ~3.2 in practice).
+# Using 3 chars/token as baseline; auto-retry handles edge cases.
 CHARS_PER_TOKEN = 3
 
 
@@ -270,24 +270,68 @@ def _embed_batch(
     texts: list[str],
     model: str,
     dimensions: int | None,
+    _retry_count: int = 0,
 ) -> tuple[list[bytes], int]:
     """
     Embed a single batch of texts.
+
+    Automatically retries with truncated text if context limit is exceeded.
 
     Args:
         client: OpenAI client instance.
         texts: List of texts to embed.
         model: Resolved model name.
         dimensions: Optional dimension override.
+        _retry_count: Internal retry counter.
 
     Returns:
         Tuple of (embeddings, dimension).
     """
+    import re
+    import warnings
+
+    from openai import BadRequestError
+
     kwargs: dict = {"input": texts, "model": model}
     if dimensions is not None:
         kwargs["dimensions"] = dimensions
 
-    resp = client.embeddings.create(**kwargs)
+    try:
+        resp = client.embeddings.create(**kwargs)
+    except BadRequestError as e:
+        error_msg = str(e)
+        # Check if it's a context length error
+        if "maximum context length" in error_msg and _retry_count < 3:
+            # Parse the error to find how much to reduce
+            # Example: "maximum context length is 8192 tokens, however you requested 9047 tokens"
+            match = re.search(r"maximum context length is (\d+) tokens.*requested (\d+) tokens", error_msg)
+            if match:
+                max_allowed = int(match.group(1))
+                requested = int(match.group(2))
+                # Calculate reduction ratio with extra margin
+                ratio = (max_allowed * 0.85) / requested
+
+                warnings.warn(
+                    f"Context overflow ({requested} > {max_allowed} tokens). "
+                    f"Truncating to {ratio:.0%} and retrying...",
+                    UserWarning,
+                    stacklevel=3,
+                )
+
+                # Truncate all texts by the ratio
+                truncated_texts = []
+                for text in texts:
+                    new_len = int(len(text) * ratio)
+                    if new_len < len(text):
+                        truncated_texts.append(text[:new_len] + "\n[...truncated...]")
+                    else:
+                        truncated_texts.append(text)
+
+                # Retry with truncated texts
+                return _embed_batch(
+                    client, truncated_texts, model, dimensions, _retry_count + 1
+                )
+        raise
 
     vectors: list[bytes] = []
     dim: int | None = None
