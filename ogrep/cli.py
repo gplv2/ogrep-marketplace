@@ -53,7 +53,7 @@ from .commands import (
 from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 
 def _add_index_command(sub: argparse._SubParsersAction) -> None:
@@ -160,6 +160,11 @@ def _add_chunk_command(sub: argparse._SubParsersAction) -> None:
         default=0,
         metavar="N",
         help="Include N chunks before AND after (shorthand for -B N -A N)",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON (default, included for consistency with query)",
     )
     p.set_defaults(func=cmd_chunk)
 

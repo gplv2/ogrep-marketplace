@@ -134,6 +134,9 @@ def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
     return stale
 
 
+MIN_QUERY_LENGTH = 2  # Minimum characters for a meaningful query
+
+
 def cmd_query(args: argparse.Namespace) -> int:
     """
     Run a search query against the index.
@@ -172,12 +175,26 @@ def cmd_query(args: argparse.Namespace) -> int:
         If FTS5 is unavailable and mode is hybrid/fulltext, falls back
         to semantic search with a warning.
     """
+    use_json = getattr(args, "json", False)
+
+    # Validate query length before any expensive operations
+    query_text = args.query.strip() if args.query else ""
+    if len(query_text) < MIN_QUERY_LENGTH:
+        error_msg = (
+            f"Query too short: '{query_text}' ({len(query_text)} chars). "
+            f"Minimum is {MIN_QUERY_LENGTH} characters."
+        )
+        if use_json:
+            print(json.dumps({"error": error_msg, "error_code": "QUERY_TOO_SHORT"}))
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
+        return 1
+
     if not require_embedding_config():
         return 1
 
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
-    use_json = getattr(args, "json", False)
 
     if not db.exists():
         if use_json:
@@ -249,7 +266,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
     hits, fts_available = query_db(
         db_path=db,
-        q=args.query,
+        q=query_text,
         top_k=args.top,
         model=index_model,
         dimensions=index_dim,
@@ -287,7 +304,7 @@ def cmd_query(args: argparse.Namespace) -> int:
             confidence_summary[h.confidence] += 1
 
         output = {
-            "query": args.query,
+            "query": query_text,
             "results": results,
             "stats": {
                 "total_results": len(hits),
