@@ -234,6 +234,16 @@ def query(
 
     con = connect(db_path, init_fts=False)
 
+    # Check for mixed dimensions (corrupted index)
+    distinct_dims = con.execute("SELECT DISTINCT dim FROM chunks").fetchall()
+    if len(distinct_dims) > 1:
+        dims_list = sorted([d[0] for d in distinct_dims])
+        raise ValueError(
+            f"Corrupted index: mixed dimensions detected ({dims_list}). "
+            f"This can happen if --refresh was run with a different model. "
+            f"Run 'ogrep reset -f && ogrep index .' to rebuild."
+        )
+
     # Check index model/dimensions before querying
     index_info = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
     if index_info is None:

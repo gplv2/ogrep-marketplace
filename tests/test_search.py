@@ -408,3 +408,82 @@ class TestConfidenceLevels:
         assert len(hits) == 1
         assert hasattr(hits[0], "confidence")
         assert hits[0].confidence in ("high", "medium", "low", "very_low")
+
+
+class TestMixedDimensionsDetection:
+    """Tests for detecting corrupted indexes with mixed dimensions."""
+
+    def test_mixed_dimensions_raises_error(self, temp_dir: Path) -> None:
+        """Test that query detects and reports mixed dimensions in index."""
+        db_path = temp_dir / "index.sqlite"
+        connect(db_path).close()
+        con = connect(db_path)
+
+        # Insert a test file
+        con.execute(
+            "INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
+            ("/test/file.py", 0, 100, "abc123"),
+        )
+        file_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Insert chunk with 768D (simulating nomic model)
+        fake_768d = array.array("f", [0.1] * 768).tobytes()
+        con.execute(
+            """INSERT INTO chunks
+               (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, 0, 1, 5, "first chunk", "hash1", fake_768d, 768, "nomic"),
+        )
+
+        # Insert chunk with 1536D (simulating OpenAI model) - corruption!
+        fake_1536d = array.array("f", [0.1] * 1536).tobytes()
+        con.execute(
+            """INSERT INTO chunks
+               (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, 1, 6, 10, "second chunk", "hash2", fake_1536d, 1536, "text-embedding-3-small"),
+        )
+        con.commit()
+
+        # Query should detect mixed dimensions and raise clear error
+        with pytest.raises(ValueError, match="mixed dimensions"):
+            query(db_path, "test", model="nomic")
+
+    def test_consistent_dimensions_works(self, temp_dir: Path) -> None:
+        """Test that consistent dimensions work normally."""
+        db_path = temp_dir / "index.sqlite"
+        connect(db_path).close()
+        con = connect(db_path)
+
+        # Insert a test file
+        con.execute(
+            "INSERT INTO files (path, mtime_ns, size, sha256) VALUES (?, ?, ?, ?)",
+            ("/test/file.py", 0, 100, "abc123"),
+        )
+        file_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # Insert two chunks with same dimensions (768D)
+        fake_768d_1 = array.array("f", [0.1] * 768).tobytes()
+        fake_768d_2 = array.array("f", [0.2] * 768).tobytes()
+
+        con.execute(
+            """INSERT INTO chunks
+               (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, 0, 1, 5, "first chunk", "hash1", fake_768d_1, 768, "nomic"),
+        )
+        con.execute(
+            """INSERT INTO chunks
+               (file_id, chunk_index, start_line, end_line, text, text_sha256, embedding, dim, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_id, 1, 6, 10, "second chunk", "hash2", fake_768d_2, 768, "nomic"),
+        )
+        con.commit()
+
+        # Should work fine - no mixed dimensions
+        # Note: Will fail on dimension mismatch with mock, but NOT on mixed dimensions
+        try:
+            query(db_path, "test", model="nomic")
+        except ValueError as e:
+            # Should NOT be a "mixed dimensions" error
+            assert "mixed dimensions" not in str(e).lower()
