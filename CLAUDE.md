@@ -58,24 +58,50 @@ ogrep-marketplace/
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `ogrep index .` | Index a directory (source files only) |
-| `ogrep index . --list` | Preview files that would be indexed (sorted by ext/size) |
-| `ogrep query "text" -n 10 -r --json` | Semantic search (with refresh, JSON output) |
-| `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) |
-| `ogrep chunk "path:N" -C 1` | Get chunk by ref with context |
-| `ogrep status` | Show index stats |
-| `ogrep health` | Full database diagnostics |
-| `ogrep health --vacuum` | Reclaim space, defragment |
-| `ogrep health --rebuild-fts` | Rebuild FTS5 index |
-| `ogrep health --integrity` | Full integrity check |
-| `ogrep reset -f` | Delete index |
-| `ogrep reindex .` | Rebuild index (enables FTS5) |
-| `ogrep clean --vacuum` | Remove stale entries |
-| `ogrep models` | List available models |
-| `ogrep tune .` | Auto-tune chunk size |
-| `ogrep benchmark .` | Compare all models |
+All commands support `--json` for structured output (AI tool integration).
+
+| Command | Description | JSON |
+|---------|-------------|------|
+| `ogrep index .` | Index a directory (source files only) | `--json` |
+| `ogrep index . --list` | Preview files that would be indexed | `--json` |
+| `ogrep query "text" -n 10 -r --json` | Semantic search (refresh, JSON) | `--json` |
+| `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) | `--json` |
+| `ogrep chunk "path:N" -C 1` | Get chunk by ref with context | `--json` |
+| `ogrep status` | Show index stats | `--json` |
+| `ogrep health` | Full database diagnostics | `--json` |
+| `ogrep health --vacuum` | Reclaim space, defragment | `--json` |
+| `ogrep health --rebuild-fts` | Rebuild FTS5 index | `--json` |
+| `ogrep health --integrity` | Full integrity check | `--json` |
+| `ogrep reset -f` | Delete index | `--json` |
+| `ogrep reindex .` | Rebuild index (enables FTS5) | `--json` |
+| `ogrep clean --vacuum` | Remove stale entries | `--json` |
+| `ogrep models` | List available models | `--json` |
+| `ogrep tune .` | Auto-tune chunk size | `--json` |
+| `ogrep benchmark .` | Compare all models | `--json` |
+
+### JSON Output Examples
+
+```bash
+# Index with JSON output
+ogrep index . --json
+# {"status":"success","files_indexed":42,"chunks_total":217,...}
+
+# Status as JSON
+ogrep status --json
+# {"indexed":true,"files":42,"chunks":217,"model":"text-embedding-3-small",...}
+
+# Clean with JSON
+ogrep clean --json
+# {"status":"success","removed_count":3,"removed_paths":[...],"vacuumed":false}
+
+# Health as JSON
+ogrep health --json
+# {"tables":{...},"dedup_stats":{...},"fts5":{...},"sqlite_info":{...}}
+
+# Models as JSON
+ogrep models --json
+# {"models":[{"id":"text-embedding-3-small","dimensions":1536,...}],...}
+```
 
 ## AI Tool Integration (IMPORTANT)
 
@@ -199,7 +225,7 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Binary** | `*.pyc`, `*.so`, `*.dll`, `*.exe`, `*.whl` |
 | **Secrets** | `.env`, `.env.*`, `secrets.*`, `credentials.*` |
 | **Docs** | `*.md`, `*.txt`, `*.rst`, `docs/*` |
-| **Config** | `*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.ini`, `.editorconfig` |
+| **Config** | `*.json`, `*.toml`, `*.ini`, `.editorconfig` |
 | **Build** | `dist/*`, `build/*`, `vendor/*`, `target/*` |
 | **Lock files** | `*.lock`, `package-lock.json`, `yarn.lock`, `poetry.lock` |
 | **Git metadata** | `.gitignore`, `.gitattributes`, `.gitmodules`, `.gitkeep` |
@@ -212,6 +238,8 @@ Defined in `ogrep/indexer.py` as `DEFAULT_EXCLUDES`:
 | **Backups** | `*.old`, `*.bak`, `*.backup`, `*.orig`, `*.swp`, `*~` |
 | **Data files** | `*.csv`, `*.tsv`, `*.sqlt`, `*.dat`, `*.xml` |
 | **Python packages** | `*.dist-info/*`, `*.egg-info/*`, `*.pth`, `py.typed` |
+
+**Note:** YAML files (`*.yaml`, `*.yml`) are now **indexed by default** (v0.6.3+) to support searching CI/CD pipelines, Kubernetes manifests, and other configuration.
 
 **Skipped directories** (in `DEFAULT_SKIP_DIRS`):
 - `.git`, `.svn`, `.hg` (version control)

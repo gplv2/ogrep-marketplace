@@ -26,6 +26,7 @@ ogrep chunk "auth.py:2" --context 1  # + 1 before AND after
 | `--before N` | `-B` | Include N chunks before the requested chunk |
 | `--after N` | `-A` | Include N chunks after the requested chunk |
 | `--context N` | `-C` | Include N chunks before AND after (shorthand) |
+| `--json` | | Output as JSON (default, included for consistency) |
 
 ## Output Format
 

@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-01-12
+
+### ✨ New Features
+
+#### JSON Output for All Commands
+
+Every ogrep command now supports `--json` for structured output, making AI tool integration seamless:
+
+| Command | JSON Output |
+|---------|-------------|
+| `ogrep index . --json` | `{status, files_indexed, chunks_total, chunks_reused, tokens_saved, model}` |
+| `ogrep status --json` | `{indexed, files, chunks, model, dimensions, size_bytes, size_human}` |
+| `ogrep clean --json` | `{status, removed_count, removed_paths, vacuumed}` |
+| `ogrep reset -f --json` | `{status, database, removed, size_bytes, size_human}` |
+| `ogrep reindex . --json` | `{status, files_indexed, chunks_total, chunks_embedded, model}` |
+| `ogrep health --json` | `{tables, dedup_stats, fts5, sqlite_info, integrity, operations}` |
+| `ogrep models --json` | `{models[], current_model, env_vars}` |
+| `ogrep tune . --json` | `{recommended_chunk_lines, results[], settings}` |
+
+Previously only `query`, `chunk`, and `benchmark` had JSON support.
+
+#### Query Input Validation
+
+ogrep now validates query length before making API calls, preventing expensive embedding requests for invalid queries:
+
+```bash
+ogrep query ""
+# Error: Query too short: '' (0 chars). Minimum is 2 characters.
+```
+
+JSON error response includes `error_code` for programmatic handling:
+```json
+{"error": "Query too short...", "error_code": "QUERY_TOO_SHORT"}
+```
+
+#### YAML Files Now Indexed by Default
+
+Removed `*.yaml` and `*.yml` from `DEFAULT_EXCLUDES`. Configuration files are now searchable:
+
+- CI/CD pipelines (GitHub Actions, GitLab CI)
+- Kubernetes manifests
+- Docker Compose files
+- Application configuration
+
+### 🔧 Changed
+
+#### Plugin Descriptions Enhanced
+
+Updated `plugin.json` and `marketplace.json` with comprehensive descriptions including all search modes (semantic, fulltext, hybrid) and key features.
+
+#### Improved Test Robustness
+
+Confidence level tests now use actual threshold constants instead of hardcoded values, making tests work correctly regardless of `OGREP_CONFIDENCE_*` environment variable settings.
+
+### 📚 Documentation
+
+- Updated all plugin command markdown files with `--json` flag documentation
+- Enhanced SKILL.md with complete search capabilities reference
+- Added JSON output examples for every command
+- Updated CLAUDE.md with new CLI capabilities
+
+### 🧪 Testing
+
+- 283 tests passing
+- Fixed 3 confidence level tests that failed with custom environment thresholds
+
 ## [0.6.0] - 2026-01-12
 
 ### ✨ New Features

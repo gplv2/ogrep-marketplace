@@ -1,17 +1,26 @@
 ---
 name: semantic-grep
 description: |
-  Semantic code search for conceptual questions. Proactively use when:
+  Semantic code search with multiple modes: semantic (embedding similarity), fulltext (FTS5 keywords), and hybrid (combined - best of both). Proactively use when:
   - User asks WHERE something is implemented ("where is X handled", "how does Y work")
   - User needs to understand code behavior vs finding exact names
   - Exact grep would require knowing the right terms first
+  - User wants to search codebase by meaning, not just keywords
   Use when appropriate context detected. Trigger with conceptual code questions.
 allowed-tools: Bash, Read
 ---
 
-# Semantic grep workflow (ogrep)
+# Semantic grep workflow (ogrep) v0.6.3
 
 Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
+
+**Key features:**
+- **Three search modes**: semantic (conceptual), fulltext (exact), hybrid (combined)
+- **JSON output for all commands**: Structured data for AI tool integration
+- **Chunk navigation**: Expand context around search results
+- **Confidence scoring**: Know how much to trust each result
+- **Smart embedding reuse**: Minimal API costs on reindex
+- **YAML files indexed**: Configuration files now searchable by default
 
 ## Quick Start
 
@@ -205,21 +214,50 @@ The `--json` flag returns structured data:
 
 ## Commands Reference
 
-| Command | Description |
-|---------|-------------|
-| `ogrep index .` | Index current directory |
-| `ogrep index . --list` | Preview files that would be indexed (dry run) |
-| `ogrep query "text" -n 15 --json` | Search (add -r for refresh) |
-| `ogrep chunk "path:N" -C 1` | Get chunk with context |
-| `ogrep status` | Show index info (files, chunks, model, size) |
-| `ogrep health` | Full database diagnostics |
-| `ogrep health --vacuum` | Reclaim space and defragment |
-| `ogrep health --rebuild-fts` | Rebuild FTS5 index |
-| `ogrep reindex .` | Rebuild index from scratch (enables FTS5) |
-| `ogrep reset -f` | Delete index |
-| `ogrep models` | List embedding models |
-| `ogrep tune .` | Auto-tune chunk size for optimal accuracy |
-| `ogrep benchmark .` | Compare all embedding models |
+All commands support `--json` for structured output (AI tool integration).
+
+| Command | Description | JSON Support |
+|---------|-------------|--------------|
+| `ogrep index .` | Index current directory | `--json` |
+| `ogrep index . --list` | Preview files (dry run) | `--json` |
+| `ogrep query "text" -n 15 --json` | Search (add -r for refresh) | `--json` |
+| `ogrep chunk "path:N" -C 1` | Get chunk with context | `--json` (default) |
+| `ogrep status` | Show index info | `--json` |
+| `ogrep health` | Full database diagnostics | `--json` |
+| `ogrep health --vacuum` | Reclaim space and defragment | `--json` |
+| `ogrep health --rebuild-fts` | Rebuild FTS5 index | `--json` |
+| `ogrep reindex .` | Rebuild index from scratch | `--json` |
+| `ogrep reset -f` | Delete index | `--json` |
+| `ogrep clean` | Remove stale entries | `--json` |
+| `ogrep models` | List embedding models | `--json` |
+| `ogrep tune .` | Auto-tune chunk size | `--json` |
+| `ogrep benchmark .` | Compare all embedding models | `--json` |
+
+### JSON Output for All Commands
+
+Every command now supports `--json` for programmatic access:
+
+```bash
+# Index with JSON output
+ogrep index . --json
+# Returns: {"status": "success", "files_indexed": 42, "chunks_total": 217, ...}
+
+# Status as JSON
+ogrep status --json
+# Returns: {"indexed": true, "files": 42, "chunks": 217, "model": "...", ...}
+
+# Clean with JSON output
+ogrep clean --json
+# Returns: {"status": "success", "removed_count": 3, "removed_paths": [...]}
+
+# Health check as JSON
+ogrep health --json
+# Returns: {"tables": {...}, "dedup_stats": {...}, "fts5": {...}, ...}
+
+# Models as JSON
+ogrep models --json
+# Returns: {"models": [{"id": "...", "dimensions": 1536, ...}], ...}
+```
 
 ## Flag Reference
 
@@ -246,12 +284,24 @@ The `--json` flag returns structured data:
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--list` | `-l` | Preview files (dry run, doesn't index) |
+| `--json` | | Output results as JSON |
 | `--exclude PATTERN` | `-e` | Add exclude pattern |
 | `--include PATTERN` | `-i` | Override default excludes |
 | `--model MODEL` | `-m` | Embedding model |
 | `--chunk-lines N` | | Lines per chunk (model-specific default) |
 | `--overlap N` | | Overlap between chunks |
 | `--no-detect` | | Skip MIME detection (faster) |
+
+### Status/Health/Clean/Reset Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output results as JSON |
+| `--vacuum` | (clean/health) Compact database |
+| `--rebuild-fts` | (health) Rebuild FTS5 index |
+| `--integrity` | (health) Full integrity check |
+| `--full` | (health) All repairs |
+| `-f`, `--force` | (reset) Skip confirmation |
 
 ## Environment Variables
 
