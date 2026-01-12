@@ -1,125 +1,106 @@
-# ogrep v0.6.3 Release Notes
+# ogrep v0.6.4 Release Notes
 
 ## What's New
 
-### JSON Output for All Commands
+### Relative Confidence Scoring (Default)
 
-Every ogrep command now supports `--json` for structured output, making it easy to integrate with AI tools and scripts:
+Confidence levels now use **relative scoring** by default. Instead of comparing scores against fixed thresholds, each result is compared to the top score. This provides much more meaningful confidence levels.
+
+**The Problem (Old Behavior):**
+Cosine similarity scores for text embeddings cluster around 0.3-0.5, not uniformly across [0,1]. A score of 0.45 is actually excellent, but the old threshold of 0.85 for "high" confidence was rarely achievable.
 
 ```bash
-# Index with JSON output
-ogrep index . --json
-# Returns: {"status": "success", "files_indexed": 42, "chunks_total": 217, ...}
+# Old absolute scoring (misleading):
+  1. src/auth.py:2  score=0.45 [very_low]  # Actually a great match!
+```
 
-# Status as JSON
+**The Solution (New Behavior):**
+Relative scoring compares each result to the best result:
+
+```bash
+# New relative scoring (accurate):
+  1. src/auth.py:2  score=0.45 [high]      # Top result = high confidence
+  2. src/auth.py:5  score=0.42 [high]      # 93% of top = still high
+  3. src/utils.py:1 score=0.35 [medium]    # 78% of top = medium
+```
+
+**Relative Thresholds:**
+| Confidence | Threshold | Meaning |
+|------------|-----------|---------|
+| `high` | 90%+ of top | Trust and use directly |
+| `medium` | 75-89% | Use but verify context |
+| `low` | 50-74% | Consider alternatives |
+| `very_low` | <50% | Probably not relevant |
+
+### Environment Variables
+
+```bash
+# Relative mode thresholds (default mode)
+export OGREP_RELATIVE_HIGH=0.90    # 90% of top score
+export OGREP_RELATIVE_MEDIUM=0.75  # 75% of top score
+export OGREP_RELATIVE_LOW=0.50     # 50% of top score
+
+# Switch to absolute mode if needed
+export OGREP_CONFIDENCE_MODE=absolute
+
+# Absolute thresholds (recalibrated in v0.6.4)
+export OGREP_CONFIDENCE_HIGH=0.50   # Was 0.85
+export OGREP_CONFIDENCE_MEDIUM=0.40 # Was 0.70
+export OGREP_CONFIDENCE_LOW=0.30    # Was 0.50
+```
+
+## Quick Examples
+
+```bash
+# Search by concept (semantic)
+ogrep query "where is authentication handled" -n 10 --refresh --json
+
+# Search by exact identifier (fulltext)
+ogrep query "def validate_token" --mode fulltext --json
+
+# Combined search (hybrid - default)
+ogrep query "user login validation" -n 15 --refresh --json
+
+# Get chunk by reference (after finding in query results)
+ogrep chunk "src/auth.py:2" --json
+
+# Expand context around a result
+ogrep chunk "src/auth.py:2" --context 1 --json
+
+# Index the repo (first time or after major changes)
+ogrep index .
+
+# Check index status
 ogrep status --json
-# Returns: {"indexed": true, "files": 42, "chunks": 217, "model": "...", ...}
-
-# Clean with JSON output
-ogrep clean --json
-# Returns: {"status": "success", "removed_count": 3, "removed_paths": [...]}
-
-# Health check as JSON
-ogrep health --json
-# Returns: {"tables": {...}, "dedup_stats": {...}, "fts5": {...}, ...}
-
-# Models list as JSON
-ogrep models --json
-# Returns: {"models": [{"id": "...", "dimensions": 1536, ...}], ...}
-
-# Reset with JSON output
-ogrep reset -f --json
-# Returns: {"status": "success", "database": "...", "removed": true, ...}
-
-# Reindex with JSON output
-ogrep reindex . --json
-# Returns: {"status": "success", "files_indexed": 42, "chunks_embedded": 217, ...}
-
-# Tune with JSON output
-ogrep tune . --json
-# Returns: {"recommended_chunk_lines": 60, "results": [...], ...}
 ```
 
-### Query Input Validation
+## Common Patterns
 
-ogrep now validates query input before making API calls:
+| Task | Command |
+|------|---------|
+| Find where X is implemented | `ogrep query "where is X handled" --json` |
+| Find exact function/class | `ogrep query "def function_name" --mode fulltext --json` |
+| Understand how X works | `ogrep query "how does X work" -n 15 --json` |
+| Find all uses of X | `ogrep query "X" --mode fulltext --json` |
+| Search after editing files | `ogrep query "..." --refresh --json` |
+| Get more context | `ogrep chunk "file.py:N" --context 2` |
+
+## Chunk Navigation
+
+After a query finds something interesting, use `ogrep chunk` to expand context:
 
 ```bash
-ogrep query ""
-# Error: Query too short: '' (0 chars). Minimum is 2 characters.
+# Get chunk by reference (from query results)
+ogrep chunk "src/auth.py:2"
 
-ogrep query "a"
-# Error: Query too short: 'a' (1 chars). Minimum is 2 characters.
+# Get surrounding context
+ogrep chunk "src/auth.py:2" --before 1    # + 1 chunk before
+ogrep chunk "src/auth.py:2" --after 1     # + 1 chunk after
+ogrep chunk "src/auth.py:2" --context 1   # + 1 before AND after
+
+# Also works with raw chunk IDs
+ogrep chunk 42
 ```
-
-JSON output includes error codes for programmatic handling:
-```json
-{"error": "Query too short: 'a' (1 chars). Minimum is 2 characters.", "error_code": "QUERY_TOO_SHORT"}
-```
-
-### YAML Files Now Indexed
-
-YAML configuration files (`*.yaml`, `*.yml`) are now indexed by default. This makes it easy to search for configuration values, CI/CD pipelines, Kubernetes manifests, and other YAML-based definitions.
-
-### Search Modes Reminder
-
-ogrep supports three search modes via `--mode` (or `-M`):
-
-| Mode | Best For | Example |
-|------|----------|---------|
-| `semantic` | Conceptual questions | "where is auth handled" |
-| `fulltext` | Exact identifiers | "def validate_token" |
-| `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
-
-```bash
-ogrep query "authenticate" --mode semantic --json   # Embeddings only
-ogrep query "def authenticate" --mode fulltext --json  # Keywords only
-ogrep query "user login" --mode hybrid --json       # Combined (default)
-```
-
-### Configurable Confidence Thresholds
-
-Confidence thresholds are now configurable via environment variables:
-
-```bash
-# Lower thresholds for sparse/legacy codebases
-export OGREP_CONFIDENCE_HIGH=0.60    # default: 0.85
-export OGREP_CONFIDENCE_MEDIUM=0.45  # default: 0.70
-export OGREP_CONFIDENCE_LOW=0.35     # default: 0.50
-```
-
-| Confidence | Default Threshold | Guidance |
-|------------|-------------------|----------|
-| `high` | 0.85+ | Trust and use directly |
-| `medium` | 0.70-0.84 | Use but verify with context |
-| `low` | 0.50-0.69 | Consider alternative queries |
-| `very_low` | <0.50 | Likely not relevant |
-
-## Commands with JSON Support
-
-| Command | JSON Flag | Key Output Fields |
-|---------|-----------|-------------------|
-| `ogrep index` | `--json` | files_indexed, chunks_total, chunks_reused, tokens_saved |
-| `ogrep query` | `--json` | results[], stats{}, confidence_summary{} |
-| `ogrep chunk` | `--json` | requested{}, before[], after[] |
-| `ogrep status` | `--json` | indexed, files, chunks, model, dimensions, size_bytes |
-| `ogrep health` | `--json` | tables{}, dedup_stats{}, fts5{}, sqlite_info{} |
-| `ogrep clean` | `--json` | removed_count, removed_paths[], vacuumed |
-| `ogrep reset` | `--json` | removed, database, size_bytes |
-| `ogrep reindex` | `--json` | files_indexed, chunks_total, chunks_embedded |
-| `ogrep models` | `--json` | models[], current_model, env_vars{} |
-| `ogrep tune` | `--json` | recommended_chunk_lines, results[] |
-| `ogrep benchmark` | `--json` | models[], recommended{} |
-
-## Environment Variables Summary
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
-| `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight (0.0-1.0) |
-| `OGREP_CONFIDENCE_HIGH` | `0.85` | High confidence threshold |
-| `OGREP_CONFIDENCE_MEDIUM` | `0.70` | Medium confidence threshold |
-| `OGREP_CONFIDENCE_LOW` | `0.50` | Low confidence threshold |
 
 ## Upgrading
 
@@ -127,10 +108,9 @@ export OGREP_CONFIDENCE_LOW=0.35     # default: 0.50
 pip install --upgrade ogrep
 # or
 pip install --force-reinstall git+https://github.com/gplv2/ogrep.git
-
-# Rebuild index to include YAML files
-ogrep reindex .
 ```
+
+No reindex needed - relative scoring works with existing indexes.
 
 ## Documentation
 
