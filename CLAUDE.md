@@ -781,6 +781,9 @@ grep -rn "X\.Y\.Z\|OLD_VERSION" --include="*.py" --include="*.json" --include="*
 # Check index status
 ogrep status
 
+# Full database diagnostics (includes dedup stats)
+ogrep health
+
 # Reset and reindex
 ogrep reindex .
 
@@ -796,6 +799,34 @@ ogrep models
 # Test chunk sizes
 ogrep tune . -s 5
 ```
+
+### Health Command Output
+
+The `ogrep health` command shows comprehensive diagnostics:
+
+```
+── Tables ──
+  chunks          217 rows      1.7 MB
+  files            41 rows      8.0 KB
+
+── Dedup Stats ──
+  Total chunks: 11
+  Unique hashes: 5
+  Deduplicated: 6 (54.5% embedding savings)
+
+── FTS5 Stats ──
+  Rows indexed: 217
+  Tokens (est): 54,073
+
+── Embedding Model ──
+  Model: text-embedding-3-small
+  Dimensions: 1536
+```
+
+**Dedup Stats** shows cross-file chunk deduplication:
+- **Total chunks**: All chunks in the index
+- **Unique hashes**: Distinct `text_sha256` values
+- **Deduplicated**: Chunks sharing embeddings with others (savings percentage)
 
 ## Plugin Structure
 
