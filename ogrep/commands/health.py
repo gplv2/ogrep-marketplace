@@ -9,6 +9,7 @@ repair operations via flags.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 from pathlib import Path
 
@@ -299,11 +300,16 @@ def cmd_health(args: argparse.Namespace) -> int:
     """
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db_path = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
+    use_json = getattr(args, "json", False)
 
-    print(f"Database: {db_path}")
+    if not use_json:
+        print(f"Database: {db_path}")
 
     if not db_path.exists():
-        print("Status: Not indexed")
+        if use_json:
+            print(json.dumps({"database": str(db_path), "exists": False, "status": "not_indexed"}))
+        else:
+            print("Status: Not indexed")
         return 0
 
     con = sqlite3.connect(str(db_path))
@@ -361,94 +367,126 @@ def cmd_health(args: argparse.Namespace) -> int:
 
         # Show full diagnostic if no repair flags (or after repairs)
         if not (args.vacuum or args.rebuild_fts or args.integrity or args.reindex):
-            # Tables
-            print("\n── Tables ──")
+            # Collect all diagnostic data
             table_stats = _get_table_stats(con)
-            for name, rows, size in table_stats:
-                fts_marker = "  (FTS5)" if name == "chunks_fts" else ""
-                print(f"  {name:<12} {rows:>6} rows  {_format_size(size):>10}{fts_marker}")
-
-            # Indexes
-            print("\n── Indexes ──")
             indexes = _get_index_info(con)
-            if indexes:
-                for name, definition in indexes:
-                    print(f"  {name:<25} {definition}")
-            else:
-                print("  No user indexes")
-
-            # SQLite info
-            print("\n── SQLite Info ──")
             info = _get_sqlite_info(con, db_path)
-            print(f"  Version: {info['version']}")
-            print(f"  Journal: {info['journal']}")
-            print(f"  Page size: {info['page_size']}")
-            print(f"  Page count: {info['page_count']}")
-            if info["freelist"] > 0:
-                print(
-                    f"  Freelist: {info['freelist']} pages "
-                    f"({_format_size(info['reclaimable'])} reclaimable)"
-                )
-            else:
-                print("  Freelist: 0 pages")
-
-            # FTS5 stats
             fts_stats = _get_fts5_stats(con)
-            if fts_stats:
-                print("\n── FTS5 Stats ──")
-                print(f"  Rows indexed: {fts_stats['rows']:,}")
-                print(f"  Tokens (est): {fts_stats['tokens_estimate']:,}")
-                print(f"  Unique terms (est): {fts_stats['unique_estimate']:,}")
-            else:
-                print("\n── FTS5 Stats ──")
-                print("  Not available (run 'ogrep reindex .' to enable)")
-
-            # Dedup stats
             dedup_stats = _get_dedup_stats(con)
-            if dedup_stats:
-                print("\n── Dedup Stats ──")
-                print(f"  Total chunks: {dedup_stats['total_chunks']:,}")
-                print(f"  Unique hashes: {dedup_stats['unique_hashes']:,}")
-                if dedup_stats["duplicated"] > 0:
-                    print(
-                        f"  Deduplicated: {dedup_stats['duplicated']:,} "
-                        f"({dedup_stats['dedup_ratio']:.1f}% embedding savings)"
-                    )
-                else:
-                    print("  Deduplicated: 0 (0% - no duplicates found)")
+            quick_check = _run_quick_check(con)
+            total_size = db_path.stat().st_size
 
-            # Quick check
-            print("\n── Quick Check ──")
-            result = _run_quick_check(con)
-            if result == "ok":
-                print("  Result: OK")
-            else:
-                print(f"  Result: {result}")
-                exit_code = 1
-
-            # Embedding model
+            # Get embedding model
             cur = con.cursor()
             cur.execute("SELECT model, dim FROM chunks LIMIT 1")
-            row = cur.fetchone()
-            if row:
-                print("\n── Embedding Model ──")
-                print(f"  Model: {row[0]}")
-                print(f"  Dimensions: {row[1]}")
+            model_row = cur.fetchone()
 
-            # Total size
-            total_size = db_path.stat().st_size
-            print(f"\nTotal size: {_format_size(total_size)}")
+            if quick_check != "ok":
+                exit_code = 1
 
-            # Status summary
-            if exit_code == 0:
-                print("\nStatus: Healthy")
+            if use_json:
+                output = {
+                    "database": str(db_path),
+                    "exists": True,
+                    "tables": [
+                        {"name": name, "rows": rows, "size_bytes": size}
+                        for name, rows, size in table_stats
+                    ],
+                    "indexes": [
+                        {"name": name, "definition": definition}
+                        for name, definition in indexes
+                    ],
+                    "sqlite": info,
+                    "fts5": fts_stats,
+                    "dedup": dedup_stats,
+                    "quick_check": quick_check,
+                    "model": model_row[0] if model_row else None,
+                    "dimensions": model_row[1] if model_row else None,
+                    "total_size_bytes": total_size,
+                    "status": "healthy" if exit_code == 0 else "issues_detected",
+                }
+                print(json.dumps(output))
             else:
-                print("\nStatus: Issues detected")
+                # Tables
+                print("\n── Tables ──")
+                for name, rows, size in table_stats:
+                    fts_marker = "  (FTS5)" if name == "chunks_fts" else ""
+                    print(f"  {name:<12} {rows:>6} rows  {_format_size(size):>10}{fts_marker}")
+
+                # Indexes
+                print("\n── Indexes ──")
+                if indexes:
+                    for name, definition in indexes:
+                        print(f"  {name:<25} {definition}")
+                else:
+                    print("  No user indexes")
+
+                # SQLite info
+                print("\n── SQLite Info ──")
+                print(f"  Version: {info['version']}")
+                print(f"  Journal: {info['journal']}")
+                print(f"  Page size: {info['page_size']}")
+                print(f"  Page count: {info['page_count']}")
+                if info["freelist"] > 0:
+                    print(
+                        f"  Freelist: {info['freelist']} pages "
+                        f"({_format_size(info['reclaimable'])} reclaimable)"
+                    )
+                else:
+                    print("  Freelist: 0 pages")
+
+                # FTS5 stats
+                if fts_stats:
+                    print("\n── FTS5 Stats ──")
+                    print(f"  Rows indexed: {fts_stats['rows']:,}")
+                    print(f"  Tokens (est): {fts_stats['tokens_estimate']:,}")
+                    print(f"  Unique terms (est): {fts_stats['unique_estimate']:,}")
+                else:
+                    print("\n── FTS5 Stats ──")
+                    print("  Not available (run 'ogrep reindex .' to enable)")
+
+                # Dedup stats
+                if dedup_stats:
+                    print("\n── Dedup Stats ──")
+                    print(f"  Total chunks: {dedup_stats['total_chunks']:,}")
+                    print(f"  Unique hashes: {dedup_stats['unique_hashes']:,}")
+                    if dedup_stats["duplicated"] > 0:
+                        print(
+                            f"  Deduplicated: {dedup_stats['duplicated']:,} "
+                            f"({dedup_stats['dedup_ratio']:.1f}% embedding savings)"
+                        )
+                    else:
+                        print("  Deduplicated: 0 (0% - no duplicates found)")
+
+                # Quick check
+                print("\n── Quick Check ──")
+                if quick_check == "ok":
+                    print("  Result: OK")
+                else:
+                    print(f"  Result: {quick_check}")
+
+                # Embedding model
+                if model_row:
+                    print("\n── Embedding Model ──")
+                    print(f"  Model: {model_row[0]}")
+                    print(f"  Dimensions: {model_row[1]}")
+
+                # Total size
+                print(f"\nTotal size: {_format_size(total_size)}")
+
+                # Status summary
+                if exit_code == 0:
+                    print("\nStatus: Healthy")
+                else:
+                    print("\nStatus: Issues detected")
 
     except KeyboardInterrupt:
         con.close()
-        print("\n\nInterrupted by user (Ctrl-C).")
-        print("Health check cancelled.")
+        if use_json:
+            print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+        else:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            print("Health check cancelled.")
         return 130  # Standard SIGINT exit code (128 + 2)
 
     con.close()

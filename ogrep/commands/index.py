@@ -8,6 +8,7 @@ embeddings in a local SQLite database for semantic search.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ..filetype import FileTypeResult, detect_file_types_batch, has_file_command
@@ -155,7 +156,9 @@ def _should_review(path: Path, size: int) -> str | None:
     return None
 
 
-def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool = True) -> int:
+def _list_files(
+    root: Path, exclude: list[str], include: list[str], detect: bool = True, use_json: bool = False
+) -> int:
     """
     List files that would be indexed, sorted by extension then size.
 
@@ -167,6 +170,7 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
         exclude: Additional exclude patterns.
         include: Include patterns (override excludes).
         detect: If True, run file type detection and show results.
+        use_json: If True, output as JSON.
 
     Returns:
         Exit code (0 for success).
@@ -189,7 +193,10 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
             continue
 
     if not file_info:
-        print("No files would be indexed.")
+        if use_json:
+            print(json.dumps({"files": [], "indexable_count": 0, "indexable_size": 0}))
+        else:
+            print("No files would be indexed.")
         return 0
 
     # Run file type detection if enabled
@@ -231,6 +238,43 @@ def _list_files(root: Path, exclude: list[str], include: list[str], detect: bool
             dir_counts[dir_key] = dir_counts.get(dir_key, 0) + 1
         except ValueError:
             pass
+
+    # JSON output
+    if use_json:
+        indexable_size = sum(size for _, _, size in indexable)
+        excluded_size = sum(size for _, _, size, _ in excluded)
+
+        output = {
+            "indexable": [
+                {
+                    "path": str(_safe_relative_path(p, root)),
+                    "extension": ext,
+                    "size": size,
+                }
+                for p, ext, size in indexable
+            ],
+            "excluded": [
+                {
+                    "path": str(_safe_relative_path(p, root)),
+                    "extension": ext,
+                    "size": size,
+                    "mime_type": mime,
+                }
+                for p, ext, size, mime in excluded
+            ],
+            "summary": {
+                "indexable_count": len(indexable),
+                "indexable_size": indexable_size,
+                "excluded_count": len(excluded),
+                "excluded_size": excluded_size,
+            },
+            "by_extension": {
+                ext: {"count": count, "size": total}
+                for ext, (count, total) in ext_stats.items()
+            },
+        }
+        print(json.dumps(output))
+        return 0
 
     # Print file list grouped by extension
     current_ext = None
@@ -455,22 +499,29 @@ def cmd_index(args: argparse.Namespace) -> int:
             - exclude: Additional glob patterns to exclude
             - include: Glob patterns to include (override excludes)
             - list: If True, list files that would be indexed (dry run)
+            - json: Whether to output as JSON
 
     Returns:
         Exit code (0 for success, 1 for configuration error, 130 for interrupt).
     """
     root = Path(args.path).resolve()
     detect = not getattr(args, "no_detect", False)
+    use_json = getattr(args, "json", False)
 
     # Handle --list flag (doesn't require embedding config)
     if getattr(args, "list", False):
         try:
-            return _list_files(root, args.exclude, args.include, detect=detect)
+            return _list_files(root, args.exclude, args.include, detect=detect, use_json=use_json)
         except KeyboardInterrupt:
-            print("\n\nInterrupted by user (Ctrl-C).")
+            if use_json:
+                print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+            else:
+                print("\n\nInterrupted by user (Ctrl-C).")
             return 130
 
     if not require_embedding_config():
+        if use_json:
+            print(json.dumps({"error": "Missing OPENAI_API_KEY environment variable"}))
         return 1
 
     root, db = _resolve_paths(args)
@@ -491,15 +542,37 @@ def cmd_index(args: argparse.Namespace) -> int:
             detect=detect,
         )
     except KeyboardInterrupt:
-        print("\n\nInterrupted by user (Ctrl-C).")
-        print("Partial progress may have been saved to the index.")
-        print("Run 'ogrep index .' again to continue from where you left off.")
+        if use_json:
+            print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+        else:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            print("Partial progress may have been saved to the index.")
+            print("Run 'ogrep index .' again to continue from where you left off.")
         return 130  # Standard SIGINT exit code (128 + 2)
     except ValueError as e:
         if "Model mismatch" in str(e):
-            _print_model_mismatch_help(str(e), args.model)
+            if use_json:
+                print(json.dumps({"error": str(e), "error_code": "MODEL_MISMATCH"}))
+            else:
+                _print_model_mismatch_help(str(e), args.model)
             return 1
         raise
 
-    _print_stats(db, stats)
+    if use_json:
+        print(json.dumps({
+            "database": str(db),
+            "files_indexed": stats.files_indexed,
+            "files_skipped": stats.files_skipped,
+            "files_scanned": stats.files_scanned,
+            "chunks_total": stats.chunks_total,
+            "chunks_embedded": stats.chunks_embedded,
+            "chunks_reused": stats.chunks_reused,
+            "chunks_reused_global": stats.chunks_reused_global,
+            "chunks_reused_local": stats.chunks_reused_local,
+            "tokens_saved_estimate": stats.tokens_saved_estimate,
+            "dedup_ratio": stats.dedup_ratio,
+        }))
+    else:
+        _print_stats(db, stats)
+
     return 0

@@ -76,8 +76,6 @@ DEFAULT_EXCLUDES = (
     "docs/*",
     # Config/data files
     "*.json",
-    "*.yaml",
-    "*.yml",
     "*.toml",
     "*.ini",
     "*.cfg",

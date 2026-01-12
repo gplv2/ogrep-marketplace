@@ -8,6 +8,7 @@ code patterns and testing retrieval accuracy across different chunk sizes.
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import re
 import tempfile
@@ -172,22 +173,32 @@ def cmd_tune(args: argparse.Namespace) -> int:
         Exit code (0 for success).
     """
     root = Path(args.path).resolve()
+    use_json = getattr(args, "json", False)
 
-    print("Analyzing codebase for significant patterns...")
+    if not use_json:
+        print("Analyzing codebase for significant patterns...")
     samples = _extract_significant_lines(root, max_samples=args.samples)
 
     if len(samples) < 3:
-        print("Not enough significant code patterns found for tuning.")
-        print("Need at least 3 function/class definitions.")
+        if use_json:
+            print(json.dumps({
+                "error": "Not enough significant code patterns found for tuning",
+                "samples_found": len(samples),
+                "samples_required": 3,
+            }))
+        else:
+            print("Not enough significant code patterns found for tuning.")
+            print("Need at least 3 function/class definitions.")
         return 1
 
-    print(f"Found {len(samples)} test patterns:")
-    for file_path, line_num, _original, query in samples[:5]:
-        rel_path = file_path.relative_to(root) if file_path.is_relative_to(root) else file_path
-        print(f'  {rel_path}:{line_num} -> "{query[:50]}..."')
-    if len(samples) > 5:
-        print(f"  ... and {len(samples) - 5} more")
-    print()
+    if not use_json:
+        print(f"Found {len(samples)} test patterns:")
+        for file_path, line_num, _original, query in samples[:5]:
+            rel_path = file_path.relative_to(root) if file_path.is_relative_to(root) else file_path
+            print(f'  {rel_path}:{line_num} -> "{query[:50]}..."')
+        if len(samples) > 5:
+            print(f"  ... and {len(samples) - 5} more")
+        print()
 
     # Test different chunk sizes
     chunk_sizes = [30, 45, 60, 90, 120]
@@ -198,7 +209,8 @@ def cmd_tune(args: argparse.Namespace) -> int:
         with tempfile.TemporaryDirectory() as tmpdir:
             for chunk_size in chunk_sizes:
                 db_path = Path(tmpdir) / f"test_{chunk_size}.sqlite"
-                print(f"Testing chunk size {chunk_size}...", end=" ", flush=True)
+                if not use_json:
+                    print(f"Testing chunk size {chunk_size}...", end=" ", flush=True)
 
                 try:
                     accuracy, hits = _test_chunk_size(
@@ -209,21 +221,19 @@ def cmd_tune(args: argparse.Namespace) -> int:
                         model=args.model,
                     )
                     results.append((chunk_size, accuracy, hits))
-                    print(f"accuracy={accuracy:.2f} ({hits}/{len(samples)} hits)")
+                    if not use_json:
+                        print(f"accuracy={accuracy:.2f} ({hits}/{len(samples)} hits)")
                 except Exception as e:
-                    print(f"failed: {e}")
+                    if not use_json:
+                        print(f"failed: {e}")
                     results.append((chunk_size, 0.0, 0))
     except KeyboardInterrupt:
-        print("\n\nInterrupted by user (Ctrl-C).")
-        print("Tuning cancelled. No results saved.")
+        if use_json:
+            print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+        else:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            print("Tuning cancelled. No results saved.")
         return 130  # Standard SIGINT exit code (128 + 2)
-
-    print()
-    print("=" * 50)
-    print("RESULTS")
-    print("=" * 50)
-    print(f"{'Chunk Size':<12} {'Accuracy':<10} {'Hits':<8}")
-    print("-" * 30)
 
     best_chunk = 60  # default
     best_accuracy = 0.0
@@ -232,6 +242,28 @@ def cmd_tune(args: argparse.Namespace) -> int:
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_chunk = chunk_size
+
+    if use_json:
+        output = {
+            "samples_tested": len(samples),
+            "results": [
+                {"chunk_size": cs, "accuracy": acc, "hits": h, "total": len(samples)}
+                for cs, acc, h in results
+            ],
+            "recommended_chunk_size": best_chunk,
+            "best_accuracy": best_accuracy,
+        }
+        print(json.dumps(output))
+        return 0
+
+    print()
+    print("=" * 50)
+    print("RESULTS")
+    print("=" * 50)
+    print(f"{'Chunk Size':<12} {'Accuracy':<10} {'Hits':<8}")
+    print("-" * 30)
+
+    for chunk_size, accuracy, hits in results:
         print(f"{chunk_size:<12} {accuracy:<10.2f} {hits}/{len(samples)}")
 
     print("-" * 30)

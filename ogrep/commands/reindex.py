@@ -8,6 +8,7 @@ database and re-indexing the entire directory.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ..indexer import index_path
@@ -34,11 +35,16 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             - max_bytes: Maximum file size to index
             - exclude: Additional glob patterns to exclude
             - include: Glob patterns to include (override excludes)
+            - json: Whether to output as JSON
 
     Returns:
         Exit code (0 for success, 1 for configuration error).
     """
+    use_json = getattr(args, "json", False)
+
     if not require_embedding_config():
+        if use_json:
+            print(json.dumps({"error": "Missing OPENAI_API_KEY environment variable"}))
         return 1
 
     root = Path(args.path).resolve()
@@ -61,9 +67,12 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         overlap = get_optimal_overlap(args.model)
 
     # Remove existing database
+    removed_existing = False
     if db.exists():
         db.unlink()
-        print(f"Removed existing index at {db}")
+        removed_existing = True
+        if not use_json:
+            print(f"Removed existing index at {db}")
 
     # Reindex
     try:
@@ -79,14 +88,30 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             include=args.include,
         )
     except KeyboardInterrupt:
-        print("\n\nInterrupted by user (Ctrl-C).")
-        print("Partial progress may have been saved to the index.")
-        print("Run 'ogrep reindex .' again to rebuild from scratch.")
+        if use_json:
+            print(json.dumps({"error": "Interrupted by user (Ctrl-C)"}))
+        else:
+            print("\n\nInterrupted by user (Ctrl-C).")
+            print("Partial progress may have been saved to the index.")
+            print("Run 'ogrep reindex .' again to rebuild from scratch.")
         return 130  # Standard SIGINT exit code (128 + 2)
 
-    # Display indexing statistics
-    print(f"Reindexed into {db}")
-    print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
-    if stats.chunks_total > 0:
-        print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
+    if use_json:
+        print(json.dumps({
+            "database": str(db),
+            "removed_existing": removed_existing,
+            "files_indexed": stats.files_indexed,
+            "files_skipped": stats.files_skipped,
+            "files_scanned": stats.files_scanned,
+            "chunks_total": stats.chunks_total,
+            "chunks_embedded": stats.chunks_embedded,
+            "chunks_reused": stats.chunks_reused,
+            "tokens_saved_estimate": stats.tokens_saved_estimate,
+        }))
+    else:
+        print(f"Reindexed into {db}")
+        print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
+        if stats.chunks_total > 0:
+            print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
+
     return 0

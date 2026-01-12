@@ -8,6 +8,7 @@ for the current scope.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from ._common import resolve_db_path
@@ -23,6 +24,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
     Args:
         args: Parsed command-line arguments containing:
             - force: Skip confirmation prompt
+            - json: Whether to output as JSON
             - db, profile, global_cache, repo_root: Scope options
 
     Returns:
@@ -30,31 +32,60 @@ def cmd_reset(args: argparse.Namespace) -> int:
     """
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
+    use_json = getattr(args, "json", False)
 
     if not db.exists():
-        print(f"No database found at {db}")
+        if use_json:
+            print(json.dumps({"database": str(db), "existed": False, "removed": False}))
+        else:
+            print(f"No database found at {db}")
         return 0
 
     if not args.force:
         import sys
 
         if not sys.stdin.isatty():
-            print("Non-interactive mode requires --force (-f) flag.")
+            if use_json:
+                print(json.dumps({
+                    "error": "Non-interactive mode requires --force (-f) flag",
+                    "database": str(db),
+                }))
+            else:
+                print("Non-interactive mode requires --force (-f) flag.")
             return 1
         confirm = input(f"Delete {db}? [y/N]: ").strip().lower()
         if confirm not in ("y", "yes"):
-            print("Aborted.")
+            if use_json:
+                print(json.dumps({
+                    "database": str(db),
+                    "existed": True,
+                    "removed": False,
+                    "aborted": True,
+                }))
+            else:
+                print("Aborted.")
             return 1
 
     db.unlink()
-    print(f"Removed {db}")
 
     # Clean up empty parent directories
     parent = db.parent
+    parent_removed = False
     try:
         if parent.exists() and not any(parent.iterdir()):
             parent.rmdir()
+            parent_removed = True
     except OSError:
         pass
+
+    if use_json:
+        print(json.dumps({
+            "database": str(db),
+            "existed": True,
+            "removed": True,
+            "parent_removed": parent_removed,
+        }))
+    else:
+        print(f"Removed {db}")
 
     return 0

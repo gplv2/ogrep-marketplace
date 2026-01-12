@@ -8,6 +8,7 @@ embedding model info, and database size.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 from pathlib import Path
 
@@ -45,17 +46,25 @@ def cmd_status(args: argparse.Namespace) -> int:
     Args:
         args: Parsed command-line arguments containing:
             - db, profile, global_cache, repo_root: Scope options
+            - json: Whether to output as JSON
 
     Returns:
         Exit code (0 for success).
     """
     repo_root = args.repo_root.resolve() if args.repo_root else Path.cwd()
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
-
-    print(f"Database: {db}")
+    use_json = getattr(args, "json", False)
 
     if not db.exists():
-        print("Status: Not indexed")
+        if use_json:
+            print(json.dumps({
+                "database": str(db),
+                "status": "not_indexed",
+                "indexed": False,
+            }))
+        else:
+            print(f"Database: {db}")
+            print("Status: Not indexed")
         return 0
 
     con = sqlite3.connect(str(db))
@@ -69,17 +78,33 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     cur.execute("SELECT model, dim FROM chunks LIMIT 1")
     row = cur.fetchone()
-    model = row[0] if row else "N/A"
-    dim = row[1] if row else "N/A"
+    model = row[0] if row else None
+    dim = row[1] if row else None
 
-    size_str = _format_size(db.stat().st_size)
-
-    print("Status: Indexed")
-    print(f"Files: {file_count}")
-    print(f"Chunks: {chunk_count}")
-    print(f"Model: {model}")
-    print(f"Dimensions: {dim}")
-    print(f"Size: {size_str}")
+    size_bytes = db.stat().st_size
+    size_str = _format_size(size_bytes)
 
     con.close()
+
+    if use_json:
+        print(json.dumps({
+            "database": str(db),
+            "status": "indexed",
+            "indexed": True,
+            "files": file_count,
+            "chunks": chunk_count,
+            "model": model,
+            "dimensions": dim,
+            "size_bytes": size_bytes,
+            "size_human": size_str,
+        }))
+    else:
+        print(f"Database: {db}")
+        print("Status: Indexed")
+        print(f"Files: {file_count}")
+        print(f"Chunks: {chunk_count}")
+        print(f"Model: {model}")
+        print(f"Dimensions: {dim}")
+        print(f"Size: {size_str}")
+
     return 0

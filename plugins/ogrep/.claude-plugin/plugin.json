@@ -1,7 +1,7 @@
 {
   "name": "ogrep",
-  "version": "0.6.2",
-  "description": "Semantic grep with local embedding models (LM Studio) or OpenAI",
+  "version": "0.6.3",
+  "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). Supports local models via LM Studio (offline, free) or OpenAI embeddings. JSON output for AI tool integration.",
   "skills": "./skills/",
   "commands": ["./commands/"]
 }

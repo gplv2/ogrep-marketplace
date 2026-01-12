@@ -374,39 +374,62 @@ class TestQueryScoring:
 
 
 class TestConfidenceLevels:
-    """Tests for confidence level calculation."""
+    """Tests for confidence level calculation.
+
+    Note: These tests use the actual threshold values from the module,
+    which may be overridden by environment variables (OGREP_CONFIDENCE_*).
+    """
 
     def test_get_confidence_level_high(self) -> None:
-        """Test that high scores return 'high' confidence."""
-        from ogrep.search import get_confidence_level
+        """Test that scores at or above high threshold return 'high'."""
+        from ogrep.search import CONFIDENCE_HIGH, get_confidence_level
 
-        assert get_confidence_level(0.95) == "high"
-        assert get_confidence_level(0.85) == "high"
         assert get_confidence_level(1.0) == "high"
+        assert get_confidence_level(CONFIDENCE_HIGH) == "high"
+        assert get_confidence_level(CONFIDENCE_HIGH + 0.05) == "high"
 
     def test_get_confidence_level_medium(self) -> None:
-        """Test that medium scores return 'medium' confidence."""
-        from ogrep.search import get_confidence_level
+        """Test that scores between medium and high thresholds return 'medium'."""
+        from ogrep.search import (
+            CONFIDENCE_HIGH,
+            CONFIDENCE_MEDIUM,
+            get_confidence_level,
+        )
 
-        assert get_confidence_level(0.84) == "medium"
-        assert get_confidence_level(0.75) == "medium"
-        assert get_confidence_level(0.70) == "medium"
+        # Just below high threshold
+        assert get_confidence_level(CONFIDENCE_HIGH - 0.01) == "medium"
+        # At medium threshold
+        assert get_confidence_level(CONFIDENCE_MEDIUM) == "medium"
+        # Between medium and high
+        mid_point = (CONFIDENCE_MEDIUM + CONFIDENCE_HIGH) / 2
+        assert get_confidence_level(mid_point) == "medium"
 
     def test_get_confidence_level_low(self) -> None:
-        """Test that low scores return 'low' confidence."""
-        from ogrep.search import get_confidence_level
+        """Test that scores between low and medium thresholds return 'low'."""
+        from ogrep.search import (
+            CONFIDENCE_LOW,
+            CONFIDENCE_MEDIUM,
+            get_confidence_level,
+        )
 
-        assert get_confidence_level(0.69) == "low"
-        assert get_confidence_level(0.55) == "low"
-        assert get_confidence_level(0.50) == "low"
+        # Just below medium threshold
+        assert get_confidence_level(CONFIDENCE_MEDIUM - 0.01) == "low"
+        # At low threshold
+        assert get_confidence_level(CONFIDENCE_LOW) == "low"
+        # Between low and medium
+        mid_point = (CONFIDENCE_LOW + CONFIDENCE_MEDIUM) / 2
+        assert get_confidence_level(mid_point) == "low"
 
     def test_get_confidence_level_very_low(self) -> None:
-        """Test that very low scores return 'very_low' confidence."""
-        from ogrep.search import get_confidence_level
+        """Test that scores below low threshold return 'very_low'."""
+        from ogrep.search import CONFIDENCE_LOW, get_confidence_level
 
-        assert get_confidence_level(0.49) == "very_low"
-        assert get_confidence_level(0.25) == "very_low"
+        # Just below low threshold
+        assert get_confidence_level(CONFIDENCE_LOW - 0.01) == "very_low"
+        # Zero
         assert get_confidence_level(0.0) == "very_low"
+        # Half the low threshold
+        assert get_confidence_level(CONFIDENCE_LOW / 2) == "very_low"
 
     def test_query_returns_confidence(self, temp_dir: Path) -> None:
         """Test that query results include confidence level."""

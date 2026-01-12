@@ -53,7 +53,7 @@ from .commands import (
 from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 
 
 def _add_index_command(sub: argparse._SubParsersAction) -> None:
@@ -79,6 +79,11 @@ def _add_index_command(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Disable file type detection (use fast null-byte check only). "
         "By default, uses 'file' command for accurate MIME type detection.",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
     )
     p.set_defaults(func=cmd_index)
 
@@ -183,6 +188,11 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Skip confirmation prompt",
     )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
     p.set_defaults(func=cmd_reset)
 
 
@@ -197,6 +207,11 @@ def _add_reindex_command(sub: argparse._SubParsersAction) -> None:
     add_scope_args(p)
     add_model_args(p)
     add_indexing_args(p)
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
     p.set_defaults(func=cmd_reindex)
 
 
@@ -213,6 +228,11 @@ def _add_clean_command(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Compact database after cleaning",
     )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
     p.set_defaults(func=cmd_clean)
 
 
@@ -224,6 +244,11 @@ def _add_status_command(sub: argparse._SubParsersAction) -> None:
         description="Display index location, file count, chunk count, and model info.",
     )
     add_scope_args(p)
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
     p.set_defaults(func=cmd_status)
 
 
@@ -262,6 +287,11 @@ def _add_health_command(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Run vacuum + rebuild-fts + integrity (not reindex)",
     )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
     p.set_defaults(func=cmd_health)
 
 
@@ -271,6 +301,11 @@ def _add_models_command(sub: argparse._SubParsersAction) -> None:
         "models",
         help="List available embedding models",
         description="Show available OpenAI embedding models with pricing and use cases.",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
     )
     p.set_defaults(func=cmd_models)
 
@@ -302,6 +337,11 @@ def _add_tune_command(sub: argparse._SubParsersAction) -> None:
         "--save",
         action="store_true",
         help="Save optimal chunk size to .env file as OGREP_CHUNK_LINES",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
     )
     p.set_defaults(func=cmd_tune)
 
