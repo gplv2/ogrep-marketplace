@@ -45,7 +45,41 @@ time curl -s http://localhost:1234/v1/embeddings \
 # Expected: <100ms for single short string
 ```
 
-## Test 2: Model Comparison (Short Strings)
+## Test 2: Serial Mode Baseline (One-by-One)
+
+Test performance when sending requests one at a time (no batching). This establishes the baseline for comparison with batched requests.
+
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+export OGREP_BATCH_SIZE=1  # Force serial mode
+
+python3 -c "
+import time
+from ogrep.embed import embed_texts
+
+# Test 16 short strings - serial mode
+texts = ['test string ' + str(i) for i in range(16)]
+blobs, dim, elapsed = embed_texts(texts, model='minilm', return_timing=True)
+print(f'Serial (16 short): {elapsed:.2f}s ({elapsed*1000/16:.1f}ms/chunk)')
+
+# Test 50 short strings - serial mode
+texts = ['test string ' + str(i) for i in range(50)]
+blobs, dim, elapsed = embed_texts(texts, model='minilm', return_timing=True)
+print(f'Serial (50 short): {elapsed:.2f}s ({elapsed*1000/50:.1f}ms/chunk)')
+"
+
+unset OGREP_BATCH_SIZE  # Reset for other tests
+```
+
+**Expected Results**:
+| Test | Target | Acceptable |
+|------|--------|------------|
+| 16 short (serial) | ~20ms/chunk | <50ms/chunk |
+| 50 short (serial) | ~20ms/chunk | <50ms/chunk |
+
+**Why this matters**: If serial mode is significantly faster than batched mode, the batching overhead may be the issue. If both are slow, the problem is with the embedding model/server itself.
+
+## Test 3: Model Comparison (Short Strings)
 
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
@@ -121,7 +155,59 @@ print(f'All {len(texts)} chunks: {elapsed:.2f}s ({elapsed*1000/len(texts):.1f}ms
 | 100 PHP chunks | <50ms/chunk | <100ms/chunk |
 | All 615 chunks | <50ms/chunk | <100ms/chunk |
 
-## Test 5: Full Index Workflow
+## Test 6: Serial vs Batched Comparison (Real Code)
+
+Direct comparison of serial vs batched mode with real PHP code.
+
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+
+python3 -c "
+import os
+import time
+from pathlib import Path
+from ogrep.chunking import chunk_lines
+from ogrep.embed import embed_texts, _optimal_batch_size
+
+php = Path('/home/glenn/repos/testsc/opt/strac/cgpsv85.php').read_text()
+chunks = list(chunk_lines(php, chunk_size=30, overlap=15))
+texts = [c.text for c in chunks[:50]]  # Use 50 chunks for comparison
+
+print(f'Testing with {len(texts)} real PHP chunks')
+print()
+
+# Test 1: Serial mode (one by one)
+os.environ['OGREP_BATCH_SIZE'] = '1'
+import ogrep.embed as embed_module
+embed_module._optimal_batch_size = None  # Reset cache
+
+blobs, dim, elapsed = embed_texts(texts, model='minilm', return_timing=True)
+serial_ms = elapsed * 1000 / len(texts)
+print(f'Serial (1 at a time): {elapsed:.2f}s ({serial_ms:.1f}ms/chunk)')
+
+# Test 2: Batched mode (auto-tuned)
+del os.environ['OGREP_BATCH_SIZE']
+embed_module._optimal_batch_size = None  # Reset cache
+
+blobs, dim, elapsed = embed_texts(texts, model='minilm', return_timing=True)
+batched_ms = elapsed * 1000 / len(texts)
+print(f'Batched (auto-tuned): {elapsed:.2f}s ({batched_ms:.1f}ms/chunk)')
+
+# Comparison
+print()
+if serial_ms < batched_ms:
+    print(f'Serial is {batched_ms/serial_ms:.1f}x FASTER than batched')
+else:
+    print(f'Batched is {serial_ms/batched_ms:.1f}x FASTER than serial')
+"
+```
+
+**Expected Results**:
+- Batched should be faster or equal to serial
+- If serial is faster, batching overhead is the problem
+- If both are slow, the model/server is the bottleneck
+
+## Test 7: Full Index Workflow
 
 ```bash
 cd /home/glenn/repos/testsc/opt/strac
