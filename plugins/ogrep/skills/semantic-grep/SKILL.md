@@ -10,15 +10,51 @@ description: |
 allowed-tools: Bash, Read
 ---
 
-# Semantic grep workflow (ogrep) v0.6.3
+# Semantic grep workflow (ogrep) v0.6.4
 
 Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
 
-**Key features:**
+## Quick Examples (Copy & Paste)
+
+```bash
+# Search by concept (semantic)
+ogrep query "where is authentication handled" -n 10 --refresh --json
+
+# Search by exact identifier (fulltext)
+ogrep query "def validate_token" --mode fulltext --json
+
+# Combined search (hybrid - default)
+ogrep query "user login validation" -n 15 --refresh --json
+
+# Expand context around a result
+ogrep chunk "src/auth.py:2" --context 1 --json
+
+# Index the repo (first time or after major changes)
+ogrep index .
+
+# Check index status
+ogrep status --json
+```
+
+## Common Patterns
+
+| Task | Command |
+|------|---------|
+| Find where X is implemented | `ogrep query "where is X handled" --json` |
+| Find exact function/class | `ogrep query "def function_name" --mode fulltext --json` |
+| Understand how X works | `ogrep query "how does X work" -n 15 --json` |
+| Find all uses of X | `ogrep query "X" --mode fulltext --json` |
+| Search after editing files | `ogrep query "..." --refresh --json` |
+| Get more context | `ogrep chunk "file.py:N" --context 2` |
+| Find config/YAML | `ogrep query "database configuration" --json` |
+| Find error handling | `ogrep query "exception handling" --json` |
+
+## Key Features
+
 - **Three search modes**: semantic (conceptual), fulltext (exact), hybrid (combined)
+- **Relative confidence scoring**: Compares results to top match (v0.6.4+)
 - **JSON output for all commands**: Structured data for AI tool integration
 - **Chunk navigation**: Expand context around search results
-- **Confidence scoring**: Know how much to trust each result
 - **Smart embedding reuse**: Minimal API costs on reindex
 - **YAML files indexed**: Configuration files now searchable by default
 
@@ -93,6 +129,50 @@ ogrep chunk "src/auth.py:2" --context 1   # + 1 before AND after
 ogrep chunk 42
 ```
 
+### Direct Chunk Access
+
+You can access chunks directly without querying first:
+
+```bash
+# Access chunk 0 (first chunk) of any file
+ogrep chunk "src/main.py:0" --json
+
+# Access specific chunk by file path and index
+ogrep chunk "src/models/user.py:3" --json
+
+# Access by database chunk ID (from previous query results)
+ogrep chunk 42 --json
+ogrep chunk 157 --context 1 --json
+```
+
+**Understanding chunk_ref format:** `"path/to/file.py:N"` where N is the chunk index (0-based) within that file. Each chunk is ~60 lines of code by default.
+
+### Navigating Neighbors
+
+Neighbors are chunks adjacent to your target - use them to understand context:
+
+```bash
+# See what comes BEFORE the target chunk
+ogrep chunk "handler.py:5" --before 2 --json
+# Returns: requested chunk + 2 chunks before it
+
+# See what comes AFTER the target chunk
+ogrep chunk "handler.py:5" --after 2 --json
+# Returns: requested chunk + 2 chunks after it
+
+# See BOTH directions (full context)
+ogrep chunk "handler.py:5" --context 2 --json
+# Returns: 2 before + target + 2 after (5 total chunks)
+```
+
+**When to expand neighbors:**
+| Situation | Direction | Example |
+|-----------|-----------|---------|
+| Found function body, need signature | `--before 1` | Class definition above |
+| Found function, need to see caller | `--after 1` | What happens next |
+| Found config, need full section | `--context 1` | Surrounding settings |
+| Debugging flow, need full picture | `--context 2` | Bigger context |
+
 ### Chunk Navigation Patterns
 
 #### Pattern 1: Expand Context After Query
@@ -121,16 +201,47 @@ ogrep chunk "auth.py:4" --context 2
 ogrep query "def process_request" --mode fulltext --json
 ```
 
+#### Pattern 5: Walk Through a File Sequentially
+```bash
+# Start at the beginning of a file
+ogrep chunk "api/routes.py:0" --json
+# Then walk forward
+ogrep chunk "api/routes.py:1" --json
+ogrep chunk "api/routes.py:2" --json
+# Or get multiple at once
+ogrep chunk "api/routes.py:0" --after 3 --json
+```
+
+#### Pattern 6: Find Class Definition from Method
+```bash
+# Query found a method in chunk 5
+ogrep query "def validate_credentials" --json
+# Result: chunk_ref: "auth/user.py:5"
+# Look backward to find the class definition
+ogrep chunk "auth/user.py:5" --before 2 --json
+```
+
 ## Confidence Levels
 
-Each result includes a `confidence` level to help you decide how much to trust it:
+Each result includes a `confidence` level using **relative scoring** (v0.6.4+). Confidence compares each result to the top score, not fixed thresholds:
 
-| Confidence | Score Range | What It Means |
-|------------|-------------|---------------|
-| `high` | 0.85+ | Trust and use directly |
-| `medium` | 0.70-0.84 | Use but verify with context |
-| `low` | 0.50-0.69 | Consider alternative queries |
-| `very_low` | < 0.50 | Likely not relevant |
+| Confidence | Relative Score | What It Means |
+|------------|----------------|---------------|
+| `high` | 90%+ of top | Trust and use directly |
+| `medium` | 75-89% of top | Use but verify with context |
+| `low` | 50-74% of top | Consider alternative queries |
+| `very_low` | < 50% of top | Likely not relevant |
+
+**Why relative scoring matters:**
+Cosine similarity scores cluster around 0.3-0.5 (not uniformly [0,1]). A score of 0.45 is excellent! Relative scoring answers: "How good is this compared to the best result?"
+
+**Example output:**
+```
+  1. src/auth.py:2  score=0.45 [high]      # Top result = high confidence
+  2. src/auth.py:5  score=0.42 [high]      # 93% of top = still high
+  3. src/utils.py:1 score=0.35 [medium]    # 78% of top = medium
+  4. src/db.py:3    score=0.20 [very_low]  # 44% of top = very_low
+```
 
 **Using confidence effectively:**
 - High confidence results: Use directly in your response
@@ -331,13 +442,17 @@ ogrep models --json
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
 | `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight in hybrid (0.0-1.0) |
 
-### Confidence Thresholds
+### Confidence Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OGREP_CONFIDENCE_HIGH` | `0.85` | Threshold for "high" confidence |
-| `OGREP_CONFIDENCE_MEDIUM` | `0.70` | Threshold for "medium" confidence |
-| `OGREP_CONFIDENCE_LOW` | `0.50` | Threshold for "low" confidence |
+| `OGREP_CONFIDENCE_MODE` | `relative` | Mode: `relative` (% of top) or `absolute` |
+| `OGREP_RELATIVE_HIGH` | `0.90` | Relative: 90% of top score = high |
+| `OGREP_RELATIVE_MEDIUM` | `0.75` | Relative: 75% of top score = medium |
+| `OGREP_RELATIVE_LOW` | `0.50` | Relative: 50% of top score = low |
+| `OGREP_CONFIDENCE_HIGH` | `0.50` | Absolute: threshold for "high" |
+| `OGREP_CONFIDENCE_MEDIUM` | `0.40` | Absolute: threshold for "medium" |
+| `OGREP_CONFIDENCE_LOW` | `0.30` | Absolute: threshold for "low" |
 
 ## FTS5 Availability
 

@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-01-12
+
+### ✨ New Features
+
+#### Relative Confidence Scoring (Default)
+
+Confidence levels now use **relative scoring** by default, comparing each result to the top score instead of fixed absolute thresholds. This provides more meaningful confidence levels because cosine similarity scores for text embeddings cluster around 0.3-0.5, not uniformly across [0,1].
+
+**Why this matters:**
+- A score of 0.45 is actually in the top 15% of matches (not "very low")
+- The old absolute threshold of 0.85 for "high" was rarely achievable
+- Relative scoring answers: "How good is this compared to the best result?"
+
+**New default behavior:**
+```
+Score Distribution (relative to top result):
+├── high:     90%+ of top score
+├── medium:   75-89% of top score
+├── low:      50-74% of top score
+└── very_low: <50% of top score
+```
+
+**Example improvement:**
+```bash
+# Old absolute scoring (misleading):
+  1. src/auth.py:2  score=0.45 [very_low]  # Actually a great match!
+
+# New relative scoring (accurate):
+  1. src/auth.py:2  score=0.45 [high]      # Top result = high confidence
+  2. src/auth.py:5  score=0.42 [high]      # 93% of top = still high
+  3. src/utils.py:1 score=0.35 [medium]    # 78% of top = medium
+```
+
+**Environment variables:**
+```bash
+# Relative mode thresholds (as % of top score, default)
+export OGREP_RELATIVE_HIGH=0.90    # 90% of top score
+export OGREP_RELATIVE_MEDIUM=0.75  # 75% of top score
+export OGREP_RELATIVE_LOW=0.50     # 50% of top score
+
+# Switch to absolute mode if needed
+export OGREP_CONFIDENCE_MODE=absolute
+
+# Absolute thresholds (calibrated for typical embeddings)
+export OGREP_CONFIDENCE_HIGH=0.50   # Was 0.85
+export OGREP_CONFIDENCE_MEDIUM=0.40 # Was 0.70
+export OGREP_CONFIDENCE_LOW=0.30    # Was 0.50
+```
+
+### 🔧 Changed
+
+#### Absolute Confidence Thresholds Recalibrated
+
+The absolute thresholds (used when `OGREP_CONFIDENCE_MODE=absolute`) have been recalibrated based on actual embedding score distributions:
+
+| Level | Old Threshold | New Threshold | Reason |
+|-------|---------------|---------------|--------|
+| high | 0.85 | 0.50 | Scores >0.50 are in top 10% |
+| medium | 0.70 | 0.40 | P90 of typical results |
+| low | 0.50 | 0.30 | Still meaningful matches |
+
+This was based on analysis showing:
+- Median pairwise similarity: 0.31
+- P90: 0.48, P95: 0.53, P99: 0.65
+- Scores above 0.50 are excellent matches
+
+### 📚 Documentation
+
+- Updated SKILL.md with expanded quick examples at top
+- Added common patterns table for quick reference
+- Enhanced chunk navigation documentation
+- Updated CLAUDE.md with relative confidence explanation
+- Updated LOCAL_EMBEDDINGS_GUIDE.md troubleshooting section
+
+### 🧪 Testing
+
+- Added 10 new tests for relative confidence scoring
+- Tests verify both relative and absolute mode behavior
+- All tests independent of user environment variables
+
 ## [0.6.3] - 2026-01-12
 
 ### ✨ New Features
