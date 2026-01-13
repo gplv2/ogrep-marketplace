@@ -12,6 +12,7 @@ from ogrep.embed import embed_texts
 from ogrep.search import (
     Hit,
     _dot_py,
+    _rrf_score,
     assign_confidence,
     get_confidence_level,
     get_relative_confidence,
@@ -146,6 +147,61 @@ class TestDotProduct:
         b = array.array("f", [0.0, 0.0, 0.0])
         result = _dot_py(a, b)
         assert abs(result) < 1e-10
+
+
+class TestRRFScore:
+    """Tests for Reciprocal Rank Fusion scoring."""
+
+    def test_rrf_both_ranks(self) -> None:
+        """Test RRF with both semantic and FTS ranks."""
+        # Standard k=60, ranks 1 and 1
+        score = _rrf_score(1, 1, k=60)
+        # 1/(60+1) + 1/(60+1) = 2/61 ≈ 0.0328
+        expected = 2.0 / 61.0
+        assert abs(score - expected) < 1e-6
+
+    def test_rrf_different_ranks(self) -> None:
+        """Test RRF with different ranks."""
+        # Rank 1 in semantic, rank 10 in FTS
+        score = _rrf_score(1, 10, k=60)
+        # 1/(60+1) + 1/(60+10) = 1/61 + 1/70
+        expected = 1.0 / 61.0 + 1.0 / 70.0
+        assert abs(score - expected) < 1e-6
+
+    def test_rrf_semantic_only(self) -> None:
+        """Test RRF with only semantic rank."""
+        score = _rrf_score(5, None, k=60)
+        # 1/(60+5) = 1/65
+        expected = 1.0 / 65.0
+        assert abs(score - expected) < 1e-6
+
+    def test_rrf_fts_only(self) -> None:
+        """Test RRF with only FTS rank."""
+        score = _rrf_score(None, 3, k=60)
+        # 1/(60+3) = 1/63
+        expected = 1.0 / 63.0
+        assert abs(score - expected) < 1e-6
+
+    def test_rrf_neither_rank(self) -> None:
+        """Test RRF with no ranks returns 0."""
+        score = _rrf_score(None, None, k=60)
+        assert score == 0.0
+
+    def test_rrf_custom_k(self) -> None:
+        """Test RRF with custom k value."""
+        # k=30 should give higher scores
+        score_k30 = _rrf_score(1, 1, k=30)
+        score_k60 = _rrf_score(1, 1, k=60)
+        # Higher k means lower scores for same ranks
+        assert score_k30 > score_k60
+
+    def test_rrf_rank_ordering(self) -> None:
+        """Test RRF preserves rank ordering."""
+        # Better ranks should give higher scores
+        score_rank1 = _rrf_score(1, 1, k=60)
+        score_rank5 = _rrf_score(5, 5, k=60)
+        score_rank10 = _rrf_score(10, 10, k=60)
+        assert score_rank1 > score_rank5 > score_rank10
 
 
 class TestConfidenceScoring:

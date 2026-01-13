@@ -9,14 +9,20 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 - *"where do we open DB connections and run queries?"*
 - *"what kind of API key mechanism do we use?"*
 
-## What's New in v0.6.0
+## What's New in v0.7.0
 
-- **Cross-File Chunk Deduplication** — Identical chunks across files share embeddings, saving up to 80% on API costs for duplicate code
-- **Graceful Ctrl-C Handling** — All commands handle keyboard interrupts cleanly with helpful recovery messages
-- **Token-Aware Batching** — Automatic batch splitting and retry to prevent context overflow crashes
-- **Tunable Confidence Thresholds** — Lower thresholds for legacy/sparse codebases via environment variables
-- **Fixed --refresh Model Mismatch** — Query refresh now uses the index's model, not CLI defaults
-- **Friendly Error Messages** — Model mismatch and corrupted index errors now show clear, actionable guidance
+- **RRF Hybrid Fusion** — Reciprocal Rank Fusion replaces alpha weighting as the default hybrid search method, providing more robust ranking by combining results by position rather than raw scores
+- **No Tuning Required** — RRF's k=60 parameter is standard in literature, eliminating the need to tune alpha weights
+- **Better Ranking Accuracy** — Results that rank highly in both semantic and keyword search are correctly boosted
+- **Index Change History** — Track what changed with `ogrep log`, useful for AI tool integration to understand codebase evolution
+- **Fusion Method in JSON** — Query stats now include `fusion_method` to show which method was used
+
+### Recent (v0.6.x)
+
+- Cross-file chunk deduplication (up to 80% embedding cost savings)
+- Relative confidence scoring (compares to top result, not fixed thresholds)
+- JSON output for all commands (`--json` flag)
+- Graceful Ctrl-C handling with recovery messages
 
 ---
 

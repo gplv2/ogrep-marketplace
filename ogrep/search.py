@@ -10,6 +10,15 @@ Search modes:
     - fulltext: SQLite FTS5 keyword matching only
     - hybrid: Combined score (default) - best of both worlds
 
+Hybrid fusion methods:
+    - rrf (default): Reciprocal Rank Fusion - combines results by rank position.
+      More robust than score weighting since it doesn't depend on score scales.
+      Formula: score = 1/(k + semantic_rank) + 1/(k + fts_rank), where k=60.
+
+    - alpha: Linear weighted combination of normalized scores.
+      Formula: score = alpha * semantic_score + (1 - alpha) * fts_score.
+      Legacy method, available for comparison.
+
 Confidence scoring:
     Results include a confidence level (high/medium/low/very_low) that
     indicates match quality. Two modes are available:
@@ -23,7 +32,9 @@ Confidence scoring:
 
 Environment variables:
     OGREP_SEARCH_MODE: Default search mode (semantic, fulltext, hybrid)
-    OGREP_HYBRID_ALPHA: Semantic weight in hybrid mode (0.0-1.0, default: 0.7)
+    OGREP_FUSION_METHOD: Hybrid fusion method ("rrf" or "alpha", default: "rrf")
+    OGREP_HYBRID_ALPHA: Semantic weight for alpha fusion (0.0-1.0, default: 0.7)
+    OGREP_RRF_K: RRF rank constant (default: 60, higher = more weight to lower ranks)
     OGREP_CONFIDENCE_MODE: "relative" (default) or "absolute"
     OGREP_RELATIVE_HIGH: Fraction of top score for "high" (default: 0.90)
     OGREP_RELATIVE_MEDIUM: Fraction of top score for "medium" (default: 0.75)
@@ -57,8 +68,16 @@ SearchMode = Literal["semantic", "fulltext", "hybrid"]
 # Default search mode from environment
 DEFAULT_SEARCH_MODE: SearchMode = os.environ.get("OGREP_SEARCH_MODE", "hybrid")  # type: ignore[assignment]
 
-# Hybrid scoring weight (0.0-1.0, where 1.0 is all semantic, 0.0 is all fulltext)
+# Fusion method for hybrid search: "rrf" (default) or "alpha" (legacy)
+# RRF is more robust since it uses ranks instead of scores
+FUSION_METHOD = os.environ.get("OGREP_FUSION_METHOD", "rrf").lower()
+
+# Hybrid scoring weight for alpha fusion (0.0-1.0, 1.0 = all semantic, 0.0 = all fulltext)
 HYBRID_ALPHA = float(os.environ.get("OGREP_HYBRID_ALPHA", "0.7"))
+
+# RRF constant k (default: 60, standard in literature)
+# Higher k = more weight to lower-ranked results, smoother ranking
+RRF_K = int(os.environ.get("OGREP_RRF_K", "60"))
 
 # Confidence mode: "relative" (percentile-based, default) or "absolute" (threshold-based)
 # Relative mode compares scores to the top result, which is more meaningful since
@@ -227,13 +246,57 @@ def _escape_fts5_query(q: str) -> str:
     return " ".join(f'"{term}"' for term in terms)
 
 
+def _rrf_score(
+    semantic_rank: int | None,
+    fts_rank: int | None,
+    k: int = 60,
+) -> float:
+    """
+    Compute Reciprocal Rank Fusion (RRF) score.
+
+    RRF combines results from multiple ranking systems by using their
+    rank positions rather than raw scores. This is more robust because:
+    - Scores from different systems have different distributions
+    - Ranks are comparable across systems
+    - No need to tune weighting parameters
+
+    Formula: RRF(d) = sum(1 / (k + rank_i)) for each ranking system i
+
+    The k parameter (default 60) controls how much weight is given to
+    lower-ranked results. Higher k = smoother distribution.
+
+    Reference: Cormack, Clarke, Buettcher. "Reciprocal Rank Fusion
+    outperforms Condorcet and individual Rank Learning Methods" (SIGIR 2009)
+
+    Args:
+        semantic_rank: 1-indexed rank from semantic search (None if not ranked).
+        fts_rank: 1-indexed rank from full-text search (None if not ranked).
+        k: Rank constant (default: 60, standard in literature).
+
+    Returns:
+        Combined RRF score (higher is better).
+
+    Example:
+        >>> _rrf_score(1, 3)  # Top semantic, 3rd in FTS
+        0.032258...  # 1/(60+1) + 1/(60+3)
+        >>> _rrf_score(10, None)  # Only in semantic results
+        0.014285...  # 1/(60+10)
+    """
+    score = 0.0
+    if semantic_rank is not None:
+        score += 1.0 / (k + semantic_rank)
+    if fts_rank is not None:
+        score += 1.0 / (k + fts_rank)
+    return score
+
+
 def _fulltext_search(
     con,
     q: str,
     top_k: int,
-) -> dict[int, float]:
+) -> tuple[dict[int, float], dict[int, int]]:
     """
-    Perform FTS5 full-text search and return normalized BM25 scores.
+    Perform FTS5 full-text search and return normalized BM25 scores and ranks.
 
     Args:
         con: Database connection.
@@ -241,7 +304,9 @@ def _fulltext_search(
         top_k: Maximum number of results.
 
     Returns:
-        Dict mapping chunk_id to normalized score (0.0 to 1.0).
+        Tuple of (scores, ranks):
+        - scores: Dict mapping chunk_id to normalized score (0.0 to 1.0).
+        - ranks: Dict mapping chunk_id to 1-indexed rank position.
     """
     # Escape query for FTS5 syntax
     escaped_q = _escape_fts5_query(q)
@@ -259,10 +324,10 @@ def _fulltext_search(
         ).fetchall()
     except Exception:
         # If FTS5 query fails for any reason, return empty results
-        return {}
+        return {}, {}
 
     if not rows:
-        return {}
+        return {}, {}
 
     # Normalize BM25 scores to 0.0-1.0 range
     # BM25 scores are negative, so we invert and normalize
@@ -271,7 +336,11 @@ def _fulltext_search(
     min_score = min(scores) if scores else 0.0
     score_range = max_score - min_score if max_score != min_score else 1.0
 
-    return {row[0]: ((-row[1]) - min_score) / score_range for row in rows}
+    score_dict = {row[0]: ((-row[1]) - min_score) / score_range for row in rows}
+    # Ranks are 1-indexed (1 = best match)
+    rank_dict = {row[0]: i + 1 for i, row in enumerate(rows)}
+
+    return score_dict, rank_dict
 
 
 def query(
@@ -350,7 +419,7 @@ def query(
 
     # Full-text only mode
     if effective_mode == "fulltext":
-        fts_scores = _fulltext_search(con, q, top_k)
+        fts_scores, _ = _fulltext_search(con, q, top_k)
         if not fts_scores:
             return [], fts_available
 
@@ -418,13 +487,15 @@ def query(
            JOIN files f ON f.id = c.file_id"""
     ).fetchall()
 
-    # Get FTS scores if in hybrid mode
+    # Get FTS scores and ranks if in hybrid mode
     fts_scores: dict[int, float] = {}
+    fts_ranks: dict[int, int] = {}
     if effective_mode == "hybrid" and fts_available:
-        fts_scores = _fulltext_search(con, q, top_k * 2)
+        fts_scores, fts_ranks = _fulltext_search(con, q, top_k * 2)
 
-    # Compute similarities - collect as tuples first for relative confidence
-    scored_results: list[tuple[float, int, int, str, int, int, str]] = []
+    # Step 1: Compute semantic scores for all chunks
+    # Store as (semantic_score, chunk_id, chunk_idx, path, sl, el, text)
+    semantic_results: list[tuple[float, int, int, str, int, int, str]] = []
 
     if np is not None:
         # Fast path with numpy
@@ -432,17 +503,8 @@ def query(
         for chunk_id, chunk_idx, path, sl, el, text, emb in rows:
             v = np.frombuffer(emb, dtype=np.float32)
             semantic_score = float(np.dot(qv, v))  # cosine similarity
-
-            # Compute final score based on mode
-            if effective_mode == "hybrid" and fts_scores:
-                fts_score = fts_scores.get(int(chunk_id), 0.0)
-                # Hybrid: weighted combination
-                score = HYBRID_ALPHA * semantic_score + (1 - HYBRID_ALPHA) * fts_score
-            else:
-                score = semantic_score
-
-            scored_results.append(
-                (score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
+            semantic_results.append(
+                (semantic_score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
             )
     else:
         # Fallback pure Python
@@ -450,19 +512,63 @@ def query(
             v = array.array("f")
             v.frombytes(emb)
             semantic_score = _dot_py(q_arr, v)
-
-            # Compute final score based on mode
-            if effective_mode == "hybrid" and fts_scores:
-                fts_score = fts_scores.get(int(chunk_id), 0.0)
-                score = HYBRID_ALPHA * semantic_score + (1 - HYBRID_ALPHA) * fts_score
-            else:
-                score = semantic_score
-
-            scored_results.append(
-                (score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
+            semantic_results.append(
+                (semantic_score, int(chunk_id), int(chunk_idx), path, int(sl), int(el), text)
             )
 
-    # Sort by score descending and take top-k
+    # Step 2: Sort by semantic score to get semantic ranks
+    semantic_results.sort(key=lambda x: x[0], reverse=True)
+
+    # Build semantic rank lookup (1-indexed)
+    semantic_ranks: dict[int, int] = {}
+    for rank, (_, chunk_id, *_rest) in enumerate(semantic_results, start=1):
+        semantic_ranks[chunk_id] = rank
+
+    # Step 3: Compute final scores based on fusion method
+    scored_results: list[tuple[float, int, int, str, int, int, str]] = []
+
+    if effective_mode == "hybrid" and (fts_scores or fts_ranks):
+        # Hybrid mode: combine semantic and FTS results
+        use_rrf = FUSION_METHOD == "rrf"
+
+        # Collect all chunk IDs that appear in either result set
+        all_chunk_ids = set(semantic_ranks.keys())
+        if fts_ranks:
+            all_chunk_ids.update(fts_ranks.keys())
+
+        # Build lookup for chunk details
+        chunk_details = {
+            chunk_id: (chunk_idx, path, sl, el, text)
+            for (_, chunk_id, chunk_idx, path, sl, el, text) in semantic_results
+        }
+
+        for chunk_id in all_chunk_ids:
+            if chunk_id not in chunk_details:
+                continue  # Skip if we don't have chunk details
+
+            chunk_idx, path, sl, el, text = chunk_details[chunk_id]
+            sem_rank = semantic_ranks.get(chunk_id)
+            fts_rank = fts_ranks.get(chunk_id)
+
+            if use_rrf:
+                # RRF fusion: combine by ranks
+                score = _rrf_score(sem_rank, fts_rank, k=RRF_K)
+            else:
+                # Alpha fusion: combine by scores (legacy)
+                sem_score = next(
+                    (s for s, cid, *_ in semantic_results if cid == chunk_id), 0.0
+                )
+                fts_score = fts_scores.get(chunk_id, 0.0)
+                score = HYBRID_ALPHA * sem_score + (1 - HYBRID_ALPHA) * fts_score
+
+            scored_results.append(
+                (score, chunk_id, chunk_idx, path, sl, el, text)
+            )
+    else:
+        # Semantic-only mode: use semantic scores directly
+        scored_results = list(semantic_results)
+
+    # Sort by final score descending and take top-k
     scored_results.sort(key=lambda x: x[0], reverse=True)
     top_results = scored_results[:top_k]
 

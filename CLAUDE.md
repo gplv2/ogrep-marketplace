@@ -463,7 +463,9 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_BATCH_SIZE` | Batch size for embedding requests | Auto-tuned** |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | - |
 | `OGREP_SEARCH_MODE` | Default search mode (semantic, fulltext, hybrid) | `hybrid` |
-| `OGREP_HYBRID_ALPHA` | Semantic weight in hybrid mode (0.0-1.0) | `0.7` |
+| `OGREP_FUSION_METHOD` | Hybrid fusion method (`rrf` or `alpha`) | `rrf` |
+| `OGREP_RRF_K` | RRF rank constant (higher = smoother ranking) | `60` |
+| `OGREP_HYBRID_ALPHA` | Alpha fusion: semantic weight (0.0-1.0) | `0.7` |
 | `OGREP_CONFIDENCE_MODE` | Confidence scoring mode: `relative` or `absolute` | `relative` |
 | `OGREP_RELATIVE_HIGH` | Relative mode: fraction of top score for "high" | `0.90` |
 | `OGREP_RELATIVE_MEDIUM` | Relative mode: fraction of top score for "medium" | `0.75` |
@@ -534,8 +536,12 @@ export OGREP_CONFIDENCE_LOW=0.30
 For legacy code with sparse comments, consider:
 
 ```bash
-# More keyword-heavy hybrid search (for exact terms)
-export OGREP_HYBRID_ALPHA=0.4  # Default is 0.7
+# Hybrid fusion uses RRF (Reciprocal Rank Fusion) by default (v0.7.0+)
+# RRF combines by rank position, not scores - more robust
+
+# To switch to alpha weighting (legacy):
+export OGREP_FUSION_METHOD=alpha
+export OGREP_HYBRID_ALPHA=0.4  # More keyword-heavy
 
 # Or use fulltext mode for exact identifier searches
 ogrep query "validateToken" --mode fulltext

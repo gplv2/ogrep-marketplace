@@ -5,6 +5,90 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-13
+
+### ✨ New Features
+
+#### Reciprocal Rank Fusion (RRF) - Default Hybrid Fusion Method
+
+Hybrid search now uses **Reciprocal Rank Fusion (RRF)** by default, replacing the previous alpha-weighted score combination. RRF is more robust because it combines results by rank position rather than raw scores.
+
+**Why this matters:**
+- Semantic similarity and BM25 scores have very different distributions
+- RRF uses ranks (1st, 2nd, 3rd...) which are comparable across systems
+- No hyperparameter tuning needed (k=60 is standard in literature)
+- Published research shows consistent improvements over score weighting
+
+**How RRF works:**
+```
+RRF score = 1/(k + semantic_rank) + 1/(k + fts_rank)
+
+Example: Chunk ranked #1 in semantic, #5 in full-text
+  = 1/(60+1) + 1/(60+5)
+  = 0.0164 + 0.0154
+  = 0.0318
+```
+
+**Note:** RRF scores are smaller (0.03-0.04 for top results) but the **ranking is more accurate**.
+
+**Configuration:**
+```bash
+# RRF is now the default
+ogrep query "search" --json
+
+# Switch to alpha weighting (legacy)
+OGREP_FUSION_METHOD=alpha ogrep query "search" --json
+
+# Adjust RRF k parameter (rarely needed)
+OGREP_RRF_K=30 ogrep query "search" --json
+```
+
+#### JSON Stats Include Fusion Method
+
+Query JSON output now includes `fusion_method` in stats to show which method was used:
+
+```json
+{
+  "stats": {
+    "search_mode": "hybrid",
+    "fusion_method": "rrf",
+    ...
+  }
+}
+```
+
+### 🔧 Changed
+
+#### New Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion: `rrf` (ranks) or `alpha` (scores) |
+| `OGREP_RRF_K` | `60` | RRF rank constant (higher = smoother ranking) |
+
+#### Score Scale Change (Hybrid Mode)
+
+When using hybrid search with RRF (the new default):
+- **Old scores**: 0.3-0.6 range (alpha-weighted)
+- **New scores**: 0.02-0.04 range (RRF formula)
+
+This is expected—RRF scores are naturally smaller. **Confidence levels remain accurate** because they compare results to the top score.
+
+### 📚 Documentation
+
+- Added "Hybrid Fusion Methods" section to SKILL.md
+- Added "Search Quality R&D" section to LOCAL_EMBEDDINGS_GUIDE.md
+- Documented future R&D directions (reranking, AST-aware chunking)
+- Updated JSON output format documentation with fusion_method
+
+### 🧪 Testing
+
+- Added 7 new tests for RRF scoring function
+- Tests verify RRF formula, edge cases, and rank ordering
+- All 300 tests passing
+
+---
+
 ## [0.6.4] - 2026-01-12
 
 ### ✨ New Features

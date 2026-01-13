@@ -25,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-from ..search import Hit
+from ..search import FUSION_METHOD, Hit
 from ..search import query as query_db
 from ._common import detect_language, require_embedding_config, resolve_db_path
 
@@ -325,6 +325,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "total_chunks": total_chunks,
                 "search_time_ms": search_time_ms,
                 "search_mode": search_mode or "hybrid",
+                "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
                 "fts_available": fts_available,
                 "index_model": index_model,
                 "index_dimensions": index_dim,

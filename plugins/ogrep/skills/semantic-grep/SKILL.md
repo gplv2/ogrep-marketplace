@@ -10,7 +10,7 @@ description: |
 allowed-tools: Bash, Read
 ---
 
-# Semantic grep workflow (ogrep) v0.6.4
+# Semantic grep workflow (ogrep) v0.7.0
 
 Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
 
@@ -278,6 +278,7 @@ The `--json` flag returns structured data:
     "total_chunks": 1234,
     "search_time_ms": 45,
     "search_mode": "hybrid",
+    "fusion_method": "rrf",
     "fts_available": true,
     "index_model": "text-embedding-3-small",
     "index_dimensions": 1536,
@@ -299,6 +300,7 @@ The `--json` flag returns structured data:
 - `relative_path`: Easier to read than absolute paths
 - `language`: Programming language detected from extension
 - `text`: **Full chunk content** (not truncated)
+- `fusion_method`: Hybrid fusion method used (`rrf` or `alpha`, v0.7.0+)
 - `fts_available`: Whether hybrid/fulltext search was possible
 - `confidence_summary`: Distribution of confidence levels across results
 - `refreshed_files`: Number of files reindexed (when using --refresh)
@@ -558,7 +560,9 @@ ogrep delete "*.log" --json
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
-| `OGREP_HYBRID_ALPHA` | `0.7` | Semantic weight in hybrid (0.0-1.0) |
+| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion: `rrf` (ranks) or `alpha` (scores) |
+| `OGREP_RRF_K` | `60` | RRF rank constant (higher = smoother ranking) |
+| `OGREP_HYBRID_ALPHA` | `0.7` | Alpha fusion: semantic weight (0.0-1.0) |
 
 ### Confidence Configuration
 
@@ -571,6 +575,62 @@ ogrep delete "*.log" --json
 | `OGREP_CONFIDENCE_HIGH` | `0.50` | Absolute: threshold for "high" |
 | `OGREP_CONFIDENCE_MEDIUM` | `0.40` | Absolute: threshold for "medium" |
 | `OGREP_CONFIDENCE_LOW` | `0.30` | Absolute: threshold for "low" |
+
+## Hybrid Fusion Methods (v0.7.0+)
+
+When using `hybrid` search mode, ogrep combines semantic and fulltext results using a **fusion method**:
+
+### RRF (Reciprocal Rank Fusion) - Default
+
+Combines results by their **rank positions**, not raw scores:
+
+```
+RRF score = 1/(k + semantic_rank) + 1/(k + fts_rank)
+```
+
+**Why RRF is better:**
+- Doesn't depend on score scales (semantic vs BM25 have very different ranges)
+- No hyperparameter tuning needed (k=60 works well universally)
+- Standard practice in hybrid search systems
+- More robust than weighted score averaging
+
+**Typical scores:** 0.03-0.04 for top results (scores are smaller but ranking is more accurate)
+
+### Alpha Weighting (Legacy)
+
+Linear combination of normalized scores:
+
+```
+Score = alpha * semantic_score + (1 - alpha) * fts_score
+```
+
+Available via `OGREP_FUSION_METHOD=alpha` for backward compatibility.
+
+### Switching Methods
+
+```bash
+# Use RRF (default)
+OGREP_FUSION_METHOD=rrf ogrep query "where is auth" --json
+
+# Use alpha weighting
+OGREP_FUSION_METHOD=alpha ogrep query "where is auth" --json
+
+# Compare both
+OGREP_FUSION_METHOD=rrf ogrep query "test" -n 5 --json
+OGREP_FUSION_METHOD=alpha ogrep query "test" -n 5 --json
+```
+
+### JSON Stats Include Fusion Method
+
+```json
+{
+  "stats": {
+    "search_mode": "hybrid",
+    "fusion_method": "rrf",
+    ...
+  }
+}
+```
 
 ## FTS5 Availability
 

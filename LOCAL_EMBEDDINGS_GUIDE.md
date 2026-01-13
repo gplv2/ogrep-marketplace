@@ -1094,6 +1094,112 @@ ogrep/commands/_common.py:82 -> "where is the function add_scope_args defined...
 
 ---
 
+## Search Quality R&D
+
+This section documents research and development work to improve ogrep's search quality beyond embedding model selection.
+
+### Hybrid Fusion: RRF vs Alpha Weighting (v0.7.0+)
+
+When using hybrid search, two ranking systems must be combined:
+- **Semantic search**: Cosine similarity of embeddings
+- **Full-text search**: BM25 keyword matching via FTS5
+
+**The Problem**: These systems produce scores on completely different scales. Semantic similarity clusters around 0.3-0.5, while BM25 scores can range from -20 to 0 (lower is better in raw form). Combining them requires either:
+1. Normalizing both to [0,1] and weighting (alpha fusion)
+2. Using rank positions instead of scores (RRF)
+
+**v0.6.x (Alpha Weighting)**:
+```
+score = 0.7 * semantic_score + 0.3 * fts_score_normalized
+```
+- Required tuning the alpha parameter
+- Sensitive to score distribution changes
+- Normalization can be imprecise
+
+**v0.7.0+ (RRF - Reciprocal Rank Fusion)**:
+```
+score = 1/(60 + semantic_rank) + 1/(60 + fts_rank)
+```
+- Uses rank positions, not raw scores
+- No hyperparameter tuning needed (k=60 is standard)
+- Robust across different score distributions
+- Published research shows consistent improvements
+
+**Why RRF works better**: Ranks are comparable across systems. If a chunk is #1 in semantic and #5 in full-text, RRF correctly identifies it as a strong match. Alpha weighting might incorrectly rank it if the raw score distributions don't align.
+
+**Configuration**:
+```bash
+# RRF (default in v0.7.0+)
+OGREP_FUSION_METHOD=rrf ogrep query "search"
+
+# Alpha weighting (legacy, still available)
+OGREP_FUSION_METHOD=alpha OGREP_HYBRID_ALPHA=0.7 ogrep query "search"
+```
+
+**Reference**: Cormack, Clarke, Buettcher. "Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods" (SIGIR 2009)
+
+### Future: Cross-Encoder Reranking
+
+A promising direction for improving "right file in top 30, but not #1" scenarios.
+
+**Current architecture** (bi-encoder):
+```
+Query → Embed → Compare to all chunk embeddings → Top K results
+```
+Fast but imprecise—query and chunks are embedded separately.
+
+**Reranking architecture** (cross-encoder):
+```
+Query → Stage 1: Fast retrieval (top 50) → Stage 2: Slow reranking → Top 10
+```
+The reranker sees query AND chunk together, enabling fine-grained relevance scoring.
+
+**Why this helps**:
+- Cross-encoders model query-document relationships directly
+- No information loss from vector compression
+- Precision where it matters most (final ranking)
+
+**Candidate models for reranking**:
+| Model | Speed | Quality | Notes |
+|-------|-------|---------|-------|
+| `BAAI/bge-reranker-v2-m3` | Medium | Excellent | Multi-lingual |
+| `Jina reranker v2` | Fast | Very Good | API available |
+| `ms-marco-MiniLM` | Very Fast | Moderate | Smallest footprint |
+
+**Note**: Reranking is independent of embedding models—you can use OpenAI embeddings for retrieval and a local reranker for precision. This is planned for a future release.
+
+### AST-Aware Chunking (Future Research)
+
+Current chunking is line-based with overlap. This can split semantic units:
+```
+Current chunk boundary:
+  └── End of Class A
+  └── Start of Class B  ← Semantic mixing
+  └── Beginning of method B.foo()
+```
+
+**AST-aware chunking** would split at function/class boundaries:
+```
+AST-aware chunks:
+  Chunk 1: ClassA (complete)
+  Chunk 2: ClassB.foo() method
+  Chunk 3: ClassB.bar() method
+```
+
+**Benefits**:
+- Each chunk is semantically coherent
+- Better BM25 (function names not split)
+- Enables symbol index ("who calls X?")
+
+**Challenges**:
+- Requires parsing (tree-sitter, LSP)
+- Multi-language support complexity
+- Large functions still need splitting
+
+This is under consideration for future releases.
+
+---
+
 ## Contributing
 
 Found different results with other models or codebases? Please share your findings by opening an issue or PR with your tuning data.
