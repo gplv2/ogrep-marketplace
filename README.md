@@ -34,6 +34,11 @@ ogrep supports a different approach:
 Think “software archaeology”: you’re not searching for *a string*, you’re searching for *meaning*.
 
 ### 2) Turning “token blackholes” into a cheap retrieval step
+
+- ogrep spends embedding tokens only for indexing (and embedding the query).
+- It avoids the big cost: feeding entire files to a chat model.
+- Any chat/completion tokens happen only when you choose to ask Claude/another LLM to interpret the retrieved snippets.
+
 The common workflow is painful and expensive:
 
 > grep → copy/paste huge files → LLM reads everything → repeat → burn tokens
