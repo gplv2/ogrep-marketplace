@@ -10,787 +10,326 @@ description: |
 allowed-tools: Bash, Read
 ---
 
-# Semantic grep workflow (ogrep) v0.7.0
+# ogrep - Semantic Code Search
 
-Fast semantic search over local repos using `ogrep` (SQLite index + embeddings).
+**The problem:** You need to find where authentication is handled, but you don't know if it's called `authenticate`, `login`, `verify_credentials`, `auth_handler`, or something else entirely. Grep requires knowing the exact term. Ogrep doesn't.
 
-## Quick Examples (Copy & Paste)
+**What ogrep does:** Searches code by *meaning*, not just keywords. It understands that "where is authentication handled" might match code containing `verify_password`, `check_token`, or `validate_session`.
 
-```bash
-# Search by concept (semantic)
-ogrep query "where is authentication handled" -n 10 --refresh --json
+## When to Reach for ogrep
 
-# Search by exact identifier (fulltext)
-ogrep query "def validate_token" --mode fulltext --json
+| Situation | Why ogrep helps |
+|-----------|-----------------|
+| "Where is X implemented?" | Don't need to guess the function name |
+| "How does this work?" | Finds conceptually related code |
+| Unfamiliar codebase | Explores without knowing terminology |
+| User asks a question | Maps their words to code constructs |
+| Need to understand flow | Finds related pieces across files |
 
-# Combined search (hybrid - default)
-ogrep query "user login validation" -n 15 --refresh --json
-
-# Expand context around a result
-ogrep chunk "src/auth.py:2" --context 1 --json
-
-# Index the repo (first time or after major changes)
-ogrep index .
-
-# Check index status
-ogrep status --json
-```
-
-## Common Patterns
-
-| Task | Command |
-|------|---------|
-| Find where X is implemented | `ogrep query "where is X handled" --json` |
-| Find exact function/class | `ogrep query "def function_name" --mode fulltext --json` |
-| Understand how X works | `ogrep query "how does X work" -n 15 --json` |
-| Find all uses of X | `ogrep query "X" --mode fulltext --json` |
-| Search after editing files | `ogrep query "..." --refresh --json` |
-| Get more context | `ogrep chunk "file.py:N" --context 2` |
-| Find config/YAML | `ogrep query "database configuration" --json` |
-| Find error handling | `ogrep query "exception handling" --json` |
-
-## Key Features
-
-- **Three search modes**: semantic (conceptual), fulltext (exact), hybrid (combined)
-- **Relative confidence scoring**: Compares results to top match (v0.6.4+)
-- **JSON output for all commands**: Structured data for AI tool integration
-- **Chunk navigation**: Expand context around search results
-- **Smart embedding reuse**: Minimal API costs on reindex
-- **YAML files indexed**: Configuration files now searchable by default
+**When grep is still better:** Exact function names, specific strings, known identifiers.
 
 ## Quick Start
 
 ```bash
-# Index the repo (run once, or after major changes)
+# Index once (creates .ogrep/index.sqlite)
 ogrep index .
 
-# Semantic search with JSON output (recommended for AI tools)
-ogrep query "where is authentication handled?" -n 15 --json
+# Search by concept
+ogrep query "how are users authenticated" --json
 
-# Use --refresh to ensure freshness after recent edits
-ogrep query "database connection logic" -n 10 --refresh --json
+# Search after editing files (ensure fresh results)
+ogrep query "the code I just modified" --refresh --json
 ```
 
-### When to Use --refresh
+---
 
-The `--refresh` flag checks for changed files and reindexes them before searching:
+## Real Examples
 
-- **Use --refresh**: After editing files, or when you need guaranteed fresh results
-- **Skip --refresh**: For faster queries when you know files haven't changed recently
+### Finding Implementation You Can't Name
 
-The refresh operation is fast due to smart embedding reuse (unchanged chunks keep their embeddings).
+**Problem:** User asks "where are invoices generated?"
 
-## Search Modes
-
-ogrep supports three search modes via `--mode` (or `-M`):
-
-| Mode | Best For | Example Query |
-|------|----------|---------------|
-| `semantic` | Conceptual questions | "where is user authentication handled" |
-| `fulltext` | Exact identifiers | "def validate_token" |
-| `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
+With grep, you'd have to guess: `generate_invoice`? `create_invoice`? `InvoiceBuilder`? `bill_customer`?
 
 ```bash
-# Explicit mode selection
-ogrep query "authenticate" --mode semantic --json   # Embeddings only
-ogrep query "def authenticate" --mode fulltext --json  # Keywords only
-ogrep query "user login" --mode hybrid --json       # Combined (default)
+ogrep query "invoice generation logic" --json
 ```
 
-**Default behavior:**
-- Uses `OGREP_SEARCH_MODE` env var if set
-- Falls back to `hybrid` if not set
-- Gracefully degrades to `semantic` if FTS5 unavailable
+Returns code that handles invoice creation, regardless of naming conventions.
 
-### When to Use Each Mode
+### Understanding Unfamiliar Code
 
-| Situation | Mode | Why |
-|-----------|------|-----|
-| "How does X work?" | semantic | Conceptual understanding |
-| "Where is X implemented?" | semantic/hybrid | Need related code, not exact match |
-| Looking for exact function name | fulltext | Know the identifier |
-| Found semantic result, want exact matches | fulltext | Refine initial finding |
-| Unsure what terms codebase uses | hybrid | Best of both worlds |
-
-## Chunk Navigation
-
-After a query finds something interesting, use `ogrep chunk` to expand context:
+**Problem:** You've never seen this codebase. User asks about the payment flow.
 
 ```bash
-# Get chunk by reference (from query results)
-ogrep chunk "src/auth.py:2"
+# Start broad
+ogrep query "payment processing flow" -n 15 --json
 
-# Get surrounding context
-ogrep chunk "src/auth.py:2" --before 1    # + 1 chunk before
-ogrep chunk "src/auth.py:2" --after 1     # + 1 chunk after
-ogrep chunk "src/auth.py:2" --context 1   # + 1 before AND after
+# Then drill into specifics
+ogrep query "def charge" --mode fulltext --json
 
-# Also works with raw chunk IDs
-ogrep chunk 42
+# Expand context around interesting results
+ogrep chunk "billing/processor.py:3" --context 1 --json
 ```
 
-### Direct Chunk Access
+### After Editing Files
 
-You can access chunks directly without querying first:
+**Problem:** You modified some code. Need to search fresh.
 
 ```bash
-# Access chunk 0 (first chunk) of any file
-ogrep chunk "src/main.py:0" --json
-
-# Access specific chunk by file path and index
-ogrep chunk "src/models/user.py:3" --json
-
-# Access by database chunk ID (from previous query results)
-ogrep chunk 42 --json
-ogrep chunk 157 --context 1 --json
+ogrep query "error handling" --refresh --json
 ```
 
-**Understanding chunk_ref format:** `"path/to/file.py:N"` where N is the chunk index (0-based) within that file. Each chunk is ~60 lines of code by default.
+The `--refresh` flag reindexes changed files before searching. Fast due to embedding reuse.
 
-### Navigating Neighbors
+### Precision Mode with Reranking
 
-Neighbors are chunks adjacent to your target - use them to understand context:
+**Problem:** Right answer is in top 30, but not #1.
 
 ```bash
-# See what comes BEFORE the target chunk
-ogrep chunk "handler.py:5" --before 2 --json
-# Returns: requested chunk + 2 chunks before it
+# Install reranking support (one-time)
+pip install "ogrep[rerank]"
 
-# See what comes AFTER the target chunk
-ogrep chunk "handler.py:5" --after 2 --json
-# Returns: requested chunk + 2 chunks after it
-
-# See BOTH directions (full context)
-ogrep chunk "handler.py:5" --context 2 --json
-# Returns: 2 before + target + 2 after (5 total chunks)
+# Enable precision reranking
+ogrep query "database connection pooling" --rerank --json
 ```
 
-**When to expand neighbors:**
-| Situation | Direction | Example |
-|-----------|-----------|---------|
-| Found function body, need signature | `--before 1` | Class definition above |
-| Found function, need to see caller | `--after 1` | What happens next |
-| Found config, need full section | `--context 1` | Surrounding settings |
-| Debugging flow, need full picture | `--context 2` | Bigger context |
+Reranking uses a cross-encoder to reorder results for better precision.
 
-### Chunk Navigation Patterns
+---
 
-#### Pattern 1: Expand Context After Query
+## Three Search Modes
+
+| Mode | Use When | Example |
+|------|----------|---------|
+| `hybrid` (default) | Best of both worlds | `"authentication flow"` |
+| `semantic` | Conceptual questions | `"how does caching work"` |
+| `fulltext` | Known identifiers | `"def validate_token"` |
+
 ```bash
-# Query found something in chunk 3, want to see setup above
-ogrep query "database connection" --json
-# Result: chunk_ref: "db.py:3"
-ogrep chunk "db.py:3" --before 1
+ogrep query "handle errors" --mode semantic --json
+ogrep query "class ErrorHandler" --mode fulltext --json
+ogrep query "error handling logic" --json  # hybrid (default)
 ```
 
-#### Pattern 2: Trace Function Flow
+---
+
+## Expanding Context
+
+Query finds something interesting? Get more context:
+
 ```bash
-# Found a function, want to see what comes next
-ogrep chunk "handler.py:2" --after 2
+# Get chunk with surrounding code
+ogrep chunk "auth.py:2" --context 1 --json
+
+# See what comes before (find class definition)
+ogrep chunk "models/user.py:5" --before 2 --json
+
+# See what comes after (find what calls this)
+ogrep chunk "handler.py:3" --after 1 --json
 ```
 
-#### Pattern 3: Understand Full Module Section
+**chunk_ref format:** `"path/to/file.py:N"` where N is chunk index (0-based, ~60 lines each)
+
+---
+
+## JSON Output
+
+All commands support `--json` for structured results:
+
 ```bash
-# Found interesting code, want full surrounding context
-ogrep chunk "auth.py:4" --context 2
+ogrep query "where is auth" --json
 ```
-
-#### Pattern 4: Quick Keyword Lookup
-```bash
-# Know exact function name
-ogrep query "def process_request" --mode fulltext --json
-```
-
-#### Pattern 5: Walk Through a File Sequentially
-```bash
-# Start at the beginning of a file
-ogrep chunk "api/routes.py:0" --json
-# Then walk forward
-ogrep chunk "api/routes.py:1" --json
-ogrep chunk "api/routes.py:2" --json
-# Or get multiple at once
-ogrep chunk "api/routes.py:0" --after 3 --json
-```
-
-#### Pattern 6: Find Class Definition from Method
-```bash
-# Query found a method in chunk 5
-ogrep query "def validate_credentials" --json
-# Result: chunk_ref: "auth/user.py:5"
-# Look backward to find the class definition
-ogrep chunk "auth/user.py:5" --before 2 --json
-```
-
-## Confidence Levels
-
-Each result includes a `confidence` level using **relative scoring** (v0.6.4+). Confidence compares each result to the top score, not fixed thresholds:
-
-| Confidence | Relative Score | What It Means |
-|------------|----------------|---------------|
-| `high` | 90%+ of top | Trust and use directly |
-| `medium` | 75-89% of top | Use but verify with context |
-| `low` | 50-74% of top | Consider alternative queries |
-| `very_low` | < 50% of top | Likely not relevant |
-
-**Why relative scoring matters:**
-Cosine similarity scores cluster around 0.3-0.5 (not uniformly [0,1]). A score of 0.45 is excellent! Relative scoring answers: "How good is this compared to the best result?"
-
-**Example output:**
-```
-  1. src/auth.py:2  score=0.45 [high]      # Top result = high confidence
-  2. src/auth.py:5  score=0.42 [high]      # 93% of top = still high
-  3. src/utils.py:1 score=0.35 [medium]    # 78% of top = medium
-  4. src/db.py:3    score=0.20 [very_low]  # 44% of top = very_low
-```
-
-**Using confidence effectively:**
-- High confidence results: Use directly in your response
-- Medium confidence: Read the chunk, maybe expand context with `ogrep chunk --context 1`
-- Low confidence: The query might need refinement, or the code doesn't exist
-- Mixed results (some high, some low): The high confidence ones are likely correct
-
-The `confidence_summary` in stats shows the distribution across all results.
-
-## JSON Output Format
-
-The `--json` flag returns structured data:
 
 ```json
 {
-  "query": "where is authentication handled?",
+  "query": "where is auth",
   "results": [
     {
       "rank": 1,
       "chunk_ref": "src/auth.py:2",
-      "chunk_id": 42,
-      "path": "/home/user/repo/src/auth.py",
-      "relative_path": "src/auth.py",
+      "path": "/repo/src/auth.py",
       "start_line": 61,
       "end_line": 120,
-      "score": 0.8523,
+      "score": 0.032,
       "confidence": "high",
       "language": "python",
       "text": "def authenticate_user(username, password):\n    ..."
     }
   ],
   "stats": {
-    "total_results": 15,
-    "total_chunks": 1234,
-    "search_time_ms": 45,
+    "total_results": 10,
     "search_mode": "hybrid",
     "fusion_method": "rrf",
-    "fts_available": true,
-    "index_model": "text-embedding-3-small",
-    "index_dimensions": 1536,
-    "refreshed_files": 0,
-    "confidence_summary": {
-      "high": 3,
-      "medium": 7,
-      "low": 5,
-      "very_low": 0
-    }
+    "reranked": false,
+    "confidence_summary": {"high": 2, "medium": 5, "low": 3}
   }
 }
 ```
 
 **Key fields:**
-- `chunk_ref`: Primary reference for `ogrep chunk` command (e.g., `src/auth.py:2`)
-- `chunk_id`: Internal ID (also works with `ogrep chunk 42`)
-- `confidence`: Human-readable confidence level
-- `relative_path`: Easier to read than absolute paths
-- `language`: Programming language detected from extension
-- `text`: **Full chunk content** (not truncated)
-- `fusion_method`: Hybrid fusion method used (`rrf` or `alpha`, v0.7.0+)
-- `fts_available`: Whether hybrid/fulltext search was possible
-- `confidence_summary`: Distribution of confidence levels across results
-- `refreshed_files`: Number of files reindexed (when using --refresh)
+- `chunk_ref`: Use with `ogrep chunk` to get more context
+- `confidence`: `high` (90%+ of top score), `medium`, `low`, `very_low`
+- `text`: Full chunk content, not truncated
 
-### Chunk Command JSON Output
+---
 
-```json
-{
-  "requested": {
-    "chunk_ref": "src/auth.py:2",
-    "chunk_id": 42,
-    "chunk_index": 2,
-    "path": "/home/user/repo/src/auth.py",
-    "relative_path": "src/auth.py",
-    "start_line": 61,
-    "end_line": 120,
-    "language": "python",
-    "text": "def authenticate_user(...)..."
-  },
-  "before": [ /* array of chunk objects */ ],
-  "after": [ /* array of chunk objects */ ]
-}
-```
+## Confidence Levels
 
-## Change Tracking (AI Tool Integration)
+Results are ranked relative to the best match:
 
-ogrep tracks index changes in a history table. **AI tools should use `ogrep log` to understand what changed** after running refresh operations.
+| Confidence | What it means |
+|------------|---------------|
+| `high` | 90%+ of top score - trust it |
+| `medium` | 75-89% - use but verify |
+| `low` | 50-74% - maybe try different query |
+| `very_low` | < 50% - probably not relevant |
 
-### Recommended Workflow for AI Tools
+Why relative? Cosine similarity clusters around 0.3-0.5, so a score of 0.45 is actually excellent. Relative scoring tells you "how good is this compared to the best result?"
+
+---
+
+## Command Reference
+
+### Essential Commands
 
 ```bash
-# 1. Search with refresh to get current results + update index
-ogrep query "where is X handled" --refresh --json
+# Index (first time or major changes)
+ogrep index .
 
-# 2. Check what changed (what files were reindexed)
-ogrep log --limit 5 --json
-```
+# Search
+ogrep query "your question" --json
+ogrep query "your question" --refresh --json   # After editing files
+ogrep query "exact name" --mode fulltext --json
 
-### Log Command Reference
+# Expand context
+ogrep chunk "file.py:N" --context 1 --json
 
-```bash
-# Show recent history (JSON output is default for AI tools)
-ogrep log --json
-
-# Filter by datetime (ISO8601 format)
-ogrep log --since 2024-01-15T10:30:00 --json
-ogrep log --since 2024-01-15 --json
-
-# Filter by action type
-ogrep log --action refresh --json
-ogrep log --action delete --json
-
-# Pagination
-ogrep log --limit 20 --offset 0 --json
-
-# Human-readable output
-ogrep log --no-json
-```
-
-### Log JSON Output Format
-
-```json
-{
-  "database": "/path/to/.ogrep/index.sqlite",
-  "entries": [
-    {
-      "id": 42,
-      "timestamp": "2024-01-15 10:30:00",
-      "action": "refresh",
-      "files_affected": 3,
-      "chunks_affected": 15,
-      "details": {
-        "files_scanned": 100,
-        "indexed_files": ["src/auth.py", "src/db.py", "src/api.py"]
-      }
-    }
-  ],
-  "pagination": {
-    "total": 100,
-    "limit": 50,
-    "offset": 0,
-    "has_more": true
-  },
-  "hint": "AI TOOL: Use --since with ISO8601 datetime to filter recent changes."
-}
-```
-
-### Action Types
-
-| Action | Description | When Logged |
-|--------|-------------|-------------|
-| `index` | New files indexed | `ogrep index .` |
-| `refresh` | Changed files reindexed | `ogrep query --refresh` |
-| `reindex` | Full rebuild | `ogrep reindex .` |
-| `delete` | Files removed from index | `ogrep delete <path>` |
-| `clean` | Stale entries removed | `ogrep clean` |
-
-### Why This Matters for AI Tools
-
-When you run `ogrep query --refresh`, ogrep:
-1. Checks which files changed since last index
-2. Reindexes only those files
-3. Logs what was updated to the history table
-
-By checking the log after refresh, AI tools can:
-- Know which files were modified in the codebase
-- Understand what areas of code changed recently
-- Track codebase evolution over time
-- Detect when the user edited specific files
-
-**Best Practice:** Always check `ogrep log --limit 5` after `--refresh` queries to understand what changed.
-
-## Commands Reference
-
-All commands support `--json` for structured output (AI tool integration).
-
-| Command | Description | JSON Support |
-|---------|-------------|--------------|
-| `ogrep index .` | Index current directory | `--json` |
-| `ogrep index . --list` | Preview files (dry run) | `--json` |
-| `ogrep query "text" -n 15 --json` | Search (add -r for refresh) | `--json` |
-| `ogrep chunk "path:N" -C 1` | Get chunk with context | `--json` (default) |
-| `ogrep log` | Show index change history | `--json` (default) |
-| `ogrep delete <path>` | Remove files from index | `--json` |
-| `ogrep status` | Show index info | `--json` |
-| `ogrep health` | Full database diagnostics | `--json` |
-| `ogrep health --vacuum` | Reclaim space and defragment | `--json` |
-| `ogrep health --rebuild-fts` | Rebuild FTS5 index | `--json` |
-| `ogrep reindex .` | Rebuild index from scratch | `--json` |
-| `ogrep reset -f` | Delete index | `--json` |
-| `ogrep clean` | Remove stale entries | `--json` |
-| `ogrep models` | List embedding models | `--json` |
-| `ogrep tune .` | Auto-tune chunk size | `--json` |
-| `ogrep benchmark .` | Compare all embedding models | `--json` |
-
-### JSON Output for All Commands
-
-Every command now supports `--json` for programmatic access:
-
-```bash
-# Index with JSON output
-ogrep index . --json
-# Returns: {"status": "success", "files_indexed": 42, "chunks_total": 217, ...}
-
-# Status as JSON
+# Check status
 ogrep status --json
-# Returns: {"indexed": true, "files": 42, "chunks": 217, "model": "...", ...}
-
-# Clean with JSON output
-ogrep clean --json
-# Returns: {"status": "success", "removed_count": 3, "removed_paths": [...]}
-
-# Health check as JSON
-ogrep health --json
-# Returns: {"tables": {...}, "dedup_stats": {...}, "fts5": {...}, ...}
-
-# Models as JSON
-ogrep models --json
-# Returns: {"models": [{"id": "...", "dimensions": 1536, ...}], ...}
-
-# Log as JSON (default output mode)
-ogrep log --limit 5 --json
-# Returns: {"entries": [...], "pagination": {...}, "hint": "..."}
-
-# Delete as JSON
-ogrep delete "*.log" --json
-# Returns: {"deleted": 3, "deleted_files": [...], ...}
 ```
 
-## Flag Reference
+### Reranking (Optional Precision)
 
-### Query Flags
+```bash
+pip install "ogrep[rerank]"  # One-time install
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--refresh` | `-r` | Reindex changed files before search |
-| `--json` | | Full JSON output (recommended for AI tools) |
-| `--mode MODE` | `-M` | Search mode: semantic, fulltext, hybrid |
-| `--top N` | `-n` | Number of results (default: 10) |
-| `--model MODEL` | `-m` | Embedding model (must match index) |
+ogrep query "complex topic" --rerank --json
+ogrep query "..." --rerank-top 30 --json  # Rerank top 30 candidates
+```
 
-### Chunk Flags
+### Maintenance
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--before N` | `-B` | Include N chunks before |
-| `--after N` | `-A` | Include N chunks after |
-| `--context N` | `-C` | Include N chunks before AND after |
+```bash
+ogrep log --limit 5 --json    # See what changed recently
+ogrep health --json           # Database diagnostics
+ogrep clean --vacuum          # Reclaim space
+ogrep reindex .               # Full rebuild
+```
 
-### Index Flags
+---
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--list` | `-l` | Preview files (dry run, doesn't index) |
-| `--json` | | Output results as JSON |
-| `--exclude PATTERN` | `-e` | Add exclude pattern |
-| `--include PATTERN` | `-i` | Override default excludes |
-| `--model MODEL` | `-m` | Embedding model |
-| `--chunk-lines N` | | Lines per chunk (model-specific default) |
-| `--overlap N` | | Overlap between chunks |
-| `--no-detect` | | Skip MIME detection (faster) |
+## Practical Patterns
 
-### Log Flags
+### Pattern 1: Start Broad, Then Drill Down
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--since DATETIME` | | Show entries after datetime (ISO8601) |
-| `--until DATETIME` | | Show entries before datetime (ISO8601) |
-| `--action ACTION` | | Filter by action (index/refresh/reindex/delete/clean) |
-| `--limit N` | `-n` | Max entries to return (default: 50) |
-| `--offset N` | | Skip first N entries (pagination) |
-| `--json` | | JSON output (default: True) |
-| `--no-json` | | Human-readable text output |
+```bash
+# Conceptual search
+ogrep query "how does the API validate requests" -n 15 --json
 
-### Delete Flags
+# Found something in validator.py - get more context
+ogrep chunk "validator.py:2" --context 1 --json
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--dry-run` | `-n` | Preview without deleting |
-| `--save` | `-s` | Add paths to .ogrepignore |
-| `--json` | | Output as JSON |
+# Find exact function names
+ogrep query "def validate_" --mode fulltext --json
+```
 
-### Status/Health/Clean/Reset Flags
+### Pattern 2: Chase the Implementation
 
-| Flag | Description |
-|------|-------------|
-| `--json` | Output results as JSON |
-| `--vacuum` | (clean/health) Compact database |
-| `--rebuild-fts` | (health) Rebuild FTS5 index |
-| `--integrity` | (health) Full integrity check |
-| `--full` | (health) All repairs |
-| `-f`, `--force` | (reset) Skip confirmation |
+```bash
+# Find where something is called
+ogrep query "user authentication flow" --json
+
+# Then find the actual implementation
+ogrep query "def authenticate" --mode fulltext --json
+
+# Expand to see the full function
+ogrep chunk "auth.py:3" --after 1 --json
+```
+
+### Pattern 3: After User Edits
+
+```bash
+# Always use --refresh when user might have changed files
+ogrep query "the config I was looking at" --refresh --json
+```
+
+### Pattern 4: When Precision Matters
+
+```bash
+# Standard search gets you to the neighborhood
+ogrep query "database connection pooling" --json
+
+# Reranking gets you to the exact house
+ogrep query "database connection pooling" --rerank --json
+```
+
+### Pattern 5: Exploring Unknown Territory
+
+```bash
+# What's in this codebase?
+ogrep query "main entry point" --json
+ogrep query "how does error handling work" --json
+ogrep query "where is configuration loaded" --json
+
+# Walk through a file
+ogrep chunk "main.py:0" --json                    # Start
+ogrep chunk "main.py:0" --after 3 --json          # First 4 chunks
+```
+
+---
 
 ## Environment Variables
 
-### Core Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
+| Variable | Default | What it does |
+|----------|---------|--------------|
 | `OPENAI_API_KEY` | - | Required for OpenAI embeddings |
-| `OGREP_BASE_URL` | - | Local server URL (e.g., `http://localhost:1234/v1`) |
-| `OGREP_MODEL` | `text-embedding-3-small`* | Default embedding model |
-| `OGREP_DIMENSIONS` | model default | Embedding dimensions |
-
-*When `OGREP_BASE_URL` is set, defaults to `nomic-embed-text-v1.5` (local model)
-
-### Chunk Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OGREP_CHUNK_LINES` | model-specific | Lines per chunk (60 for OpenAI, 30 for local) |
-| `OGREP_OVERLAP_LINES` | model-specific | Overlap between chunks |
-| `OGREP_BATCH_SIZE` | auto-tuned | Batch size for embedding requests |
-
-### Search Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
+| `OGREP_BASE_URL` | - | Local server (e.g., LM Studio) |
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
-| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion: `rrf` (ranks) or `alpha` (scores) |
-| `OGREP_RRF_K` | `60` | RRF rank constant (higher = smoother ranking) |
-| `OGREP_HYBRID_ALPHA` | `0.7` | Alpha fusion: semantic weight (0.0-1.0) |
+| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion method |
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
 
-### Reranking Configuration (Optional)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking |
-| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
-
-### Confidence Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OGREP_CONFIDENCE_MODE` | `relative` | Mode: `relative` (% of top) or `absolute` |
-| `OGREP_RELATIVE_HIGH` | `0.90` | Relative: 90% of top score = high |
-| `OGREP_RELATIVE_MEDIUM` | `0.75` | Relative: 75% of top score = medium |
-| `OGREP_RELATIVE_LOW` | `0.50` | Relative: 50% of top score = low |
-| `OGREP_CONFIDENCE_HIGH` | `0.50` | Absolute: threshold for "high" |
-| `OGREP_CONFIDENCE_MEDIUM` | `0.40` | Absolute: threshold for "medium" |
-| `OGREP_CONFIDENCE_LOW` | `0.30` | Absolute: threshold for "low" |
-
-## Hybrid Fusion Methods (v0.7.0+)
-
-When using `hybrid` search mode, ogrep combines semantic and fulltext results using a **fusion method**:
-
-### RRF (Reciprocal Rank Fusion) - Default
-
-Combines results by their **rank positions**, not raw scores:
-
-```
-RRF score = 1/(k + semantic_rank) + 1/(k + fts_rank)
-```
-
-**Why RRF is better:**
-- Doesn't depend on score scales (semantic vs BM25 have very different ranges)
-- No hyperparameter tuning needed (k=60 works well universally)
-- Standard practice in hybrid search systems
-- More robust than weighted score averaging
-
-**Typical scores:** 0.03-0.04 for top results (scores are smaller but ranking is more accurate)
-
-### Alpha Weighting (Legacy)
-
-Linear combination of normalized scores:
-
-```
-Score = alpha * semantic_score + (1 - alpha) * fts_score
-```
-
-Available via `OGREP_FUSION_METHOD=alpha` for backward compatibility.
-
-### Switching Methods
-
-```bash
-# Use RRF (default)
-OGREP_FUSION_METHOD=rrf ogrep query "where is auth" --json
-
-# Use alpha weighting
-OGREP_FUSION_METHOD=alpha ogrep query "where is auth" --json
-
-# Compare both
-OGREP_FUSION_METHOD=rrf ogrep query "test" -n 5 --json
-OGREP_FUSION_METHOD=alpha ogrep query "test" -n 5 --json
-```
-
-### JSON Stats Include Fusion Method
-
-```json
-{
-  "stats": {
-    "search_mode": "hybrid",
-    "fusion_method": "rrf",
-    ...
-  }
-}
-```
-
-## Cross-Encoder Reranking (v0.7.0+)
-
-Optional two-stage retrieval for improved precision. Cross-encoders process (query, document) pairs together, providing more accurate relevance judgments than bi-encoders.
-
-### When to Use Reranking
-
-- Right result is often in top 30 but not #1
-- Precision matters more than speed
-- AI tool integration where accuracy is critical
-
-### Installation
-
-```bash
-pip install "ogrep[rerank]"
-```
-
-### Usage
-
-```bash
-# Enable reranking (fetches top 50, reranks, returns top 10)
-ogrep query "where is authentication" --rerank --json
-
-# Rerank specific number of candidates
-ogrep query "database connection" --rerank-top 30 --json
-
-# Combine with refresh for fresh, precisely-ranked results
-ogrep query "error handling" --refresh --rerank --json
-```
-
-### How It Works
-
-1. **Fast retrieval**: Embeddings + BM25 get top N candidates (default 50)
-2. **Slow reranking**: Cross-encoder reorders candidates for precision
-3. **Return**: Top K results after reranking
-
-### JSON Stats Include Reranking Status
-
-```json
-{
-  "stats": {
-    "reranked": true,
-    "search_mode": "hybrid",
-    ...
-  }
-}
-```
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model (~300MB) |
-| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
-
-### Performance Considerations
-
-- First rerank downloads model (~300MB)
-- Reranking adds latency (model inference per candidate)
-- Best for queries where precision > speed
-- Skip for quick lookups or exploration
-
-## FTS5 Availability
-
-Hybrid and fulltext modes require FTS5 index. If missing:
-- Search falls back to semantic mode automatically
-- Warning printed to stderr (not in JSON output)
-- `fts_available: false` in JSON stats
-
-**To enable hybrid search:**
-```bash
-ogrep reindex .   # Rebuilds index with FTS5
-```
-
-**Check FTS5 status:**
-```bash
-ogrep health      # Shows "FTS5 Stats" section
-```
-
-## Operational Notes
-
-### Model Consistency
-- Model must match between index and query
-- Run `ogrep status` to check current index model
-- Use same `-m` flag or environment variable
-
-### Smart Embedding Reuse
-ogrep minimizes API costs through intelligent caching:
-- Unchanged files are skipped entirely
-- Modified files reuse embeddings for unchanged chunks
-- Cross-file deduplication: identical chunks share embeddings
-
-### Local Models (LM Studio)
-For offline/free usage:
+**Local embeddings:**
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m nomic   # Uses local model
+ogrep index . -m nomic
 ```
 
-### Token-Aware Batching
-Large batches are automatically split to respect model context limits. No configuration needed.
+---
 
-### Database Health
-```bash
-ogrep health              # Full diagnostics
-ogrep health --vacuum     # Reclaim space
-ogrep health --integrity  # Full integrity check
-```
+## Quick Reference
 
-## Workflow Examples
+| Task | Command |
+|------|---------|
+| Find implementation | `ogrep query "how does X work" --json` |
+| Find exact name | `ogrep query "def function_name" --mode fulltext --json` |
+| Fresh results | `ogrep query "..." --refresh --json` |
+| More context | `ogrep chunk "file.py:N" --context 1 --json` |
+| Precision search | `ogrep query "..." --rerank --json` |
+| What changed | `ogrep log --limit 5 --json` |
+| Health check | `ogrep health --json` |
 
-### Example 1: Initial Search
-```bash
-# First time setup
-ogrep index .
-ogrep query "how does the API handle errors" -n 10 --json
-```
+---
 
-### Example 2: Deep Dive After Finding Something
-```bash
-# Found error handling in handler.py:3
-ogrep chunk "handler.py:3" --context 2
+## Why This Tool Exists
 
-# Look for related error types
-ogrep query "error types" --mode fulltext --json
-```
+Traditional code search requires knowing the exact terms. But when you're:
+- Exploring unfamiliar code
+- Mapping user questions to implementation
+- Looking for conceptual patterns
 
-### Example 3: After Editing Files
-```bash
-# Ensure fresh results after making changes
-ogrep query "the function I just modified" --refresh --json
-```
+...you often don't know what you're looking for until you find it.
 
-### Example 4: Exploring Unknown Codebase
-```bash
-# Conceptual search first
-ogrep query "where is user data stored" --json
+ogrep bridges the gap between "what the user asked" and "what the code is actually called."
 
-# Then keyword search for specifics
-ogrep query "UserRepository" --mode fulltext --json
-
-# Expand context on interesting results
-ogrep chunk "models/user.py:2" -C 1
-```
-
-### Example 5: Debugging Session
-```bash
-# Find error handling
-ogrep query "exception handling for network requests" --json
-
-# Look at surrounding code
-ogrep chunk "client.py:4" --before 2 --after 1
-
-# Find all catch blocks
-ogrep query "except Exception" --mode fulltext --json
-```
+**The goal:** Spend less time guessing function names, more time understanding code.
