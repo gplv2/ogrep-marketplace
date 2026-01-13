@@ -160,18 +160,22 @@ This is expected—RRF scores are naturally smaller. **Confidence levels remain 
 
 ### 📚 Documentation
 
-- Added "Hybrid Fusion Methods" section to SKILL.md
+- **Rewrote SKILL.md** with "swiss knife" philosophy: presents ogrep as a tool that earns its place rather than forcing usage
+- Added practical patterns section with real-world examples
+- Added troubleshooting section for common issues
+- Updated command reference and environment variables
+- Documented AST chunking and reranking features
 - Added "Search Quality R&D" section to LOCAL_EMBEDDINGS_GUIDE.md
-- Documented reranking feature and cross-encoder usage
-- Updated JSON output format documentation with fusion_method and reranked
 
 ### 🧪 Testing
 
 - Added 7 new tests for RRF scoring function
 - Added 13 new tests for cross-encoder reranking
+- Added 25 unit tests for AST chunking
+- Added 28 integration tests for AST chunking across Python, JS, Go, Rust
 - Tests verify RRF formula, edge cases, and rank ordering
 - Tests verify reranking, model caching, and confidence updates
-- All 313 tests passing
+- All 365 tests passing
 
 ---
 

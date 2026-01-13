@@ -1,166 +1,144 @@
 ---
 name: semantic-grep
 description: |
-  Semantic code search with multiple modes: semantic (embedding similarity), fulltext (FTS5 keywords), and hybrid (combined - best of both). Proactively use when:
+  Semantic code search - finds code by meaning, not just keywords. Helpful when:
   - User asks WHERE something is implemented ("where is X handled", "how does Y work")
-  - User needs to understand code behavior vs finding exact names
-  - Exact grep would require knowing the right terms first
-  - User wants to search codebase by meaning, not just keywords
-  Use when appropriate context detected. Trigger with conceptual code questions.
+  - You need to understand code behavior without knowing exact function names
+  - Exploring unfamiliar codebases where you don't know the terminology yet
 allowed-tools: Bash, Read
 ---
 
-# ogrep - Semantic Code Search
+# ogrep - When grep isn't enough
 
-**The problem:** You need to find where authentication is handled, but you don't know if it's called `authenticate`, `login`, `verify_credentials`, `auth_handler`, or something else entirely. Grep requires knowing the exact term. Ogrep doesn't.
-
-**What ogrep does:** Searches code by *meaning*, not just keywords. It understands that "where is authentication handled" might match code containing `verify_password`, `check_token`, or `validate_session`.
-
-## When to Reach for ogrep
-
-| Situation | Why ogrep helps |
-|-----------|-----------------|
-| "Where is X implemented?" | Don't need to guess the function name |
-| "How does this work?" | Finds conceptually related code |
-| Unfamiliar codebase | Explores without knowing terminology |
-| User asks a question | Maps their words to code constructs |
-| Need to understand flow | Finds related pieces across files |
-
-**When grep is still better:** Exact function names, specific strings, known identifiers.
-
-## Quick Start
+You're looking for authentication code. Is it called `authenticate`, `login`, `verify_credentials`, `check_token`, or `validate_session`? With grep, you'd have to guess. With ogrep, you just ask.
 
 ```bash
-# Index once (creates .ogrep/index.sqlite)
+ogrep query "where is user authentication handled" --json
+```
+
+## The Sweet Spot
+
+ogrep fills a specific gap: **conceptual code questions**.
+
+| Use ogrep when... | Use grep/Glob when... |
+|-------------------|----------------------|
+| "Where is error handling done?" | `class ErrorHandler` |
+| "How does caching work here?" | `def get_cache` |
+| "What validates user input?" | `validate_email` |
+| Exploring unfamiliar code | You know the exact term |
+| User asks a conceptual question | Looking for imports/strings |
+
+**Rule of thumb:** If you'd need to guess multiple terms for grep, try ogrep first.
+
+---
+
+## Quick Reference
+
+```bash
+# Index (first time - takes a minute)
 ogrep index .
 
-# Search by concept
-ogrep query "how are users authenticated" --json
+# Search by concept (this is the main use case)
+ogrep query "how are payments processed" --json
 
-# Search after editing files (ensure fresh results)
+# After editing files, refresh before searching
 ogrep query "the code I just modified" --refresh --json
+
+# Expand context around an interesting result
+ogrep chunk "billing/processor.py:2" --context 1 --json
 ```
 
 ---
 
-## Real Examples
+## Practical Patterns
 
-### Finding Implementation You Can't Name
+### Pattern 1: Answering "Where is X?"
 
-**Problem:** User asks "where are invoices generated?"
-
-With grep, you'd have to guess: `generate_invoice`? `create_invoice`? `InvoiceBuilder`? `bill_customer`?
+User asks: "Where does invoice validation happen?"
 
 ```bash
-ogrep query "invoice generation logic" --json
+ogrep query "invoice validation logic" --json
 ```
 
-Returns code that handles invoice creation, regardless of naming conventions.
+Returns results ranked by relevance. The `chunk_ref` field lets you expand context:
 
-### Understanding Unfamiliar Code
-
-**Problem:** You've never seen this codebase. User asks about the payment flow.
-
-```bash
-# Start broad
-ogrep query "payment processing flow" -n 15 --json
-
-# Then drill into specifics
-ogrep query "def charge" --mode fulltext --json
-
-# Expand context around interesting results
-ogrep chunk "billing/processor.py:3" --context 1 --json
+```json
+{
+  "results": [{
+    "rank": 1,
+    "chunk_ref": "src/billing/validator.py:3",
+    "confidence": "high",
+    "text": "def validate_invoice(invoice: Invoice) -> ValidationResult:..."
+  }]
+}
 ```
 
-### After Editing Files
+### Pattern 2: Exploring Unfamiliar Code
 
-**Problem:** You modified some code. Need to search fresh.
+You've never seen this codebase. Start broad:
 
 ```bash
-ogrep query "error handling" --refresh --json
+ogrep query "main entry point" --json
+ogrep query "how does the API handle requests" -n 15 --json
 ```
 
-The `--refresh` flag reindexes changed files before searching. Fast due to embedding reuse.
-
-### Precision Mode with Reranking
-
-**Problem:** Right answer is in top 30, but not #1.
+Found something interesting? Drill into it:
 
 ```bash
-# Install reranking support (one-time)
-pip install "ogrep[rerank]"
+ogrep chunk "api/routes.py:2" --context 1 --json
+```
 
-# Enable precision reranking
+### Pattern 3: Finding Related Code
+
+You found the payment handler, now you need related pieces:
+
+```bash
+ogrep query "payment error handling" --json
+ogrep query "payment refund logic" --json
+```
+
+### Pattern 4: Precision Mode
+
+Standard search gets you to the neighborhood. Reranking gets you to the house:
+
+```bash
+# When you need the best result to be #1 (requires pip install "ogrep[rerank]")
 ogrep query "database connection pooling" --rerank --json
 ```
-
-Reranking uses a cross-encoder to reorder results for better precision.
 
 ---
 
 ## Three Search Modes
 
-| Mode | Use When | Example |
+| Mode | Best for | Example |
 |------|----------|---------|
-| `hybrid` (default) | Best of both worlds | `"authentication flow"` |
-| `semantic` | Conceptual questions | `"how does caching work"` |
-| `fulltext` | Known identifiers | `"def validate_token"` |
+| `hybrid` (default) | Most questions | "authentication flow" |
+| `semantic` | Pure conceptual | "how does caching work" |
+| `fulltext` | Known terms | "def validate_token" |
 
 ```bash
 ogrep query "handle errors" --mode semantic --json
 ogrep query "class ErrorHandler" --mode fulltext --json
-ogrep query "error handling logic" --json  # hybrid (default)
 ```
 
 ---
 
-## Expanding Context
-
-Query finds something interesting? Get more context:
-
-```bash
-# Get chunk with surrounding code
-ogrep chunk "auth.py:2" --context 1 --json
-
-# See what comes before (find class definition)
-ogrep chunk "models/user.py:5" --before 2 --json
-
-# See what comes after (find what calls this)
-ogrep chunk "handler.py:3" --after 1 --json
-```
-
-**chunk_ref format:** `"path/to/file.py:N"` where N is chunk index (0-based, ~60 lines each)
-
----
-
-## JSON Output
-
-All commands support `--json` for structured results:
-
-```bash
-ogrep query "where is auth" --json
-```
+## Reading Results
 
 ```json
 {
-  "query": "where is auth",
-  "results": [
-    {
-      "rank": 1,
-      "chunk_ref": "src/auth.py:2",
-      "path": "/repo/src/auth.py",
-      "start_line": 61,
-      "end_line": 120,
-      "score": 0.032,
-      "confidence": "high",
-      "language": "python",
-      "text": "def authenticate_user(username, password):\n    ..."
-    }
-  ],
+  "results": [{
+    "rank": 1,
+    "chunk_ref": "src/auth.py:2",
+    "path": "/repo/src/auth.py",
+    "start_line": 61,
+    "end_line": 120,
+    "score": 0.032,
+    "confidence": "high",
+    "text": "def authenticate_user(username, password):..."
+  }],
   "stats": {
-    "total_results": 10,
     "search_mode": "hybrid",
-    "fusion_method": "rrf",
     "reranked": false,
     "confidence_summary": {"high": 2, "medium": 5, "low": 3}
   }
@@ -168,158 +146,85 @@ ogrep query "where is auth" --json
 ```
 
 **Key fields:**
-- `chunk_ref`: Use with `ogrep chunk` to get more context
-- `confidence`: `high` (90%+ of top score), `medium`, `low`, `very_low`
-- `text`: Full chunk content, not truncated
+- `chunk_ref` - Use with `ogrep chunk` to expand context
+- `confidence` - `high` means 90%+ of top score, trust it
+- `text` - Full chunk content for analysis
 
 ---
 
-## Confidence Levels
+## Expanding Context
 
-Results are ranked relative to the best match:
-
-| Confidence | What it means |
-|------------|---------------|
-| `high` | 90%+ of top score - trust it |
-| `medium` | 75-89% - use but verify |
-| `low` | 50-74% - maybe try different query |
-| `very_low` | < 50% - probably not relevant |
-
-Why relative? Cosine similarity clusters around 0.3-0.5, so a score of 0.45 is actually excellent. Relative scoring tells you "how good is this compared to the best result?"
-
----
-
-## Command Reference
-
-### Essential Commands
+Query found something interesting? Get more:
 
 ```bash
-# Index (first time or major changes)
-ogrep index .
+# Surrounding context
+ogrep chunk "auth.py:2" --context 1 --json
 
-# Search
-ogrep query "your question" --json
-ogrep query "your question" --refresh --json   # After editing files
-ogrep query "exact name" --mode fulltext --json
+# What comes before (find class definition)
+ogrep chunk "models/user.py:5" --before 2 --json
 
-# Expand context
-ogrep chunk "file.py:N" --context 1 --json
-
-# Check status
-ogrep status --json
+# What comes after (see what follows)
+ogrep chunk "handler.py:3" --after 1 --json
 ```
 
-### Reranking (Optional Precision)
+**chunk_ref format:** `"file.py:N"` where N is chunk index (0-based, ~60 lines each)
+
+---
+
+## Optional Features
+
+### AST-Aware Chunking
+
+Better semantic boundaries - chunks by function/class instead of line counts:
 
 ```bash
-pip install "ogrep[rerank]"  # One-time install
+pip install "ogrep[ast]"  # One-time
+
+ogrep index . --ast                 # New index with AST chunking
+ogrep reindex . --ast               # Rebuild existing index
+```
+
+Improves results for codebases where functions should stay together.
+
+### Cross-Encoder Reranking
+
+When precision matters more than speed:
+
+```bash
+pip install "ogrep[rerank]"  # One-time (~300MB model download)
 
 ogrep query "complex topic" --rerank --json
 ogrep query "..." --rerank-top 30 --json  # Rerank top 30 candidates
 ```
 
-### AST-Aware Chunking (Optional)
+---
 
+## When Things Go Wrong
+
+**"No index found"**
 ```bash
-pip install "ogrep[ast]"  # One-time install
-
-# Index with semantic boundaries (functions/classes as chunks)
-ogrep index . --ast
-ogrep reindex . --ast  # Full rebuild with AST chunking
+ogrep index .  # Creates .ogrep/index.sqlite
 ```
 
-Better for codebases where functions/classes should stay together.
-
-### Maintenance
-
+**"Results seem stale"**
 ```bash
-ogrep log --limit 5 --json    # See what changed recently
-ogrep health --json           # Database diagnostics
-ogrep clean --vacuum          # Reclaim space
-ogrep reindex .               # Full rebuild
+ogrep query "..." --refresh --json  # Reindexes changed files first
+```
+
+**"Right answer is in results but not #1"**
+```bash
+ogrep query "..." --rerank --json   # Better precision ranking
+```
+
+**"Check index health"**
+```bash
+ogrep status --json
+ogrep health --json
 ```
 
 ---
 
-## Practical Patterns
-
-### Pattern 1: Start Broad, Then Drill Down
-
-```bash
-# Conceptual search
-ogrep query "how does the API validate requests" -n 15 --json
-
-# Found something in validator.py - get more context
-ogrep chunk "validator.py:2" --context 1 --json
-
-# Find exact function names
-ogrep query "def validate_" --mode fulltext --json
-```
-
-### Pattern 2: Chase the Implementation
-
-```bash
-# Find where something is called
-ogrep query "user authentication flow" --json
-
-# Then find the actual implementation
-ogrep query "def authenticate" --mode fulltext --json
-
-# Expand to see the full function
-ogrep chunk "auth.py:3" --after 1 --json
-```
-
-### Pattern 3: After User Edits
-
-```bash
-# Always use --refresh when user might have changed files
-ogrep query "the config I was looking at" --refresh --json
-```
-
-### Pattern 4: When Precision Matters
-
-```bash
-# Standard search gets you to the neighborhood
-ogrep query "database connection pooling" --json
-
-# Reranking gets you to the exact house
-ogrep query "database connection pooling" --rerank --json
-```
-
-### Pattern 5: Exploring Unknown Territory
-
-```bash
-# What's in this codebase?
-ogrep query "main entry point" --json
-ogrep query "how does error handling work" --json
-ogrep query "where is configuration loaded" --json
-
-# Walk through a file
-ogrep chunk "main.py:0" --json                    # Start
-ogrep chunk "main.py:0" --after 3 --json          # First 4 chunks
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | What it does |
-|----------|---------|--------------|
-| `OPENAI_API_KEY` | - | Required for OpenAI embeddings |
-| `OGREP_BASE_URL` | - | Local server (e.g., LM Studio) |
-| `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
-| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion method |
-| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
-
-**Local embeddings:**
-```bash
-export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m nomic
-```
-
----
-
-## Quick Reference
+## Command Summary
 
 | Task | Command |
 |------|---------|
@@ -330,18 +235,31 @@ ogrep index . -m nomic
 | Precision search | `ogrep query "..." --rerank --json` |
 | What changed | `ogrep log --limit 5 --json` |
 | Health check | `ogrep health --json` |
+| Full rebuild | `ogrep reindex .` |
+
+---
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OPENAI_API_KEY` | - | Required for embeddings |
+| `OGREP_BASE_URL` | - | Local embeddings server |
+| `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
+| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion (rrf or alpha) |
+
+**Local embeddings (optional):**
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+ogrep index . -m nomic
+```
 
 ---
 
 ## Why This Tool Exists
 
-Traditional code search requires knowing the exact terms. But when you're:
-- Exploring unfamiliar code
-- Mapping user questions to implementation
-- Looking for conceptual patterns
+Traditional search requires knowing exact terms. But when exploring unfamiliar code or mapping user questions to implementation, you often don't know what you're looking for until you find it.
 
-...you often don't know what you're looking for until you find it.
+ogrep bridges that gap - turning "where is authentication handled" into actual code, regardless of what the developer named things.
 
-ogrep bridges the gap between "what the user asked" and "what the code is actually called."
-
-**The goal:** Spend less time guessing function names, more time understanding code.
+It won't replace grep. It's the tool you reach for when grep requires too much guessing.
