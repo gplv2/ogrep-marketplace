@@ -527,6 +527,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     root, db = _resolve_paths(args)
     chunk_lines = _resolve_chunk_lines(args)
     overlap = _resolve_overlap(args)
+    verbose = getattr(args, "verbose", False)
 
     try:
         stats = index_path(
@@ -540,6 +541,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             exclude=args.exclude,
             include=args.include,
             detect=detect,
+            verbose=verbose,
         )
     except KeyboardInterrupt:
         if use_json:
@@ -559,7 +561,7 @@ def cmd_index(args: argparse.Namespace) -> int:
         raise
 
     if use_json:
-        print(json.dumps({
+        output = {
             "database": str(db),
             "files_indexed": stats.files_indexed,
             "files_skipped": stats.files_skipped,
@@ -571,8 +573,15 @@ def cmd_index(args: argparse.Namespace) -> int:
             "chunks_reused_local": stats.chunks_reused_local,
             "tokens_saved_estimate": stats.tokens_saved_estimate,
             "dedup_ratio": stats.dedup_ratio,
-        }))
+        }
+        if verbose and stats.indexed_files is not None:
+            output["indexed_files"] = stats.indexed_files
+        print(json.dumps(output))
     else:
         _print_stats(db, stats)
+        if verbose and stats.indexed_files:
+            print("\nFiles indexed:")
+            for f in stats.indexed_files:
+                print(f"  {f}")
 
     return 0

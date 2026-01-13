@@ -123,7 +123,10 @@ def _null_byte_check(content: bytes) -> bool:
 _BATCH_SIZE = 500
 
 
-def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
+def detect_file_types_batch(
+    paths: list[Path],
+    progress_callback: callable | None = None,
+) -> dict[Path, FileTypeResult]:
     """
     Detect file types for multiple files using batched calls.
 
@@ -132,6 +135,7 @@ def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
 
     Args:
         paths: List of file paths to check.
+        progress_callback: Optional callback(n) called after each batch with count processed.
 
     Returns:
         Dict mapping paths to FileTypeResult objects.
@@ -150,12 +154,16 @@ def detect_file_types_batch(paths: list[Path]) -> dict[Path, FileTypeResult]:
         batch = paths[i : i + _BATCH_SIZE]
         batch_results = _detect_batch(batch)
         results.update(batch_results)
+        if progress_callback:
+            progress_callback(len(batch))
 
     # Fill in any paths not covered by file command with null-byte detection
     missing_paths = [p for p in paths if p not in results]
     if missing_paths:
         fallback_results = _fallback_null_byte_detection(missing_paths)
         results.update(fallback_results)
+        if progress_callback:
+            progress_callback(len(missing_paths))
 
     return results
 

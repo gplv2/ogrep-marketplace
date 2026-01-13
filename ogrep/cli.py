@@ -41,6 +41,7 @@ from .commands import (
     cmd_benchmark,
     cmd_chunk,
     cmd_clean,
+    cmd_delete,
     cmd_health,
     cmd_index,
     cmd_models,
@@ -84,6 +85,12 @@ def _add_index_command(sub: argparse._SubParsersAction) -> None:
         "--json",
         action="store_true",
         help="Output as JSON",
+    )
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show files being indexed (useful for tracking new files)",
     )
     p.set_defaults(func=cmd_index)
 
@@ -236,6 +243,41 @@ def _add_clean_command(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_clean)
 
 
+def _add_delete_command(sub: argparse._SubParsersAction) -> None:
+    """Add the 'delete' subcommand."""
+    p = sub.add_parser(
+        "delete",
+        help="Remove specific files from the index",
+        description="Delete files from the index by path or glob pattern. "
+        "Supports exact paths, relative paths, and glob patterns like '*.log' or 'jj'.",
+    )
+    p.add_argument(
+        "paths",
+        nargs="+",
+        metavar="PATH",
+        help="Paths or glob patterns to delete (supports spaces in names)",
+    )
+    add_scope_args(p)
+    p.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Preview what would be deleted without actually deleting",
+    )
+    p.add_argument(
+        "--save",
+        "-s",
+        action="store_true",
+        help="Add deleted paths to .ogrepignore to prevent re-indexing",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    p.set_defaults(func=cmd_delete)
+
+
 def _add_status_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'status' subcommand."""
     p = sub.add_parser(
@@ -384,6 +426,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_reset_command(sub)
     _add_reindex_command(sub)
     _add_clean_command(sub)
+    _add_delete_command(sub)
     _add_status_command(sub)
     _add_health_command(sub)
     _add_models_command(sub)

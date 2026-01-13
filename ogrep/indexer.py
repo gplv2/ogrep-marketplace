@@ -365,6 +365,7 @@ class IndexStats:
     chunks_reused_global: int = 0  # Reused from other files
     chunks_reused_local: int = 0  # Reused from same file edit
     chunks_embedded: int = 0
+    indexed_files: list[str] | None = None  # Paths of files that were indexed (verbose mode)
 
     @property
     def tokens_saved_estimate(self) -> int:
@@ -743,6 +744,7 @@ def index_path(
     exclude: Sequence[str] = (),
     include: Sequence[str] = (),
     detect: bool = True,
+    verbose: bool = False,
 ) -> IndexStats:
     """
     Index a directory for semantic search.
@@ -770,6 +772,7 @@ def index_path(
         exclude: Additional glob patterns to exclude.
         include: Glob patterns to include (overrides default excludes).
         detect: Use file command for MIME type detection (default True).
+        verbose: Track and return paths of indexed files (default False).
 
     Returns:
         IndexStats with counts of files/chunks processed and reused.
@@ -791,7 +794,7 @@ def index_path(
     """
     # Resolve model from arg, env, or default
     model = resolve_model(model)
-    stats = IndexStats()
+    stats = IndexStats(indexed_files=[] if verbose else None)
 
     # Load .ogrepignore patterns and combine with CLI excludes
     ignore_patterns = load_ogrepignore(root)
@@ -805,16 +808,23 @@ def index_path(
     # Get expected dimensions
     expected_dim = _get_expected_dimension(con, model, dimensions)
 
-    files = list(iter_files(root, exclude=all_exclude, include=include))
+    # ── Discovery phase: scan filesystem for candidate files ──
+    files = list(tqdm(
+        iter_files(root, exclude=all_exclude, include=include),
+        desc="Scanning",
+        unit=" files",
+        leave=False,
+    ))
     stats.files_scanned = len(files)
 
-    # Batch file type detection (if enabled and file command available)
+    # ── Detection phase: check file types via MIME ──
     detection_results = {}
     if detect and has_file_command() and files:
-        detection_results = detect_file_types_batch(files)
+        with tqdm(total=len(files), desc="Detecting", unit=" files", leave=False) as pbar:
+            detection_results = detect_file_types_batch(files, progress_callback=pbar.update)
 
     for p in tqdm(files, desc="Indexing"):
-        # Read file if indexable
+        # ── Phase 1: File validation and skip checks ──
         b = _read_file_if_indexable(p, max_bytes, detection_results, stats)
         if b is None:
             continue
@@ -823,57 +833,59 @@ def index_path(
         sha = _sha256_bytes(b)
         rel = str(p.resolve())
 
-        # Check if file is already indexed and unchanged
         is_unchanged, existing_row = _is_file_unchanged(con, rel, sha, st.st_mtime_ns, st.st_size)
         if is_unchanged:
             stats.files_skipped += 1
             continue
 
+        # ── Phase 2: Prepare for indexing (read-only DB ops) ──
         stats.files_indexed += 1
+        if stats.indexed_files is not None:
+            try:
+                stats.indexed_files.append(str(p.relative_to(root)))
+            except ValueError:
+                stats.indexed_files.append(str(p))
 
-        # Cache existing embeddings before deletion (for reuse)
         existing_embeddings: dict[str, tuple[bytes, int]] = {}
         if existing_row:
             existing_embeddings = _cache_existing_embeddings(con, int(existing_row[0]))
 
-        # Insert or update file record
-        file_id = _upsert_file_record(con, rel, st.st_mtime_ns, st.st_size, sha, existing_row)
-
-        # Chunk the file content
+        # ── Phase 3: Chunk text and compute hashes ──
         text = b.decode("utf-8", errors="ignore")
         chunks = chunk_text(text, chunk_size=chunk_lines, overlap=overlap)
         if not chunks:
             continue
 
         stats.chunks_total += len(chunks)
-
-        # Compute text hashes for all chunks
         chunk_hashes, normalized_texts = _compute_chunk_hashes(chunks)
 
-        # Query global embeddings for all hashes (cross-file deduplication)
+        # ── Phase 4: Find reusable embeddings (read-only DB ops) ──
         global_embeddings: dict[str, tuple[bytes, int]] = {}
         if expected_dim is not None:
             global_embeddings = _find_global_embeddings(con, chunk_hashes, model, expected_dim)
 
-        # Classify chunks as reusable or needing embedding
         chunks_to_embed, reusable_indices = _classify_chunks_for_embedding(
             chunk_hashes, normalized_texts, global_embeddings, existing_embeddings, stats
         )
 
-        # Generate embeddings only for new chunks
+        # ── Phase 5: Generate new embeddings (API call, outside transaction) ──
         new_embeddings: dict[int, tuple[bytes, int]] = {}
         if chunks_to_embed:
             texts = [t for _, t in chunks_to_embed]
             emb_blobs, dim = embed_texts(texts, model=model, dimensions=dimensions)
             for (idx, _), emb in zip(chunks_to_embed, emb_blobs, strict=True):
                 new_embeddings[idx] = (emb, dim)
-            # Learn dimension from embed if we didn't know it
             if expected_dim is None:
                 expected_dim = dim
 
-        # Store all chunks with embeddings
-        _store_chunks(con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model)
-
-        con.commit()
+        # ── Phase 6: Atomic DB write (transaction) ──
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            file_id = _upsert_file_record(con, rel, st.st_mtime_ns, st.st_size, sha, existing_row)
+            _store_chunks(con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model)
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
 
     return stats
