@@ -81,13 +81,24 @@ def cmd_status(args: argparse.Namespace) -> int:
     model = row[0] if row else None
     dim = row[1] if row else None
 
+    # Check for AST mode metadata
+    ast_mode = None
+    try:
+        cur.execute("SELECT value FROM index_metadata WHERE key = 'ast_mode'")
+        ast_row = cur.fetchone()
+        if ast_row:
+            ast_mode = ast_row[0] == "true"
+    except sqlite3.OperationalError:
+        # index_metadata table doesn't exist (older index)
+        pass
+
     size_bytes = db.stat().st_size
     size_str = _format_size(size_bytes)
 
     con.close()
 
     if use_json:
-        print(json.dumps({
+        result = {
             "database": str(db),
             "status": "indexed",
             "indexed": True,
@@ -97,7 +108,10 @@ def cmd_status(args: argparse.Namespace) -> int:
             "dimensions": dim,
             "size_bytes": size_bytes,
             "size_human": size_str,
-        }))
+        }
+        if ast_mode is not None:
+            result["ast_mode"] = ast_mode
+        print(json.dumps(result))
     else:
         print(f"Database: {db}")
         print("Status: Indexed")
@@ -105,6 +119,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"Chunks: {chunk_count}")
         print(f"Model: {model}")
         print(f"Dimensions: {dim}")
+        if ast_mode is not None:
+            print(f"AST Mode: {'enabled' if ast_mode else 'disabled'}")
         print(f"Size: {size_str}")
 
     return 0

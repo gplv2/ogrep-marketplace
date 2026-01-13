@@ -220,6 +220,20 @@ def cmd_query(args: argparse.Namespace) -> int:
         # Empty index - use CLI args
         index_model, index_dim = args.model, args.dimensions
 
+    # Check AST mode metadata
+    index_ast_mode = None
+    try:
+        con = sqlite3.connect(str(db))
+        ast_row = con.execute(
+            "SELECT value FROM index_metadata WHERE key = 'ast_mode'"
+        ).fetchone()
+        if ast_row:
+            index_ast_mode = ast_row[0] == "true"
+        con.close()
+    except sqlite3.OperationalError:
+        # index_metadata table doesn't exist (older index)
+        pass
+
     # Handle --refresh: check for stale files and reindex if needed
     if getattr(args, "refresh", False):
         stale_files = _check_stale_files(db, repo_root)
@@ -381,6 +395,14 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "confidence_summary": confidence_summary,
             },
         }
+        # Add AST mode info if available
+        if index_ast_mode is not None:
+            output["stats"]["ast_mode"] = index_ast_mode
+            if not index_ast_mode:
+                output["hint"] = (
+                    "Index was built without AST chunking. For better semantic boundaries, "
+                    "run: ogrep reindex . --ast"
+                )
         print(json.dumps(output, indent=2))
     else:
         # Human-readable output using helper

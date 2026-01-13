@@ -832,6 +832,11 @@ def index_path(
     # Model consistency check - prevent mixing models in the same index
     _check_model_consistency(con, model)
 
+    # Store AST mode in metadata (tracks how index was built)
+    from .db import set_metadata
+    ast_mode_effective = "true" if (ast and ast_chunker is not None) else "false"
+    set_metadata(con, "ast_mode", ast_mode_effective)
+
     # Get expected dimensions
     expected_dim = _get_expected_dimension(con, model, dimensions)
 

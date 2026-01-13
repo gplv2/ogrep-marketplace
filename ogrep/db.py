@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS index_history (
 
 CREATE INDEX IF NOT EXISTS idx_history_timestamp ON index_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_history_action ON index_history(action);
+
+-- Metadata table for index-wide settings
+-- Stores key-value pairs like ast_mode, created_at, etc.
+CREATE TABLE IF NOT EXISTS index_metadata (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 #: FTS5 schema for full-text search on chunk text.
@@ -213,3 +221,53 @@ def rebuild_fts5(con: sqlite3.Connection) -> int:
 
     # Return count
     return con.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0]
+
+
+def get_metadata(con: sqlite3.Connection, key: str, default: str | None = None) -> str | None:
+    """
+    Get a metadata value from the index.
+
+    Args:
+        con: Open database connection.
+        key: Metadata key to retrieve.
+        default: Default value if key not found.
+
+    Returns:
+        The metadata value, or default if not found.
+    """
+    row = con.execute(
+        "SELECT value FROM index_metadata WHERE key = ?", (key,)
+    ).fetchone()
+    return row[0] if row else default
+
+
+def set_metadata(con: sqlite3.Connection, key: str, value: str) -> None:
+    """
+    Set a metadata value in the index.
+
+    Uses INSERT OR REPLACE to upsert the value.
+
+    Args:
+        con: Open database connection.
+        key: Metadata key to set.
+        value: Value to store.
+    """
+    con.execute(
+        """
+        INSERT OR REPLACE INTO index_metadata (key, value, updated_at)
+        VALUES (?, ?, datetime('now'))
+        """,
+        (key, value),
+    )
+    con.commit()
+
+
+def get_all_metadata(con: sqlite3.Connection) -> dict[str, str]:
+    """
+    Get all metadata from the index.
+
+    Returns:
+        Dict of key-value pairs.
+    """
+    rows = con.execute("SELECT key, value FROM index_metadata").fetchall()
+    return {k: v for k, v in rows}
