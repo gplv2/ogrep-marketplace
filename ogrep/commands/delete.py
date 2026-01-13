@@ -13,6 +13,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from ..db import log_history
 from ._common import resolve_db_path
 
 
@@ -213,6 +214,19 @@ def cmd_delete(args: argparse.Namespace) -> int:
         con.commit()
 
         deleted_paths = [rel for _, _, rel in matches]
+
+        # Log to history (AI tool integration)
+        log_history(
+            con,
+            action="delete",
+            files_affected=len(matches),
+            chunks_affected=total_chunks,
+            details={
+                "patterns": args.paths,
+                "deleted_files": deleted_paths,
+                "save_to_ogrepignore": save,
+            },
+        )
 
         # Handle --save: add to .ogrepignore
         saved_to_ignore = False

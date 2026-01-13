@@ -12,6 +12,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from ..db import log_history
 from ._common import resolve_db_path
 
 
@@ -60,6 +61,19 @@ def cmd_clean(args: argparse.Namespace) -> int:
                 removed_paths.append(path)
 
         con.commit()
+
+        # Log to history if files were removed (AI tool integration)
+        if removed > 0:
+            log_history(
+                con,
+                action="clean",
+                files_affected=removed,
+                chunks_affected=0,  # Chunks are cascade-deleted
+                details={
+                    "removed_paths": removed_paths,
+                    "vacuumed": args.vacuum,
+                },
+            )
 
         vacuumed = False
         if args.vacuum:

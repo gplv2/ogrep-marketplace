@@ -18,7 +18,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from .chunking import chunk_lines as chunk_text
-from .db import connect
+from .db import connect, log_history
 from .embed import embed_texts
 from .filetype import detect_file_types_batch, has_file_command
 from .models import get_model, resolve_model
@@ -887,5 +887,22 @@ def index_path(
         except Exception:
             con.execute("ROLLBACK")
             raise
+
+    # ── Phase 7: Log history entry (AI tool integration) ──
+    # Only log if something was indexed (not just a scan with no changes)
+    if stats.files_indexed > 0:
+        log_history(
+            con,
+            action="index",
+            files_affected=stats.files_indexed,
+            chunks_affected=stats.chunks_total,
+            details={
+                "files_scanned": stats.files_scanned,
+                "files_skipped": stats.files_skipped,
+                "chunks_embedded": stats.chunks_embedded,
+                "chunks_reused": stats.chunks_reused,
+                "indexed_files": stats.indexed_files,
+            },
+        )
 
     return stats

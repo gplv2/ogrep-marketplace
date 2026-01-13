@@ -250,6 +250,20 @@ def cmd_query(args: argparse.Namespace) -> int:
                 return 130  # Standard SIGINT exit code (128 + 2)
 
             refreshed_files = stats.files_indexed
+
+            # Update history action from "index" to "refresh" (AI tool integration)
+            if stats.files_indexed > 0:
+                try:
+                    con = sqlite3.connect(str(db))
+                    con.execute(
+                        "UPDATE index_history SET action = 'refresh' "
+                        "WHERE id = (SELECT MAX(id) FROM index_history)"
+                    )
+                    con.commit()
+                    con.close()
+                except sqlite3.OperationalError:
+                    pass  # History table might not exist in older databases
+
             if not use_json and (stats.files_indexed > 0 or stats.chunks_reused > 0):
                 print(
                     f"  Updated: {stats.files_indexed} files, "

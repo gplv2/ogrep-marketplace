@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS chunks (
 
 CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_text_sha256 ON chunks(text_sha256);
+
+-- History table for tracking index operations
+-- Used by AI tools to understand what changed (refresh + log workflow)
+CREATE TABLE IF NOT EXISTS index_history (
+  id INTEGER PRIMARY KEY,
+  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+  action TEXT NOT NULL,  -- 'index', 'delete', 'clean', 'refresh', 'reindex'
+  files_affected INTEGER NOT NULL DEFAULT 0,
+  chunks_affected INTEGER NOT NULL DEFAULT 0,
+  details TEXT,  -- JSON with action-specific details
+  CONSTRAINT valid_action CHECK (action IN ('index', 'delete', 'clean', 'refresh', 'reindex'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_timestamp ON index_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_history_action ON index_history(action);
 """
 
 #: FTS5 schema for full-text search on chunk text.
@@ -128,6 +143,44 @@ def has_fts5(con: sqlite3.Connection) -> bool:
         return result is not None
     except sqlite3.OperationalError:
         return False
+
+
+def log_history(
+    con: sqlite3.Connection,
+    action: str,
+    files_affected: int = 0,
+    chunks_affected: int = 0,
+    details: dict | None = None,
+) -> int:
+    """
+    Log an index operation to history.
+
+    AI TOOL HINT: Use `ogrep log --json` to query this history.
+    Combined with `ogrep index --refresh`, this lets you track what
+    changed since your last check.
+
+    Args:
+        con: Open database connection.
+        action: Operation type ('index', 'delete', 'clean', 'refresh', 'reindex').
+        files_affected: Number of files affected.
+        chunks_affected: Number of chunks affected.
+        details: Optional dict with action-specific details (stored as JSON).
+
+    Returns:
+        The history entry ID.
+    """
+    import json as json_module
+
+    details_json = json_module.dumps(details) if details else None
+    cur = con.execute(
+        """
+        INSERT INTO index_history (action, files_affected, chunks_affected, details)
+        VALUES (?, ?, ?, ?)
+        """,
+        (action, files_affected, chunks_affected, details_json),
+    )
+    con.commit()
+    return cur.lastrowid
 
 
 def rebuild_fts5(con: sqlite3.Connection) -> int:

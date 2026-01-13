@@ -323,6 +323,94 @@ The `--json` flag returns structured data:
 }
 ```
 
+## Change Tracking (AI Tool Integration)
+
+ogrep tracks index changes in a history table. **AI tools should use `ogrep log` to understand what changed** after running refresh operations.
+
+### Recommended Workflow for AI Tools
+
+```bash
+# 1. Search with refresh to get current results + update index
+ogrep query "where is X handled" --refresh --json
+
+# 2. Check what changed (what files were reindexed)
+ogrep log --limit 5 --json
+```
+
+### Log Command Reference
+
+```bash
+# Show recent history (JSON output is default for AI tools)
+ogrep log --json
+
+# Filter by datetime (ISO8601 format)
+ogrep log --since 2024-01-15T10:30:00 --json
+ogrep log --since 2024-01-15 --json
+
+# Filter by action type
+ogrep log --action refresh --json
+ogrep log --action delete --json
+
+# Pagination
+ogrep log --limit 20 --offset 0 --json
+
+# Human-readable output
+ogrep log --no-json
+```
+
+### Log JSON Output Format
+
+```json
+{
+  "database": "/path/to/.ogrep/index.sqlite",
+  "entries": [
+    {
+      "id": 42,
+      "timestamp": "2024-01-15 10:30:00",
+      "action": "refresh",
+      "files_affected": 3,
+      "chunks_affected": 15,
+      "details": {
+        "files_scanned": 100,
+        "indexed_files": ["src/auth.py", "src/db.py", "src/api.py"]
+      }
+    }
+  ],
+  "pagination": {
+    "total": 100,
+    "limit": 50,
+    "offset": 0,
+    "has_more": true
+  },
+  "hint": "AI TOOL: Use --since with ISO8601 datetime to filter recent changes."
+}
+```
+
+### Action Types
+
+| Action | Description | When Logged |
+|--------|-------------|-------------|
+| `index` | New files indexed | `ogrep index .` |
+| `refresh` | Changed files reindexed | `ogrep query --refresh` |
+| `reindex` | Full rebuild | `ogrep reindex .` |
+| `delete` | Files removed from index | `ogrep delete <path>` |
+| `clean` | Stale entries removed | `ogrep clean` |
+
+### Why This Matters for AI Tools
+
+When you run `ogrep query --refresh`, ogrep:
+1. Checks which files changed since last index
+2. Reindexes only those files
+3. Logs what was updated to the history table
+
+By checking the log after refresh, AI tools can:
+- Know which files were modified in the codebase
+- Understand what areas of code changed recently
+- Track codebase evolution over time
+- Detect when the user edited specific files
+
+**Best Practice:** Always check `ogrep log --limit 5` after `--refresh` queries to understand what changed.
+
 ## Commands Reference
 
 All commands support `--json` for structured output (AI tool integration).
@@ -333,6 +421,8 @@ All commands support `--json` for structured output (AI tool integration).
 | `ogrep index . --list` | Preview files (dry run) | `--json` |
 | `ogrep query "text" -n 15 --json` | Search (add -r for refresh) | `--json` |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context | `--json` (default) |
+| `ogrep log` | Show index change history | `--json` (default) |
+| `ogrep delete <path>` | Remove files from index | `--json` |
 | `ogrep status` | Show index info | `--json` |
 | `ogrep health` | Full database diagnostics | `--json` |
 | `ogrep health --vacuum` | Reclaim space and defragment | `--json` |
@@ -368,6 +458,14 @@ ogrep health --json
 # Models as JSON
 ogrep models --json
 # Returns: {"models": [{"id": "...", "dimensions": 1536, ...}], ...}
+
+# Log as JSON (default output mode)
+ogrep log --limit 5 --json
+# Returns: {"entries": [...], "pagination": {...}, "hint": "..."}
+
+# Delete as JSON
+ogrep delete "*.log" --json
+# Returns: {"deleted": 3, "deleted_files": [...], ...}
 ```
 
 ## Flag Reference
@@ -402,6 +500,26 @@ ogrep models --json
 | `--chunk-lines N` | | Lines per chunk (model-specific default) |
 | `--overlap N` | | Overlap between chunks |
 | `--no-detect` | | Skip MIME detection (faster) |
+
+### Log Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--since DATETIME` | | Show entries after datetime (ISO8601) |
+| `--until DATETIME` | | Show entries before datetime (ISO8601) |
+| `--action ACTION` | | Filter by action (index/refresh/reindex/delete/clean) |
+| `--limit N` | `-n` | Max entries to return (default: 50) |
+| `--offset N` | | Skip first N entries (pagination) |
+| `--json` | | JSON output (default: True) |
+| `--no-json` | | Human-readable text output |
+
+### Delete Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview without deleting |
+| `--save` | `-s` | Add paths to .ogrepignore |
+| `--json` | | Output as JSON |
 
 ### Status/Health/Clean/Reset Flags
 

@@ -11,6 +11,9 @@ import argparse
 import json
 from pathlib import Path
 
+import sqlite3
+
+from ..db import log_history
 from ..indexer import index_path
 from ..models import get_optimal_chunk_lines, get_optimal_overlap
 from ._common import require_embedding_config, resolve_db_path
@@ -95,6 +98,19 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             print("Partial progress may have been saved to the index.")
             print("Run 'ogrep reindex .' again to rebuild from scratch.")
         return 130  # Standard SIGINT exit code (128 + 2)
+
+    # Log reindex action to history (overrides the "index" entry from index_path)
+    # We update the most recent entry to be "reindex" for clarity
+    con = sqlite3.connect(str(db))
+    try:
+        con.execute(
+            "UPDATE index_history SET action = 'reindex' WHERE id = (SELECT MAX(id) FROM index_history)"
+        )
+        con.commit()
+    except sqlite3.OperationalError:
+        pass  # History table might not exist in older databases
+    finally:
+        con.close()
 
     if use_json:
         print(json.dumps({

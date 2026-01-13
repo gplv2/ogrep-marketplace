@@ -44,6 +44,7 @@ from .commands import (
     cmd_delete,
     cmd_health,
     cmd_index,
+    cmd_log,
     cmd_models,
     cmd_query,
     cmd_reindex,
@@ -278,6 +279,58 @@ def _add_delete_command(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_delete)
 
 
+def _add_log_command(sub: argparse._SubParsersAction) -> None:
+    """Add the 'log' subcommand."""
+    p = sub.add_parser(
+        "log",
+        help="Show index change history (AI tool integration)",
+        description="Display history of index operations (index, delete, clean, refresh). "
+        "AI TOOL HINT: Use after 'ogrep query --refresh' to see what changed.",
+    )
+    add_scope_args(p)
+    p.add_argument(
+        "--since",
+        metavar="DATETIME",
+        help="Show entries after this datetime (ISO8601: 2024-01-15T10:30:00 or 2024-01-15)",
+    )
+    p.add_argument(
+        "--until",
+        metavar="DATETIME",
+        help="Show entries before this datetime (ISO8601 format)",
+    )
+    p.add_argument(
+        "--action",
+        choices=["index", "delete", "clean", "refresh", "reindex"],
+        help="Filter by action type",
+    )
+    p.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=50,
+        help="Maximum entries to return (default: 50)",
+    )
+    p.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Skip first N entries (for pagination)",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output as JSON (default: True for AI tool integration)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
+    )
+    p.set_defaults(func=cmd_log)
+
+
 def _add_status_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'status' subcommand."""
     p = sub.add_parser(
@@ -427,6 +480,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_reindex_command(sub)
     _add_clean_command(sub)
     _add_delete_command(sub)
+    _add_log_command(sub)
     _add_status_command(sub)
     _add_health_command(sub)
     _add_models_command(sub)
