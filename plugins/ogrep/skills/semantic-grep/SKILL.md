@@ -36,7 +36,7 @@ ogrep fills a specific gap: **conceptual code questions**.
 
 ```bash
 # Index (first time - takes a minute)
-ogrep index .
+ogrep index . --json
 
 # Search by concept (this is the main use case)
 ogrep query "how are payments processed" --json
@@ -97,14 +97,27 @@ ogrep query "payment error handling" --json
 ogrep query "payment refund logic" --json
 ```
 
-### Pattern 4: Precision Mode
+### Pattern 4: Precision Mode with Reranking
 
-Standard search gets you to the neighborhood. Reranking gets you to the house:
+Standard search gets you to the neighborhood. Reranking gets you to the exact house.
+
+The problem: semantic search retrieves good candidates, but the #1 result isn't always the best match. Reranking uses a cross-encoder model to re-score the top candidates with much higher precision.
 
 ```bash
-# When you need the best result to be #1 (requires pip install "ogrep[rerank]")
+# Install reranking support (one-time, ~300MB model download)
+pip install "ogrep[rerank]"
+
+# Basic reranking - reorders top 50 candidates
 ogrep query "database connection pooling" --rerank --json
+
+# Control how many candidates to rerank
+ogrep query "complex auth flow" --rerank --rerank-top 30 --json
 ```
+
+When to use `--rerank`:
+- The right answer appears in results but not at #1
+- You need high precision for a complex query
+- You're doing a one-off important search (reranking is slower)
 
 ---
 
@@ -119,7 +132,60 @@ ogrep query "database connection pooling" --rerank --json
 ```bash
 ogrep query "handle errors" --mode semantic --json
 ogrep query "class ErrorHandler" --mode fulltext --json
+ogrep query "error handling logic" --json  # hybrid (default)
 ```
+
+---
+
+## AST-Aware Chunking
+
+By default, ogrep splits files into ~60-line chunks with overlap. This can split functions or classes awkwardly:
+
+```
+# Line-based chunking (default):
+Chunk 1: lines 1-60 (end of ClassA, start of ClassB)
+Chunk 2: lines 50-110 (middle of ClassB)
+```
+
+AST-aware chunking uses tree-sitter to split by semantic boundaries:
+
+```
+# AST chunking (--ast):
+Chunk 1: class UserAuth (complete, lines 1-45)
+Chunk 2: def validate_token (complete, lines 47-82)
+Chunk 3: class SessionManager (complete, lines 84-150)
+```
+
+**Supported languages:** Python, JavaScript, TypeScript, TSX, Go, Rust
+
+**Extended languages (with `[ast-all]`):** Ruby, Java, C, C++, C#, Bash
+
+### Using AST Chunking
+
+```bash
+# Install AST support
+pip install "ogrep[ast]"        # Core languages
+pip install "ogrep[ast-all]"    # All languages
+
+# Index with AST chunking
+ogrep index . --ast --json
+
+# Rebuild existing index with AST
+ogrep reindex . --ast --json
+
+# Check if AST is being used
+ogrep status --json
+```
+
+**When to use AST chunking:**
+- Codebases with large functions/classes that shouldn't be split
+- When search results show awkward partial matches
+- Languages with clear semantic boundaries (functions, classes, methods)
+
+**Fallback behavior:**
+- Unsupported file types → line-based chunking
+- Parse errors → line-based chunking
+- Very large functions (>150 lines) → split with overlap
 
 ---
 
@@ -135,10 +201,13 @@ ogrep query "class ErrorHandler" --mode fulltext --json
     "end_line": 120,
     "score": 0.032,
     "confidence": "high",
+    "language": "python",
     "text": "def authenticate_user(username, password):..."
   }],
   "stats": {
+    "total_results": 10,
     "search_mode": "hybrid",
+    "fusion_method": "rrf",
     "reranked": false,
     "confidence_summary": {"high": 2, "medium": 5, "low": 3}
   }
@@ -147,7 +216,8 @@ ogrep query "class ErrorHandler" --mode fulltext --json
 
 **Key fields:**
 - `chunk_ref` - Use with `ogrep chunk` to expand context
-- `confidence` - `high` means 90%+ of top score, trust it
+- `confidence` - `high` (90%+ of top score), `medium`, `low`, `very_low`
+- `reranked` - Whether results were reranked with cross-encoder
 - `text` - Full chunk content for analysis
 
 ---
@@ -157,7 +227,7 @@ ogrep query "class ErrorHandler" --mode fulltext --json
 Query found something interesting? Get more:
 
 ```bash
-# Surrounding context
+# Surrounding context (1 chunk before and after)
 ogrep chunk "auth.py:2" --context 1 --json
 
 # What comes before (find class definition)
@@ -167,34 +237,36 @@ ogrep chunk "models/user.py:5" --before 2 --json
 ogrep chunk "handler.py:3" --after 1 --json
 ```
 
-**chunk_ref format:** `"file.py:N"` where N is chunk index (0-based, ~60 lines each)
+**chunk_ref format:** `"file.py:N"` where N is chunk index (0-based)
 
 ---
 
-## Optional Features
-
-### AST-Aware Chunking
-
-Better semantic boundaries - chunks by function/class instead of line counts:
+## Index Management
 
 ```bash
-pip install "ogrep[ast]"  # One-time
+# Create new index
+ogrep index . --json
+ogrep index . --ast --json              # With AST chunking
 
-ogrep index . --ast                 # New index with AST chunking
-ogrep reindex . --ast               # Rebuild existing index
-```
+# Rebuild from scratch
+ogrep reindex . --json
+ogrep reindex . --ast --json            # Rebuild with AST
 
-Improves results for codebases where functions should stay together.
+# Update changed files only
+ogrep refresh . --json
 
-### Cross-Encoder Reranking
+# Check index status
+ogrep status --json
 
-When precision matters more than speed:
+# View recent changes
+ogrep log --limit 10 --json
 
-```bash
-pip install "ogrep[rerank]"  # One-time (~300MB model download)
+# Database health
+ogrep health --json
 
-ogrep query "complex topic" --rerank --json
-ogrep query "..." --rerank-top 30 --json  # Rerank top 30 candidates
+# Clean up stale entries
+ogrep clean --json
+ogrep clean --vacuum --json             # Also compact database
 ```
 
 ---
@@ -203,17 +275,24 @@ ogrep query "..." --rerank-top 30 --json  # Rerank top 30 candidates
 
 **"No index found"**
 ```bash
-ogrep index .  # Creates .ogrep/index.sqlite
+ogrep index . --json
 ```
 
 **"Results seem stale"**
 ```bash
-ogrep query "..." --refresh --json  # Reindexes changed files first
+ogrep query "..." --refresh --json      # Reindexes changed files first
 ```
 
 **"Right answer is in results but not #1"**
 ```bash
-ogrep query "..." --rerank --json   # Better precision ranking
+pip install "ogrep[rerank]"             # If not installed
+ogrep query "..." --rerank --json
+```
+
+**"Functions are being split awkwardly"**
+```bash
+pip install "ogrep[ast]"                # If not installed
+ogrep reindex . --ast --json
 ```
 
 **"Check index health"**
@@ -228,14 +307,18 @@ ogrep health --json
 
 | Task | Command |
 |------|---------|
+| Create index | `ogrep index . --json` |
+| Create index (AST) | `ogrep index . --ast --json` |
 | Find implementation | `ogrep query "how does X work" --json` |
 | Find exact name | `ogrep query "def function_name" --mode fulltext --json` |
+| Precision search | `ogrep query "..." --rerank --json` |
 | Fresh results | `ogrep query "..." --refresh --json` |
 | More context | `ogrep chunk "file.py:N" --context 1 --json` |
-| Precision search | `ogrep query "..." --rerank --json` |
-| What changed | `ogrep log --limit 5 --json` |
+| Rebuild index | `ogrep reindex . --json` |
+| Index status | `ogrep status --json` |
+| Recent changes | `ogrep log --limit 5 --json` |
 | Health check | `ogrep health --json` |
-| Full rebuild | `ogrep reindex .` |
+| Clean stale | `ogrep clean --json` |
 
 ---
 
@@ -244,14 +327,18 @@ ogrep health --json
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OPENAI_API_KEY` | - | Required for embeddings |
-| `OGREP_BASE_URL` | - | Local embeddings server |
+| `OGREP_BASE_URL` | - | Local embeddings server (e.g., LM Studio) |
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
-| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion (rrf or alpha) |
+| `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion (`rrf` or `alpha`) |
+| `OGREP_RRF_K` | `60` | RRF smoothing constant |
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
+| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
+| `OGREP_AST_CHUNKING` | - | Enable AST chunking globally (`1` or `true`) |
 
 **Local embeddings (optional):**
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m nomic
+ogrep index . -m nomic --json
 ```
 
 ---
