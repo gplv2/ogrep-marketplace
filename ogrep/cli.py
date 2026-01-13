@@ -133,6 +133,20 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         help="Search mode: semantic (embeddings only), fulltext (FTS5 keywords), "
         "hybrid (combined, default). Uses OGREP_SEARCH_MODE env var if not specified.",
     )
+    p.add_argument(
+        "--rerank",
+        action="store_true",
+        help="Enable cross-encoder reranking for improved result ordering. "
+        "Requires sentence-transformers: pip install 'ogrep[rerank]'",
+    )
+    p.add_argument(
+        "--rerank-top",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of candidates to rerank (default: 50, via OGREP_RERANK_TOPN). "
+        "Implies --rerank.",
+    )
     add_model_args(p, for_query=True)
     p.set_defaults(func=cmd_query)
 

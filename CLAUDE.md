@@ -466,6 +466,8 @@ ogrep tune . -s 10     # Use 10 test samples
 | `OGREP_FUSION_METHOD` | Hybrid fusion method (`rrf` or `alpha`) | `rrf` |
 | `OGREP_RRF_K` | RRF rank constant (higher = smoother ranking) | `60` |
 | `OGREP_HYBRID_ALPHA` | Alpha fusion: semantic weight (0.0-1.0) | `0.7` |
+| `OGREP_RERANK_MODEL` | Cross-encoder model for reranking | `BAAI/bge-reranker-v2-m3` |
+| `OGREP_RERANK_TOPN` | Default candidates to rerank | `50` |
 | `OGREP_CONFIDENCE_MODE` | Confidence scoring mode: `relative` or `absolute` | `relative` |
 | `OGREP_RELATIVE_HIGH` | Relative mode: fraction of top score for "high" | `0.90` |
 | `OGREP_RELATIVE_MEDIUM` | Relative mode: fraction of top score for "medium" | `0.75` |

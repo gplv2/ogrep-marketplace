@@ -1138,35 +1138,42 @@ OGREP_FUSION_METHOD=alpha OGREP_HYBRID_ALPHA=0.7 ogrep query "search"
 
 **Reference**: Cormack, Clarke, Buettcher. "Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods" (SIGIR 2009)
 
-### Future: Cross-Encoder Reranking
+### Cross-Encoder Reranking (Implemented v0.7.0)
 
-A promising direction for improving "right file in top 30, but not #1" scenarios.
+Two-stage retrieval for improving "right file in top 30, but not #1" scenarios.
 
-**Current architecture** (bi-encoder):
+**Standard architecture** (bi-encoder only):
 ```
 Query → Embed → Compare to all chunk embeddings → Top K results
 ```
 Fast but imprecise—query and chunks are embedded separately.
 
-**Reranking architecture** (cross-encoder):
+**With reranking** (bi-encoder + cross-encoder):
 ```
 Query → Stage 1: Fast retrieval (top 50) → Stage 2: Slow reranking → Top 10
 ```
 The reranker sees query AND chunk together, enabling fine-grained relevance scoring.
 
-**Why this helps**:
+**Why reranking helps**:
 - Cross-encoders model query-document relationships directly
 - No information loss from vector compression
 - Precision where it matters most (final ranking)
 
-**Candidate models for reranking**:
-| Model | Speed | Quality | Notes |
-|-------|-------|---------|-------|
-| `BAAI/bge-reranker-v2-m3` | Medium | Excellent | Multi-lingual |
-| `Jina reranker v2` | Fast | Very Good | API available |
-| `ms-marco-MiniLM` | Very Fast | Moderate | Smallest footprint |
+**Usage (v0.7.0+)**:
+```bash
+# Install reranking support
+pip install "ogrep[rerank]"
 
-**Note**: Reranking is independent of embedding models—you can use OpenAI embeddings for retrieval and a local reranker for precision. This is planned for a future release.
+# Enable reranking
+ogrep query "where is authentication" --rerank --json
+
+# Rerank specific number of candidates
+ogrep query "database connection" --rerank-top 30 --json
+```
+
+**Default model**: `BAAI/bge-reranker-v2-m3` (~300MB, downloads on first use)
+
+**Note**: Reranking is independent of embedding models—you can use OpenAI embeddings for retrieval and a local reranker for precision.
 
 ### AST-Aware Chunking (Future Research)
 

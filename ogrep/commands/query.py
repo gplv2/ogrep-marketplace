@@ -14,6 +14,10 @@ querying, ensuring search results reflect the current codebase state.
 
 Supports --json flag for structured output suitable for AI tools and
 programmatic use, including full chunk text and metadata.
+
+Supports --rerank flag for cross-encoder reranking, which improves
+result ordering by processing (query, document) pairs together.
+Requires sentence-transformers: pip install 'ogrep[rerank]'
 """
 
 from __future__ import annotations
@@ -275,17 +279,60 @@ def cmd_query(args: argparse.Namespace) -> int:
     # Get search mode
     search_mode = getattr(args, "mode", None)
 
+    # Check reranking options
+    do_rerank = getattr(args, "rerank", False)
+    rerank_top = getattr(args, "rerank_top", None)
+
+    # --rerank-top implies --rerank
+    if rerank_top is not None:
+        do_rerank = True
+
     # Time the search
     start_time = time.perf_counter()
+
+    # If reranking, fetch more candidates initially
+    fetch_limit = args.top
+    if do_rerank:
+        # Fetch enough for reranking (default 50, or rerank_top if specified)
+        from ..rerank import DEFAULT_RERANK_TOPN
+
+        rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
+        fetch_limit = max(args.top, rerank_n)
 
     hits, fts_available = query_db(
         db_path=db,
         q=query_text,
-        top_k=args.top,
+        top_k=fetch_limit,
         model=index_model,
         dimensions=index_dim,
         mode=search_mode,
     )
+
+    # Apply reranking if requested
+    reranked = False
+    if do_rerank and hits:
+        try:
+            from ..rerank import is_reranker_available, rerank_results
+
+            if is_reranker_available():
+                rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
+                hits = rerank_results(query_text, hits, top_n=rerank_n)
+                # Trim to requested number after reranking
+                hits = hits[: args.top]
+                reranked = True
+            else:
+                if not use_json:
+                    print(
+                        "Warning: Reranking requested but sentence-transformers not installed.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "Install with: pip install 'ogrep[rerank]'",
+                        file=sys.stderr,
+                    )
+        except ImportError as e:
+            if not use_json:
+                print(f"Warning: Reranking unavailable: {e}", file=sys.stderr)
 
     search_time_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -326,6 +373,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "search_time_ms": search_time_ms,
                 "search_mode": search_mode or "hybrid",
                 "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
+                "reranked": reranked,
                 "fts_available": fts_available,
                 "index_model": index_model,
                 "index_dimensions": index_dim,

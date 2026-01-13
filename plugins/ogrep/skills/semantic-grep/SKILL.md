@@ -564,6 +564,13 @@ ogrep delete "*.log" --json
 | `OGREP_RRF_K` | `60` | RRF rank constant (higher = smoother ranking) |
 | `OGREP_HYBRID_ALPHA` | `0.7` | Alpha fusion: semantic weight (0.0-1.0) |
 
+### Reranking Configuration (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking |
+| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
+
 ### Confidence Configuration
 
 | Variable | Default | Description |
@@ -631,6 +638,67 @@ OGREP_FUSION_METHOD=alpha ogrep query "test" -n 5 --json
   }
 }
 ```
+
+## Cross-Encoder Reranking (v0.7.0+)
+
+Optional two-stage retrieval for improved precision. Cross-encoders process (query, document) pairs together, providing more accurate relevance judgments than bi-encoders.
+
+### When to Use Reranking
+
+- Right result is often in top 30 but not #1
+- Precision matters more than speed
+- AI tool integration where accuracy is critical
+
+### Installation
+
+```bash
+pip install "ogrep[rerank]"
+```
+
+### Usage
+
+```bash
+# Enable reranking (fetches top 50, reranks, returns top 10)
+ogrep query "where is authentication" --rerank --json
+
+# Rerank specific number of candidates
+ogrep query "database connection" --rerank-top 30 --json
+
+# Combine with refresh for fresh, precisely-ranked results
+ogrep query "error handling" --refresh --rerank --json
+```
+
+### How It Works
+
+1. **Fast retrieval**: Embeddings + BM25 get top N candidates (default 50)
+2. **Slow reranking**: Cross-encoder reorders candidates for precision
+3. **Return**: Top K results after reranking
+
+### JSON Stats Include Reranking Status
+
+```json
+{
+  "stats": {
+    "reranked": true,
+    "search_mode": "hybrid",
+    ...
+  }
+}
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model (~300MB) |
+| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
+
+### Performance Considerations
+
+- First rerank downloads model (~300MB)
+- Reranking adds latency (model inference per candidate)
+- Best for queries where precision > speed
+- Skip for quick lookups or exploration
 
 ## FTS5 Availability
 

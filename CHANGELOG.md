@@ -57,6 +57,47 @@ Query JSON output now includes `fusion_method` in stats to show which method was
 }
 ```
 
+#### Cross-Encoder Reranking (Optional)
+
+Add optional reranking of search results using cross-encoder models for improved precision. Cross-encoders process (query, document) pairs together, providing more accurate relevance judgments than bi-encoders (embeddings).
+
+**When to use reranking:**
+- When the right result is often in top 30 but not #1
+- When precision matters more than speed
+- For AI tool integration where accuracy is critical
+
+**Usage:**
+```bash
+# Install reranking support
+pip install "ogrep[rerank]"
+
+# Enable reranking (fetches top 50, reranks, returns top 10)
+ogrep query "where is auth" --rerank
+
+# Rerank specific number of candidates
+ogrep query "where is auth" --rerank-top 30
+```
+
+**Two-stage retrieval:**
+1. Fast retrieval: Embeddings + BM25 get top 50 candidates
+2. Slow reranking: Cross-encoder reorders for precision
+
+**Configuration:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
+| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
+
+**JSON output includes reranking status:**
+```json
+{
+  "stats": {
+    "reranked": true,
+    ...
+  }
+}
+```
+
 ### 🔧 Changed
 
 #### New Environment Variables
@@ -65,6 +106,8 @@ Query JSON output now includes `fusion_method` in stats to show which method was
 |----------|---------|-------------|
 | `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion: `rrf` (ranks) or `alpha` (scores) |
 | `OGREP_RRF_K` | `60` | RRF rank constant (higher = smoother ranking) |
+| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking |
+| `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
 
 #### Score Scale Change (Hybrid Mode)
 
@@ -78,14 +121,16 @@ This is expected—RRF scores are naturally smaller. **Confidence levels remain 
 
 - Added "Hybrid Fusion Methods" section to SKILL.md
 - Added "Search Quality R&D" section to LOCAL_EMBEDDINGS_GUIDE.md
-- Documented future R&D directions (reranking, AST-aware chunking)
-- Updated JSON output format documentation with fusion_method
+- Documented reranking feature and cross-encoder usage
+- Updated JSON output format documentation with fusion_method and reranked
 
 ### 🧪 Testing
 
 - Added 7 new tests for RRF scoring function
+- Added 13 new tests for cross-encoder reranking
 - Tests verify RRF formula, edge cases, and rank ordering
-- All 300 tests passing
+- Tests verify reranking, model caching, and confidence updates
+- All 313 tests passing
 
 ---
 
