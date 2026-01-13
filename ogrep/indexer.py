@@ -19,6 +19,17 @@ from tqdm import tqdm
 
 from .chunking import chunk_lines as chunk_text
 from .db import connect, log_history
+
+# AST chunking - optional, lazy import
+def _get_ast_chunker():
+    """Lazy import AST chunker to avoid import errors if not installed."""
+    try:
+        from .ast_chunking import chunk_ast, is_ast_available
+        if is_ast_available():
+            return chunk_ast
+    except ImportError:
+        pass
+    return None
 from .embed import embed_texts
 from .filetype import detect_file_types_batch, has_file_command
 from .models import get_model, resolve_model
@@ -745,6 +756,7 @@ def index_path(
     include: Sequence[str] = (),
     detect: bool = True,
     verbose: bool = False,
+    ast: bool = False,
 ) -> IndexStats:
     """
     Index a directory for semantic search.
@@ -773,6 +785,8 @@ def index_path(
         include: Glob patterns to include (overrides default excludes).
         detect: Use file command for MIME type detection (default True).
         verbose: Track and return paths of indexed files (default False).
+        ast: Use AST-aware chunking for semantic boundaries (default False).
+            Requires: pip install "ogrep[ast]"
 
     Returns:
         IndexStats with counts of files/chunks processed and reused.
@@ -795,6 +809,19 @@ def index_path(
     # Resolve model from arg, env, or default
     model = resolve_model(model)
     stats = IndexStats(indexed_files=[] if verbose else None)
+
+    # Initialize AST chunker if requested
+    ast_chunker = None
+    if ast:
+        ast_chunker = _get_ast_chunker()
+        if ast_chunker is None:
+            import sys
+            print(
+                "Warning: AST chunking requested but tree-sitter not available.\n"
+                "Install with: pip install 'ogrep[ast]'\n"
+                "Falling back to line-based chunking.",
+                file=sys.stderr,
+            )
 
     # Load .ogrepignore patterns and combine with CLI excludes
     ignore_patterns = load_ogrepignore(root)
@@ -852,7 +879,20 @@ def index_path(
 
         # ── Phase 3: Chunk text and compute hashes ──
         text = b.decode("utf-8", errors="ignore")
-        chunks = chunk_text(text, chunk_size=chunk_lines, overlap=overlap)
+
+        # Use AST chunking if available, with fallback to line-based
+        if ast_chunker is not None:
+            chunks = ast_chunker(
+                text,
+                filename=str(p),
+                max_chunk_lines=chunk_lines,
+            )
+            # Fall back to line-based if AST produces no chunks (unsupported language)
+            if not chunks:
+                chunks = chunk_text(text, chunk_size=chunk_lines, overlap=overlap)
+        else:
+            chunks = chunk_text(text, chunk_size=chunk_lines, overlap=overlap)
+
         if not chunks:
             continue
 

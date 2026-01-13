@@ -98,6 +98,47 @@ ogrep query "where is auth" --rerank-top 30
 }
 ```
 
+#### AST-Aware Chunking (Optional)
+
+Chunk code by **semantic boundaries** (functions, classes, methods) instead of arbitrary line counts. Uses tree-sitter for multi-language AST parsing.
+
+**Why this matters:**
+- Each chunk is a complete semantic unit (not split mid-function)
+- Better BM25 search (function names stay with their bodies)
+- Better embeddings (coherent code units)
+- No more "half of class A, half of class B" chunks
+
+**Supported languages:** Python, JavaScript, TypeScript, Go, Rust (more available with `[ast-all]`)
+
+**Usage:**
+```bash
+# Install AST support (core languages)
+pip install "ogrep[ast]"
+
+# Index with AST-aware chunking
+ogrep index . --ast
+
+# Install all supported languages
+pip install "ogrep[ast-all]"
+```
+
+**How it works:**
+```
+# Line-based chunking (default):
+Chunk 1: lines 1-60 (may split class/function)
+Chunk 2: lines 50-110 (overlapping, may split another)
+
+# AST-aware chunking (--ast):
+Chunk 1: class UserAuth (complete, lines 1-45)
+Chunk 2: def validate_token (complete, lines 47-82)
+Chunk 3: def refresh_session (complete, lines 84-120)
+```
+
+**Fallback behavior:**
+- Unsupported file types → line-based chunking
+- Parse errors → line-based chunking
+- Very large functions → split with overlap
+
 ### 🔧 Changed
 
 #### New Environment Variables

@@ -542,6 +542,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             include=args.include,
             detect=detect,
             verbose=verbose,
+            ast=getattr(args, "ast", False),
         )
     except KeyboardInterrupt:
         if use_json:

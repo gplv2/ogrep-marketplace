@@ -218,6 +218,18 @@ ogrep query "complex topic" --rerank --json
 ogrep query "..." --rerank-top 30 --json  # Rerank top 30 candidates
 ```
 
+### AST-Aware Chunking (Optional)
+
+```bash
+pip install "ogrep[ast]"  # One-time install
+
+# Index with semantic boundaries (functions/classes as chunks)
+ogrep index . --ast
+ogrep reindex . --ast  # Full rebuild with AST chunking
+```
+
+Better for codebases where functions/classes should stay together.
+
 ### Maintenance
 
 ```bash

@@ -89,6 +89,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             max_bytes=args.max_bytes,
             exclude=args.exclude,
             include=args.include,
+            ast=getattr(args, "ast", False),
         )
     except KeyboardInterrupt:
         if use_json:

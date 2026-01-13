@@ -80,6 +80,13 @@ def add_indexing_args(parser: argparse.ArgumentParser) -> None:
         help="Include patterns (override default excludes). "
         "Example: -i '*.md' to index markdown files",
     )
+    parser.add_argument(
+        "--ast",
+        action="store_true",
+        help="Use AST-aware chunking for semantic boundaries. "
+        "Chunks by function/class instead of lines. "
+        "Requires: pip install 'ogrep[ast]'",
+    )
 
 
 def add_benchmark_args(parser: argparse.ArgumentParser) -> None:
