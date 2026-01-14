@@ -9,10 +9,10 @@ from ogrep.chunking import Chunk
 # Import will fail if tree-sitter not installed - tests will skip
 try:
     from ogrep.ast_chunking import (
+        SUPPORTED_LANGUAGES,
         chunk_ast,
         get_language_for_file,
         is_ast_available,
-        SUPPORTED_LANGUAGES,
     )
 
     HAS_TREE_SITTER = is_ast_available()

@@ -7,9 +7,6 @@ Tests GPU/CPU detection for cross-encoder reranking.
 import json
 import subprocess
 import sys
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestDeviceCommand:

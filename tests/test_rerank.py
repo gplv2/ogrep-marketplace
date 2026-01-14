@@ -7,9 +7,10 @@ to improve search result ordering.
 
 import io
 import sys
-import pytest
 from dataclasses import dataclass
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # We'll test the rerank module once created
 # For now, define expected interfaces
@@ -185,7 +186,7 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.9, 0.8, 0.7]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits, top_n=3)
+            _result = rerank_results("test query", hits, top_n=3)
 
             # Should have called predict with only 3 pairs
             call_args = mock_model.predict.call_args[0][0]
@@ -230,7 +231,7 @@ class TestRerankerModel:
     def test_model_is_cached(self):
         """Model should be loaded once and cached."""
         from ogrep import rerank
-        from ogrep.rerank import _get_reranker, _clear_all_state
+        from ogrep.rerank import _clear_all_state, _get_reranker
 
         _clear_all_state()
 
@@ -260,7 +261,7 @@ class TestRerankerModel:
     def test_custom_model_from_env(self):
         """Should use model from OGREP_RERANK_MODEL env var."""
         from ogrep import rerank
-        from ogrep.rerank import _get_reranker, _clear_all_state
+        from ogrep.rerank import _clear_all_state, _get_reranker
 
         _clear_all_state()
 
@@ -338,10 +339,9 @@ class TestWarningCapture:
         """Warnings printed to stderr during model load should be captured."""
         from ogrep import rerank
         from ogrep.rerank import (
-            _get_reranker,
             _clear_all_state,
+            _get_reranker,
             get_captured_warnings,
-            clear_captured_warnings,
         )
 
         _clear_all_state()
@@ -379,13 +379,12 @@ class TestWarningCapture:
 
     def test_captured_warnings_can_be_cleared(self):
         """Captured warnings should be clearable."""
-        from ogrep.rerank import (
-            get_captured_warnings,
-            clear_captured_warnings,
-        )
-
         # Manually add a warning for testing
         import ogrep.rerank as rerank_module
+        from ogrep.rerank import (
+            clear_captured_warnings,
+            get_captured_warnings,
+        )
 
         rerank_module._captured_warnings = ["test warning"]
 
@@ -400,9 +399,8 @@ class TestWarningCapture:
 
     def test_get_captured_warnings_returns_copy(self):
         """get_captured_warnings should return a copy, not the original list."""
-        from ogrep.rerank import get_captured_warnings, clear_captured_warnings
-
         import ogrep.rerank as rerank_module
+        from ogrep.rerank import clear_captured_warnings, get_captured_warnings
 
         rerank_module._captured_warnings = ["warning1", "warning2"]
 
@@ -417,7 +415,7 @@ class TestWarningCapture:
     def test_warnings_not_printed_to_stderr_during_model_load(self):
         """Warnings should be captured, not printed to stderr."""
         from ogrep import rerank
-        from ogrep.rerank import _get_reranker, _clear_all_state
+        from ogrep.rerank import _clear_all_state, _get_reranker
 
         _clear_all_state()
 
@@ -459,9 +457,8 @@ class TestWarningCapture:
 
     def test_clear_reranker_cache_also_clears_warnings(self):
         """_clear_reranker_cache should also clear captured warnings."""
-        from ogrep.rerank import _clear_reranker_cache, get_captured_warnings
-
         import ogrep.rerank as rerank_module
+        from ogrep.rerank import _clear_reranker_cache, get_captured_warnings
 
         rerank_module._captured_warnings = ["some warning"]
         assert len(get_captured_warnings()) == 1
@@ -474,9 +471,7 @@ class TestWarningCapture:
         """Lazy import should capture CUDA warnings during sentence_transformers import."""
         from ogrep import rerank
         from ogrep.rerank import (
-            _lazy_import_crossencoder,
             _clear_all_state,
-            get_captured_warnings,
         )
 
         _clear_all_state()

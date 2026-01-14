@@ -202,7 +202,7 @@ def _format_text_output(info: dict[str, Any]) -> str:
     lines.append("")
     lines.append("── CUDA (NVIDIA GPU) ──")
     if info["cuda_available"]:
-        lines.append(f"  Available: Yes")
+        lines.append("  Available: Yes")
         lines.append(f"  CUDA version: {info.get('cuda_version', 'unknown')}")
         lines.append(f"  Device count: {info['cuda_device_count']}")
         if info["cuda_device_name"]:

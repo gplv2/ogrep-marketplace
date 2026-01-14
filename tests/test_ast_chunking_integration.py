@@ -15,7 +15,7 @@ import pytest
 
 # Skip all tests if tree-sitter not installed
 try:
-    from ogrep.ast_chunking import is_ast_available, chunk_ast, SUPPORTED_LANGUAGES
+    from ogrep.ast_chunking import SUPPORTED_LANGUAGES, chunk_ast, is_ast_available
 
     HAS_TREE_SITTER = is_ast_available()
 except ImportError:

@@ -270,4 +270,4 @@ def get_all_metadata(con: sqlite3.Connection) -> dict[str, str]:
         Dict of key-value pairs.
     """
     rows = con.execute("SELECT key, value FROM index_metadata").fetchall()
-    return {k: v for k, v in rows}
+    return dict(rows)

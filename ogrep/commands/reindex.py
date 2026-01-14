@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from pathlib import Path
 
-import sqlite3
-
-from ..db import log_history
 from ..indexer import index_path
 from ..models import get_optimal_chunk_lines, get_optimal_overlap
 from ._common import require_embedding_config, resolve_db_path

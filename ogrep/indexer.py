@@ -19,20 +19,22 @@ from tqdm import tqdm
 
 from .chunking import chunk_lines as chunk_text
 from .db import connect, log_history
+from .embed import embed_texts
+from .filetype import detect_file_types_batch, has_file_command
+from .models import get_model, resolve_model
+
 
 # AST chunking - optional, lazy import
 def _get_ast_chunker():
     """Lazy import AST chunker to avoid import errors if not installed."""
     try:
         from .ast_chunking import chunk_ast, is_ast_available
+
         if is_ast_available():
             return chunk_ast
     except ImportError:
         pass
     return None
-from .embed import embed_texts
-from .filetype import detect_file_types_batch, has_file_command
-from .models import get_model, resolve_model
 
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {

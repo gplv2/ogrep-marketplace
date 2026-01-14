@@ -238,7 +238,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
     best_chunk = 60  # default
     best_accuracy = 0.0
 
-    for chunk_size, accuracy, hits in results:
+    for chunk_size, accuracy, _hits in results:
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_chunk = chunk_size

@@ -48,7 +48,7 @@ _reranker_model: Any = None
 _captured_warnings: list[str] = []
 
 if TYPE_CHECKING:
-    from .search import Hit
+    pass
 
 
 @contextmanager
@@ -341,7 +341,7 @@ def rerank_results(
 
     # Create reranked hits with updated scores
     scored_hits = []
-    for hit, score in zip(candidates, scores):
+    for hit, score in zip(candidates, scores, strict=False):
         confidence = _compute_confidence(score, top_score)
 
         # Create new hit with updated score and confidence
