@@ -1175,17 +1175,17 @@ ogrep query "database connection" --rerank-top 30 --json
 
 **Note**: Reranking is independent of embedding models—you can use OpenAI embeddings for retrieval and a local reranker for precision.
 
-### AST-Aware Chunking (Future Research)
+### AST-Aware Chunking (Implemented v0.7.0)
 
-Current chunking is line-based with overlap. This can split semantic units:
+Line-based chunking can split semantic units awkwardly:
 ```
-Current chunk boundary:
+Line-based chunk boundary:
   └── End of Class A
   └── Start of Class B  ← Semantic mixing
   └── Beginning of method B.foo()
 ```
 
-**AST-aware chunking** would split at function/class boundaries:
+**AST-aware chunking** splits at function/class boundaries:
 ```
 AST-aware chunks:
   Chunk 1: ClassA (complete)
@@ -1193,17 +1193,67 @@ AST-aware chunks:
   Chunk 3: ClassB.bar() method
 ```
 
-**Benefits**:
-- Each chunk is semantically coherent
-- Better BM25 (function names not split)
-- Enables symbol index ("who calls X?")
+#### Installation
 
-**Challenges**:
-- Requires parsing (tree-sitter, LSP)
-- Multi-language support complexity
-- Large functions still need splitting
+AST chunking requires tree-sitter parsers, which are **optional heavy dependencies**:
 
-This is under consideration for future releases.
+```bash
+# Base ogrep install
+pip install ogrep          # ~2 MB, 3 deps (openai, python-dotenv, tqdm)
+
+# With AST support
+pip install "ogrep[ast]"   # ~50+ MB, adds 6 native C libraries
+```
+
+**Why optional:**
+
+1. **Native compilation** - tree-sitter packages contain compiled C code, can fail on some platforms
+2. **Size** - Each language parser is 5-15 MB of compiled binaries
+3. **Not always needed** - Line-based chunking works well for 90% of use cases
+4. **Install time** - Compiling native extensions takes longer
+
+#### Supported Languages
+
+| Package | Languages | Install |
+|---------|-----------|---------|
+| `ogrep[ast]` | Python, JavaScript, TypeScript, Go, Rust | Core languages |
+| `ogrep[ast-all]` | + Ruby, Java, C, C++, C#, Bash | All supported |
+
+**Language-specific features:**
+
+| Language | Parsed Units |
+|----------|--------------|
+| **Python** | Functions, classes, methods |
+| **JavaScript** | Function declarations, arrow functions, class declarations |
+| **TypeScript** | Same as JavaScript + type annotations |
+| **Go** | Function declarations, method declarations, type declarations |
+| **Rust** | Impl blocks, struct definitions, functions |
+
+#### Usage
+
+```bash
+# Index with AST-aware chunking
+ogrep index . --ast
+
+# Check what mode was used
+ogrep status
+# Shows: Chunk mode: ast (if AST was used)
+```
+
+#### Line-Based vs AST-Aware Chunking
+
+| Chunking | Pros | Cons |
+|----------|------|------|
+| **Line-based** (default) | Fast, no deps, works everywhere | May split functions mid-way |
+| **AST-aware** (`--ast`) | Semantic boundaries, better search | Heavy deps, limited languages |
+
+**Recommendation:** Most users get excellent results with line-based chunking (60 lines, 10 overlap). Use `--ast` when you want perfect function/class boundaries and are working primarily in supported languages.
+
+#### Fallback Behavior
+
+- **Unsupported languages**: Falls back to line-based chunking automatically
+- **Parse errors**: Falls back to line-based chunking for that file
+- **Large functions**: Split at logical points if they exceed chunk size limits
 
 ---
 
