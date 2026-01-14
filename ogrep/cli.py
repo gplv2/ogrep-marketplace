@@ -42,6 +42,7 @@ from .commands import (
     cmd_chunk,
     cmd_clean,
     cmd_delete,
+    cmd_device,
     cmd_health,
     cmd_index,
     cmd_log,
@@ -419,6 +420,24 @@ def _add_models_command(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_models)
 
 
+def _add_device_command(sub: argparse._SubParsersAction) -> None:
+    """Add the 'device' subcommand."""
+    p = sub.add_parser(
+        "device",
+        help="Check GPU/CPU capabilities for reranking",
+        description=(
+            "Detect hardware acceleration support (CUDA, MPS) for cross-encoder reranking. "
+            "This command loads PyTorch to detect GPU capabilities."
+        ),
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+    p.set_defaults(func=cmd_device)
+
+
 def _add_tune_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'tune' subcommand."""
     p = sub.add_parser(
@@ -498,6 +517,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_status_command(sub)
     _add_health_command(sub)
     _add_models_command(sub)
+    _add_device_command(sub)
     _add_tune_command(sub)
     _add_benchmark_command(sub)
 

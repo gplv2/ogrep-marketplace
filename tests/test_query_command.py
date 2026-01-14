@@ -930,3 +930,148 @@ class TestFormatTextOutput:
             0
         ]
         assert len(snippet_line.strip()) <= 242  # "  " prefix + 240 chars
+
+
+class TestRerankGracefulDegradation:
+    """Tests for rerank graceful degradation behavior."""
+
+    def test_json_includes_rerank_requested(self, temp_dir: Path, capsys) -> None:
+        """JSON output should include rerank_requested field."""
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+        # Create and index a file
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+        index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
+
+        # Query without rerank
+        args = argparse.Namespace(
+            query="hello",
+            top=5,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,
+            rerank_top=None,
+        )
+
+        cmd_query(args)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        assert "stats" in output
+        assert output["stats"]["rerank_requested"] is False
+        assert output["stats"]["reranked"] is False
+
+    def test_json_includes_rerank_skipped_when_unavailable(
+        self, temp_dir: Path, capsys, monkeypatch
+    ) -> None:
+        """JSON output should include rerank_skipped when reranking fails."""
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+        # Create and index a file
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+        index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
+
+        # Mock is_reranker_available to return False
+        def mock_unavailable():
+            return False
+
+        # Query with rerank but mock it as unavailable
+        args = argparse.Namespace(
+            query="hello",
+            top=5,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=True,
+            rerank_top=None,
+        )
+
+        # Patch the reranker availability check
+        import ogrep.rerank as rerank_module
+
+        original_is_available = rerank_module.is_reranker_available
+        monkeypatch.setattr(rerank_module, "is_reranker_available", mock_unavailable)
+
+        try:
+            cmd_query(args)
+        finally:
+            monkeypatch.setattr(rerank_module, "is_reranker_available", original_is_available)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Should still have results (graceful degradation)
+        assert "results" in output
+
+        # Should indicate rerank was requested but skipped
+        assert output["stats"]["rerank_requested"] is True
+        assert output["stats"]["reranked"] is False
+        assert output["stats"].get("rerank_skipped") is True
+        assert "not installed" in output["stats"].get("rerank_skip_reason", "")
+
+        # Should have a suggestion
+        assert "suggestion" in output
+
+    def test_results_returned_even_when_rerank_unavailable(
+        self, temp_dir: Path, capsys, monkeypatch
+    ) -> None:
+        """Results should be returned even when reranking is unavailable."""
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+
+        # Create and index a file with content
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def search_function(): return 'found'")
+        index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
+
+        # Mock is_reranker_available to return False
+        def mock_unavailable():
+            return False
+
+        args = argparse.Namespace(
+            query="search function",
+            top=5,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=True,
+            rerank_top=None,
+        )
+
+        import ogrep.rerank as rerank_module
+
+        original_is_available = rerank_module.is_reranker_available
+        monkeypatch.setattr(rerank_module, "is_reranker_available", mock_unavailable)
+
+        try:
+            cmd_query(args)
+        finally:
+            monkeypatch.setattr(rerank_module, "is_reranker_available", original_is_available)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Should have results despite rerank failure
+        assert len(output["results"]) > 0
+        assert output["stats"]["total_results"] > 0

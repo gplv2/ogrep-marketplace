@@ -28,6 +28,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from ..search import FUSION_METHOD, Hit
 from ..search import query as query_db
@@ -324,17 +325,43 @@ def cmd_query(args: argparse.Namespace) -> int:
 
     # Apply reranking if requested
     reranked = False
+    rerank_skipped = False
+    rerank_skip_reason: str | None = None
+    rerank_warnings: list[str] = []
+
     if do_rerank and hits:
         try:
-            from ..rerank import is_reranker_available, rerank_results
+            from ..rerank import (
+                clear_captured_warnings,
+                get_captured_warnings,
+                is_reranker_available,
+                rerank_results,
+            )
 
             if is_reranker_available():
                 rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
-                hits = rerank_results(query_text, hits, top_n=rerank_n)
-                # Trim to requested number after reranking
-                hits = hits[: args.top]
-                reranked = True
+                try:
+                    hits = rerank_results(query_text, hits, top_n=rerank_n)
+                    # Trim to requested number after reranking
+                    hits = hits[: args.top]
+                    reranked = True
+
+                    # Collect any warnings from reranker initialization (CUDA, etc.)
+                    rerank_warnings = get_captured_warnings()
+                    clear_captured_warnings()
+                except Exception as e:
+                    # Reranking failed at runtime - fall back to non-reranked results
+                    rerank_skipped = True
+                    rerank_skip_reason = f"Reranking failed: {e}"
+                    rerank_warnings = get_captured_warnings()
+                    clear_captured_warnings()
+                    if not use_json:
+                        print(f"Warning: {rerank_skip_reason}", file=sys.stderr)
+                        print("Returning results without reranking.", file=sys.stderr)
             else:
+                # sentence-transformers not installed
+                rerank_skipped = True
+                rerank_skip_reason = "sentence-transformers not installed"
                 if not use_json:
                     print(
                         "Warning: Reranking requested but sentence-transformers not installed.",
@@ -344,23 +371,16 @@ def cmd_query(args: argparse.Namespace) -> int:
                         "Install with: pip install 'ogrep[rerank]'",
                         file=sys.stderr,
                     )
+                    print("Returning results without reranking.", file=sys.stderr)
         except ImportError as e:
+            # Import failed - fall back to non-reranked results
+            rerank_skipped = True
+            rerank_skip_reason = f"Import error: {e}"
             if not use_json:
                 print(f"Warning: Reranking unavailable: {e}", file=sys.stderr)
+                print("Returning results without reranking.", file=sys.stderr)
 
     search_time_ms = int((time.perf_counter() - start_time) * 1000)
-
-    # Warn if FTS5 was requested but not available
-    if search_mode in ("hybrid", "fulltext") and not fts_available:
-        if not use_json:
-            print(
-                "Warning: FTS5 index not available, using semantic search only.",
-                file=sys.stderr,
-            )
-            print(
-                "Run 'ogrep reindex .' to enable hybrid search.",
-                file=sys.stderr,
-            )
 
     # Get total chunk count for stats (model/dim already fetched above)
     con = sqlite3.connect(str(db))
@@ -368,6 +388,17 @@ def cmd_query(args: argparse.Namespace) -> int:
         total_chunks = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     finally:
         con.close()
+
+    # Collect all warnings for structured output
+    all_warnings: list[str] = []
+    all_warnings.extend(rerank_warnings)
+
+    # Add FTS5 warning if applicable
+    if search_mode in ("hybrid", "fulltext") and not fts_available:
+        all_warnings.append(
+            "FTS5 index not available, using semantic search only. "
+            "Run 'ogrep reindex .' to enable hybrid search."
+        )
 
     if use_json:
         # Build JSON output using helper
@@ -378,7 +409,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         for h in hits:
             confidence_summary[h.confidence] += 1
 
-        output = {
+        output: dict[str, Any] = {
             "query": query_text,
             "results": results,
             "stats": {
@@ -388,6 +419,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "search_mode": search_mode or "hybrid",
                 "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
                 "reranked": reranked,
+                "rerank_requested": do_rerank,
                 "fts_available": fts_available,
                 "index_model": index_model,
                 "index_dimensions": index_dim,
@@ -395,6 +427,30 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "confidence_summary": confidence_summary,
             },
         }
+
+        # Add rerank skip info if reranking was requested but couldn't be performed
+        if rerank_skipped:
+            output["stats"]["rerank_skipped"] = True
+            output["stats"]["rerank_skip_reason"] = rerank_skip_reason
+
+            # Build suggestion based on skip reason
+            if "not installed" in (rerank_skip_reason or ""):
+                output["suggestion"] = (
+                    "Reranking requires sentence-transformers. "
+                    "Install with: pip install 'ogrep[rerank]' "
+                    "Or remove --rerank flag to avoid this warning."
+                )
+            else:
+                output["suggestion"] = (
+                    "Reranking failed on this device. Results returned without reranking. "
+                    "Run 'ogrep device' to check hardware support. "
+                    "Consider removing --rerank flag for this device."
+                )
+
+        # Add warnings if any (includes CUDA, FTS5, reranker issues)
+        if all_warnings:
+            output["warnings"] = all_warnings
+
         # Add AST mode info if available
         if index_ast_mode is not None:
             output["stats"]["ast_mode"] = index_ast_mode
@@ -405,6 +461,10 @@ def cmd_query(args: argparse.Namespace) -> int:
                 )
         print(json.dumps(output, indent=2))
     else:
+        # Print warnings first for text output (to stderr)
+        for warning in all_warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+
         # Human-readable output using helper
         _format_text_output(hits)
 
