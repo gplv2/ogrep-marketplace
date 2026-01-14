@@ -76,6 +76,7 @@ All commands support `--json` for structured output (AI tool integration).
 | `ogrep reindex .` | Rebuild index (enables FTS5) | `--json` |
 | `ogrep clean --vacuum` | Remove stale entries | `--json` |
 | `ogrep models` | List available models | `--json` |
+| `ogrep device` | Check GPU/CPU for reranking | `--json` |
 | `ogrep tune .` | Auto-tune chunk size | `--json` |
 | `ogrep benchmark .` | Compare all models | `--json` |
 
@@ -101,6 +102,10 @@ ogrep health --json
 # Models as JSON
 ogrep models --json
 # {"models":[{"id":"text-embedding-3-small","dimensions":1536,...}],...}
+
+# Device (GPU/CPU) as JSON
+ogrep device --json
+# {"rerank_available":true,"device":"cuda","cuda_available":true,...}
 ```
 
 ## AI Tool Integration (IMPORTANT)
@@ -152,6 +157,55 @@ ogrep chunk "src/auth.py:2"              # Get chunk by ref (from query results)
 ogrep chunk "src/auth.py:2" --before 1   # + 1 chunk before
 ogrep chunk "src/auth.py:2" --context 1  # + 1 before AND after
 ```
+
+### Reranking (Cross-Encoder)
+
+For improved result ordering, use `--rerank` to apply cross-encoder reranking:
+
+```bash
+ogrep query "authentication" --rerank           # Rerank top 50 candidates
+ogrep query "authentication" --rerank-top 30    # Rerank top 30 candidates
+```
+
+**Two-stage retrieval pattern:**
+1. **Fast retrieval**: Embeddings + BM25 find top 50-100 candidates (fast, pre-computed)
+2. **Slow reranking**: Cross-encoder scores (query, document) pairs (accurate, slower)
+
+**Requirements:**
+```bash
+pip install "ogrep[rerank]"  # Installs sentence-transformers + dependencies
+```
+
+**Check hardware support:**
+```bash
+ogrep device           # Show GPU/CPU capabilities
+ogrep device --json    # JSON output for scripting
+```
+
+#### GPU/CPU Usage
+
+Cross-encoder models are computationally intensive:
+
+| Hardware | Performance | Notes |
+|----------|-------------|-------|
+| **NVIDIA GPU (CUDA)** | ~10x faster | Requires CUDA 12.x drivers |
+| **Apple Silicon (MPS)** | ~3-5x faster | Automatic on macOS 12.3+ |
+| **CPU only** | Baseline | Works but slower, may cause high CPU usage |
+
+**CPU fallback behavior:**
+- If no GPU is available, PyTorch falls back to CPU automatically
+- First query is slower (model loading), subsequent queries use cached model
+- On CPU, expect 2-5 seconds per query depending on result count
+
+**GPU driver warnings:**
+- If you see CUDA driver warnings, they're captured and included in JSON output
+- Use `ogrep query ... --json` to see warnings in structured `"warnings"` field
+- Example warning: "CUDA initialization: The NVIDIA driver is too old"
+
+**Recommendations:**
+- For interactive use on CPU: limit `--rerank-top` to 20-30 for faster response
+- For batch processing: higher `--rerank-top` values are fine
+- Without GPU: consider using `--mode hybrid` without `--rerank` for faster results
 
 ### Claude Code Hooks (Alternative)
 

@@ -16,6 +16,7 @@ Commands:
     - models: List available embedding models
     - tune: Auto-tune chunk size for optimal relevance
     - benchmark: Compare all embedding models
+    - device: Check GPU/CPU capabilities for reranking
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from .benchmark import cmd_benchmark
 from .chunk import cmd_chunk
 from .clean import cmd_clean
 from .delete import cmd_delete
+from .device import cmd_device
 from .health import cmd_health
 from .index import cmd_index
 from .log import cmd_log
@@ -39,6 +41,7 @@ __all__ = [
     "cmd_chunk",
     "cmd_clean",
     "cmd_delete",
+    "cmd_device",
     "cmd_health",
     "cmd_index",
     "cmd_log",
