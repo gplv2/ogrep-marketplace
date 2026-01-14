@@ -138,7 +138,14 @@ def add_benchmark_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Output results as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    parser.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     parser.add_argument(
         "--verbose",

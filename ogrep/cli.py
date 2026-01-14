@@ -4,18 +4,22 @@ Command-line interface for ogrep.
 Semantic grep for codebases — search by meaning, not just keywords.
 Supports hybrid (semantic + keyword), pure semantic, or FTS5 fulltext modes.
 
+All commands output JSON by default for AI/machine use.
+Use --no-json for human-readable text output.
+
 Usage:
     ogrep index .                           # Index current directory
     ogrep query "search text"               # Search (hybrid mode)
     ogrep query "text" --mode semantic      # Pure semantic search
     ogrep query "text" --mode fulltext      # Keyword search (FTS5)
-    ogrep query "text" --json               # JSON output for AI tools
+    ogrep query "text" --no-json            # Human-readable output
     ogrep chunk "path:N" -C 1               # Get chunk with context
     ogrep status                            # Show index statistics
     ogrep reset --force                     # Delete index
     ogrep reindex .                         # Rebuild (enables FTS5)
     ogrep clean --vacuum                    # Remove stale entries
     ogrep models                            # List available models
+    ogrep device                            # Check GPU/CPU for reranking
     ogrep tune .                            # Auto-tune chunk size
     ogrep benchmark .                       # Compare all models
 
@@ -86,7 +90,14 @@ def _add_index_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.add_argument(
         "--verbose",
@@ -123,8 +134,14 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output results as JSON (full text, structured metadata). "
-        "Recommended for AI tools and programmatic use.",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.add_argument(
         "--mode",
@@ -192,7 +209,14 @@ def _add_chunk_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON (default, included for consistency with query)",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_chunk)
 
@@ -214,7 +238,14 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_reset)
 
@@ -233,7 +264,14 @@ def _add_reindex_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_reindex)
 
@@ -254,7 +292,14 @@ def _add_clean_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_clean)
 
@@ -289,7 +334,14 @@ def _add_delete_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_delete)
 
@@ -357,7 +409,14 @@ def _add_status_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_status)
 
@@ -400,7 +459,14 @@ def _add_health_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_health)
 
@@ -415,7 +481,14 @@ def _add_models_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_models)
 
@@ -433,7 +506,14 @@ def _add_device_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_device)
 
@@ -469,7 +549,14 @@ def _add_tune_command(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Output as JSON",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
     )
     p.set_defaults(func=cmd_tune)
 
@@ -497,10 +584,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ogrep",
         description="Semantic grep for codebases. Search by meaning, not just keywords. "
-        "Supports hybrid (semantic + keyword), pure semantic, or FTS5 fulltext modes.",
+        "Supports hybrid (semantic + keyword), pure semantic, or FTS5 fulltext modes. "
+        "JSON output is default for AI/machine use. Use --no-json for human-readable output.",
         epilog="Search modes: --mode hybrid (default), semantic, fulltext. "
-        "Run 'ogrep models' to see embedding models. "
-        "Use --json for AI tool integration.",
+        "Run 'ogrep models' to see embedding models.",
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="command")

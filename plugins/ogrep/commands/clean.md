@@ -1,7 +1,7 @@
 ---
 description: Remove stale entries from the index (files that no longer exist)
 allowed-tools: Bash
-argument-hint: [--vacuum] [--json]
+argument-hint: [--vacuum] [--no-json]
 ---
 
 Clean up the index by removing entries for files that have been deleted.
@@ -9,14 +9,14 @@ Clean up the index by removing entries for files that have been deleted.
 ## Commands
 
 ```bash
-# Clean stale entries
+# Clean stale entries (JSON output is default)
 ogrep clean
 
 # Clean and compact database
 ogrep clean --vacuum
 
-# Clean with JSON output
-ogrep clean --json
+# Clean with human-readable output
+ogrep clean --no-json
 ```
 
 ## Flags
@@ -24,7 +24,7 @@ ogrep clean --json
 | Flag | Description |
 |------|-------------|
 | `--vacuum` | Compact the SQLite database after cleaning |
-| `--json` | Output results as JSON |
+| `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
 
 ## JSON Output
 

@@ -1,7 +1,7 @@
 ---
 description: Show ogrep index status and statistics
 allowed-tools: Bash
-argument-hint: [--json]
+argument-hint: [--no-json]
 ---
 
 Display information about the current index including file count, chunk count, model used, and database size.
@@ -9,16 +9,16 @@ Display information about the current index including file count, chunk count, m
 ## Commands
 
 ```bash
-# Show status (human readable)
+# Show status (JSON is default)
 ogrep status
 
-# Show status as JSON (for AI tool integration)
-ogrep status --json
+# Show status as human-readable text
+ogrep status --no-json
 ```
 
 ## JSON Output
 
-When using `--json`, returns structured data:
+JSON is the default output format:
 
 ```json
 {

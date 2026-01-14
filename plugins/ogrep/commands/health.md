@@ -1,7 +1,7 @@
 ---
 description: Show database health diagnostics and repair options
 allowed-tools: Bash
-argument-hint: [--vacuum] [--rebuild-fts] [--integrity] [--full] [--json]
+argument-hint: [--vacuum] [--rebuild-fts] [--integrity] [--full] [--no-json]
 ---
 
 Display comprehensive database diagnostics including table sizes, indexes, SQLite info, FTS5 stats, and integrity checks.
@@ -9,11 +9,11 @@ Display comprehensive database diagnostics including table sizes, indexes, SQLit
 ## Commands
 
 ```bash
-# Full diagnostic output
+# Full diagnostic output (JSON is default)
 ogrep health
 
-# With JSON output (for AI tool integration)
-ogrep health --json
+# With human-readable output
+ogrep health --no-json
 ```
 
 ## Repair Options
@@ -24,7 +24,7 @@ ogrep health --json
 | `--rebuild-fts` | Drop and rebuild FTS5 full-text index |
 | `--integrity` | Run full integrity check (slow on large DBs) |
 | `--full` | All repairs: vacuum + rebuild-fts + integrity |
-| `--json` | Output results as JSON |
+| `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
 
 ## JSON Output
 

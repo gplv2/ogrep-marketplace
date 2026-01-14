@@ -1,7 +1,7 @@
 ---
 description: Index the current repository for semantic search (creates .ogrep/index.sqlite)
 allowed-tools: Bash
-argument-hint: [path] [--list] [--no-detect] [--json]
+argument-hint: [path] [--list] [--no-detect] [--no-json]
 ---
 
 Run indexing with ogrep. If no path is provided, index the current directory.
@@ -9,7 +9,7 @@ Run indexing with ogrep. If no path is provided, index the current directory.
 ## Commands
 
 ```bash
-# Index current directory
+# Index current directory (JSON output is default)
 ogrep index ${1:-.}
 
 # Preview files before indexing (recommended for new repos)
@@ -18,8 +18,8 @@ ogrep index ${1:-.} --list
 # Index without MIME detection (faster)
 ogrep index ${1:-.} --no-detect
 
-# Index with JSON output (for AI tool integration)
-ogrep index ${1:-.} --json
+# Index with human-readable output
+ogrep index ${1:-.} --no-json
 ```
 
 ## Flags
@@ -28,13 +28,13 @@ ogrep index ${1:-.} --json
 |------|-------------|
 | `--list`, `-l` | Preview files with detection results (dry run) |
 | `--no-detect` | Disable MIME type detection (faster, null-byte only) |
-| `--json` | Output results as JSON (structured metadata) |
+| `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
 | `-e PATTERN` | Add exclude patterns |
 | `-i PATTERN` | Include patterns (override excludes) |
 
 ## JSON Output
 
-When using `--json`, returns structured data:
+JSON is the default output format:
 
 ```json
 {

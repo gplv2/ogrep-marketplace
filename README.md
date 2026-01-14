@@ -13,9 +13,13 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ---
 
-## What's New in v0.7.0
+## What's New in v0.7.2
 
-### Major Features
+### Breaking Change (v0.7.2)
+
+- **JSON Output is Now Default** — All commands output JSON by default for AI/machine use. Use `--no-json` for human-readable text output. The `--json` flag is still accepted for backwards compatibility.
+
+### Major Features (v0.7.0+)
 
 - **AST-Aware Chunking** — Use `--ast` to chunk code by function/class/method boundaries instead of arbitrary line counts. This produces semantically coherent chunks that dramatically improve search accuracy for code-related queries.
 
@@ -29,13 +33,12 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 - **Index Change History** — Track what changed with `ogrep log`, useful for AI tool integration
 - **Fusion Method in JSON** — Query stats now include `fusion_method` to show which method was used
-- **Better AI Tool Support** — Always use `--json` for structured output (see [AI Tool Integration](#ai-tool-integration))
+- **Graceful Degradation** — Works reliably with or without optional features (reranking, FTS5, GPU, AST)
 
 ### Recent (v0.6.x)
 
 - Cross-file chunk deduplication (up to 80% embedding cost savings)
 - Relative confidence scoring (compares to top result, not fixed thresholds)
-- JSON output for all commands (`--json` flag)
 - Graceful Ctrl-C handling with recovery messages
 
 ---
@@ -267,12 +270,13 @@ export OGREP_HYBRID_ALPHA=0.7  # 70% semantic, 30% keyword
 
 ## AI Tool Integration
 
-**Always use `--json` when calling ogrep from AI tools, scripts, or programmatic contexts.**
+**All commands output JSON by default** — optimized for AI tools, scripts, and programmatic contexts.
+Use `--no-json` for human-readable text output.
 
-### JSON Output
+### JSON Output (Default)
 
 ```bash
-ogrep query "database connections" --json
+ogrep query "database connections"
 ```
 
 ```json
@@ -323,7 +327,7 @@ When querying an index built without AST chunking, JSON output includes a hint:
 ### Status Check
 
 ```bash
-ogrep status --json
+ogrep status
 ```
 
 ```json
@@ -343,14 +347,16 @@ ogrep status --json
 
 ### For Claude Code Skills
 
-The Claude Code Skill should always use:
-- `--json` for structured output
-- `--refresh` to ensure results reflect current codebase state
+JSON output is now the default. The Claude Code Skill should:
+- Use `--refresh` to ensure results reflect current codebase state
 - Check `stats.ast_mode` and suggest `ogrep reindex . --ast` if false
+- Use `--no-json` only if human-readable output is needed
 
 ---
 
 ## CLI Commands
+
+All commands output JSON by default. Use `--no-json` for human-readable text.
 
 | Command | Description |
 |---------|-------------|
@@ -359,16 +365,17 @@ The Claude Code Skill should always use:
 | `ogrep index . --list` | Preview files before indexing |
 | `ogrep query "text" -n 10` | Search (hybrid mode by default) |
 | `ogrep query "text" --rerank` | Search with cross-encoder reranking |
-| `ogrep query "text" --json` | JSON output for AI tools |
+| `ogrep query "text" --no-json` | Human-readable output |
 | `ogrep query "text" --mode semantic` | Pure semantic search |
 | `ogrep query "text" --mode fulltext` | Keyword search (FTS5) |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index statistics |
-| `ogrep status --json` | Status as JSON |
+| `ogrep device` | Check GPU/CPU for reranking |
 | `ogrep health` | Full database diagnostics |
 | `ogrep health --vacuum` | Reclaim space and defragment |
 | `ogrep health --full` | Vacuum + rebuild FTS5 + integrity check |
 | `ogrep log` | Show index change history |
+| `ogrep delete "path"` | Remove files from index |
 | `ogrep reset -f` | Delete index |
 | `ogrep reindex . --ast` | Rebuild with AST chunking |
 | `ogrep clean --vacuum` | Remove stale entries |
@@ -684,8 +691,8 @@ ogrep query "where is user authentication handled?" -n 10
 # Find error handling
 ogrep query "how are API errors handled?" -n 15 --rerank
 
-# Find database operations (with AST index)
-ogrep query "database connection and queries" -n 10 --json
+# Find database operations
+ogrep query "database connection and queries" -n 10
 
 # Find specific patterns
 ogrep query "recursive file scanning" -n 5

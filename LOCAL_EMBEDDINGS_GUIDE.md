@@ -1164,11 +1164,14 @@ The reranker sees query AND chunk together, enabling fine-grained relevance scor
 # Install reranking support
 pip install "ogrep[rerank]"
 
-# Enable reranking
-ogrep query "where is authentication" --rerank --json
+# Enable reranking (JSON output is default)
+ogrep query "where is authentication" --rerank
 
 # Rerank specific number of candidates
-ogrep query "database connection" --rerank-top 30 --json
+ogrep query "database connection" --rerank-top 30
+
+# Human-readable text output
+ogrep query "database connection" --rerank --no-json
 ```
 
 **Default model**: `BAAI/bge-reranker-v2-m3` (~300MB, downloads on first use)
@@ -1279,6 +1282,6 @@ Found different results with other models or codebases? Please share your findin
 
 ### How to Contribute Results
 
-1. Run `ogrep benchmark . --samples 10 --json > results.json`
+1. Run `ogrep benchmark . --samples 10 > results.json` (JSON is default)
 2. Open an issue with your results and codebase characteristics
 3. Include: language mix, average file size, function density
