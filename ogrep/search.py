@@ -555,15 +555,11 @@ def query(
                 score = _rrf_score(sem_rank, fts_rank, k=RRF_K)
             else:
                 # Alpha fusion: combine by scores (legacy)
-                sem_score = next(
-                    (s for s, cid, *_ in semantic_results if cid == chunk_id), 0.0
-                )
+                sem_score = next((s for s, cid, *_ in semantic_results if cid == chunk_id), 0.0)
                 fts_score = fts_scores.get(chunk_id, 0.0)
                 score = HYBRID_ALPHA * sem_score + (1 - HYBRID_ALPHA) * fts_score
 
-            scored_results.append(
-                (score, chunk_id, chunk_idx, path, sl, el, text)
-            )
+            scored_results.append((score, chunk_id, chunk_idx, path, sl, el, text))
     else:
         # Semantic-only mode: use semantic scores directly
         scored_results = list(semantic_results)

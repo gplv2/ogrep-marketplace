@@ -225,9 +225,7 @@ def cmd_query(args: argparse.Namespace) -> int:
     index_ast_mode = None
     try:
         con = sqlite3.connect(str(db))
-        ast_row = con.execute(
-            "SELECT value FROM index_metadata WHERE key = 'ast_mode'"
-        ).fetchone()
+        ast_row = con.execute("SELECT value FROM index_metadata WHERE key = 'ast_mode'").fetchone()
         if ast_row:
             index_ast_mode = ast_row[0] == "true"
         con.close()

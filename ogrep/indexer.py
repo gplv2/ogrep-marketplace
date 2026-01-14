@@ -36,6 +36,7 @@ def _get_ast_chunker():
         pass
     return None
 
+
 #: Directories to skip during indexing (version control, dependencies, caches)
 DEFAULT_SKIP_DIRS = {
     ".git",
@@ -818,6 +819,7 @@ def index_path(
         ast_chunker = _get_ast_chunker()
         if ast_chunker is None:
             import sys
+
             print(
                 "Warning: AST chunking requested but tree-sitter not available.\n"
                 "Install with: pip install 'ogrep[ast]'\n"
@@ -836,6 +838,7 @@ def index_path(
 
     # Store AST mode in metadata (tracks how index was built)
     from .db import set_metadata
+
     ast_mode_effective = "true" if (ast and ast_chunker is not None) else "false"
     set_metadata(con, "ast_mode", ast_mode_effective)
 
@@ -843,12 +846,14 @@ def index_path(
     expected_dim = _get_expected_dimension(con, model, dimensions)
 
     # ── Discovery phase: scan filesystem for candidate files ──
-    files = list(tqdm(
-        iter_files(root, exclude=all_exclude, include=include),
-        desc="Scanning",
-        unit=" files",
-        leave=False,
-    ))
+    files = list(
+        tqdm(
+            iter_files(root, exclude=all_exclude, include=include),
+            desc="Scanning",
+            unit=" files",
+            leave=False,
+        )
+    )
     stats.files_scanned = len(files)
 
     # ── Detection phase: check file types via MIME ──
@@ -929,7 +934,9 @@ def index_path(
         try:
             con.execute("BEGIN IMMEDIATE")
             file_id = _upsert_file_record(con, rel, st.st_mtime_ns, st.st_size, sha, existing_row)
-            _store_chunks(con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model)
+            _store_chunks(
+                con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model
+            )
             con.execute("COMMIT")
         except Exception:
             con.execute("ROLLBACK")

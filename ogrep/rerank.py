@@ -221,8 +221,7 @@ def _get_reranker(model_name: str | None = None) -> Any:
 
     if CrossEncoder is None:
         raise ImportError(
-            "Reranking requires sentence-transformers. "
-            "Install with: pip install 'ogrep[rerank]'"
+            "Reranking requires sentence-transformers. Install with: pip install 'ogrep[rerank]'"
         )
 
     model = model_name or os.environ.get("OGREP_RERANK_MODEL", DEFAULT_RERANK_MODEL)

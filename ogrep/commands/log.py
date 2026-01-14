@@ -130,13 +130,19 @@ def cmd_log(args: argparse.Namespace) -> int:
 
         if not table_check:
             if use_json:
-                print(json.dumps({
-                    "error": "History table not found. Run 'ogrep reindex .' to upgrade database.",
-                    "hint": "AI TOOL: The database schema is outdated. Reindex to enable history tracking."
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "error": "History table not found. Run 'ogrep reindex .' to upgrade database.",
+                            "hint": "AI TOOL: The database schema is outdated. Reindex to enable history tracking.",
+                        }
+                    )
+                )
             else:
                 print("History table not found.")
-                print("Run 'ogrep reindex .' to upgrade database schema and enable history tracking.")
+                print(
+                    "Run 'ogrep reindex .' to upgrade database schema and enable history tracking."
+                )
             con.close()
             return 1
 
@@ -151,7 +157,14 @@ def cmd_log(args: argparse.Namespace) -> int:
                 params.append(dt.strftime("%Y-%m-%d %H:%M:%S"))
             else:
                 if use_json:
-                    print(json.dumps({"error": f"Invalid datetime format: {since}", "expected": "ISO8601 (e.g., 2024-01-15T10:30:00)"}))
+                    print(
+                        json.dumps(
+                            {
+                                "error": f"Invalid datetime format: {since}",
+                                "expected": "ISO8601 (e.g., 2024-01-15T10:30:00)",
+                            }
+                        )
+                    )
                 else:
                     print(f"Invalid datetime format: {since}")
                     print("Expected ISO8601 format, e.g.: 2024-01-15T10:30:00")
@@ -165,7 +178,14 @@ def cmd_log(args: argparse.Namespace) -> int:
                 params.append(dt.strftime("%Y-%m-%d %H:%M:%S"))
             else:
                 if use_json:
-                    print(json.dumps({"error": f"Invalid datetime format: {until}", "expected": "ISO8601 (e.g., 2024-01-15T10:30:00)"}))
+                    print(
+                        json.dumps(
+                            {
+                                "error": f"Invalid datetime format: {until}",
+                                "expected": "ISO8601 (e.g., 2024-01-15T10:30:00)",
+                            }
+                        )
+                    )
                 else:
                     print(f"Invalid datetime format: {until}")
                 con.close()
@@ -194,14 +214,16 @@ def cmd_log(args: argparse.Namespace) -> int:
                 except json.JSONDecodeError:
                     details = row["details"]
 
-            entries.append({
-                "id": row["id"],
-                "timestamp": row["timestamp"],
-                "action": row["action"],
-                "files_affected": row["files_affected"],
-                "chunks_affected": row["chunks_affected"],
-                "details": details,
-            })
+            entries.append(
+                {
+                    "id": row["id"],
+                    "timestamp": row["timestamp"],
+                    "action": row["action"],
+                    "files_affected": row["files_affected"],
+                    "chunks_affected": row["chunks_affected"],
+                    "details": details,
+                }
+            )
 
         # Calculate pagination info
         has_more = (offset + len(entries)) < total
@@ -225,7 +247,7 @@ def cmd_log(args: argparse.Namespace) -> int:
                     "action": action_filter,
                 },
                 "hint": "AI TOOL: Use --since with ISO8601 datetime to filter recent changes. "
-                        "Combine with 'ogrep query --refresh' to track what changed.",
+                "Combine with 'ogrep query --refresh' to track what changed.",
             }
             print(json.dumps(output))
         else:
@@ -248,8 +270,10 @@ def cmd_log(args: argparse.Namespace) -> int:
                 print()
 
                 # Table
-                print(f"{'ID':>5}  {'Timestamp':<20}  {'Action':<12}  {'Files':>6}  {'Chunks':>7}  Details")
-                print(f"{'-'*5}  {'-'*20}  {'-'*12}  {'-'*6}  {'-'*7}  {'-'*30}")
+                print(
+                    f"{'ID':>5}  {'Timestamp':<20}  {'Action':<12}  {'Files':>6}  {'Chunks':>7}  Details"
+                )
+                print(f"{'-' * 5}  {'-' * 20}  {'-' * 12}  {'-' * 6}  {'-' * 7}  {'-' * 30}")
 
                 for entry in entries:
                     details_str = ""

@@ -150,13 +150,17 @@ def cmd_delete(args: argparse.Namespace) -> int:
 
         if not matches:
             if use_json:
-                print(json.dumps({
-                    "database": str(db),
-                    "patterns": args.paths,
-                    "matched": 0,
-                    "deleted": 0,
-                    "dry_run": dry_run,
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "database": str(db),
+                            "patterns": args.paths,
+                            "matched": 0,
+                            "deleted": 0,
+                            "dry_run": dry_run,
+                        }
+                    )
+                )
             else:
                 print(f"No files matched: {', '.join(args.paths)}")
             con.close()
@@ -184,8 +188,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
                     "deleted": 0,
                     "dry_run": True,
                     "would_delete": [
-                        {"path": rel, "chunks": chunk_counts.get(fid, 0)}
-                        for fid, _, rel in matches
+                        {"path": rel, "chunks": chunk_counts.get(fid, 0)} for fid, _, rel in matches
                     ],
                     "total_chunks": total_chunks,
                     "save": save,

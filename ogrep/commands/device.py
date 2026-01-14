@@ -154,8 +154,7 @@ def _get_device_info() -> dict[str, Any]:
         )
     elif info["device"] == "mps":
         info["recommendation"] = (
-            "Apple Silicon MPS available. "
-            "Reranking will use GPU acceleration (~3-5x faster)."
+            "Apple Silicon MPS available. Reranking will use GPU acceleration (~3-5x faster)."
         )
     else:
         if captured_warnings:

@@ -351,9 +351,7 @@ def _extract_semantic_units(
                     node_type=node.type,
                     start_line=node.start_point[0] + 1,  # 1-indexed
                     end_line=node.end_point[0] + 1,
-                    text=source[node.start_byte : node.end_byte].decode(
-                        "utf-8", errors="replace"
-                    ),
+                    text=source[node.start_byte : node.end_byte].decode("utf-8", errors="replace"),
                 )
             )
             # Don't recurse into nested functions/classes - they're part of parent
