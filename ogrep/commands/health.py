@@ -25,6 +25,60 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes} bytes"
 
 
+def _format_time_saved(ms: int) -> str:
+    """Format milliseconds into human-readable time string."""
+    if ms >= 60000:
+        return f"{ms / 60000:.1f} min"
+    elif ms >= 1000:
+        return f"{ms / 1000:.1f}s"
+    return f"{ms}ms"
+
+
+def _format_age(timestamp: float | None) -> str:
+    """Format a timestamp as age (e.g., '2h ago', '3d ago')."""
+    import time
+
+    if timestamp is None:
+        return "N/A"
+
+    age_seconds = time.time() - timestamp
+    if age_seconds < 60:
+        return "just now"
+    elif age_seconds < 3600:
+        return f"{int(age_seconds / 60)}m ago"
+    elif age_seconds < 86400:
+        return f"{int(age_seconds / 3600)}h ago"
+    else:
+        return f"{int(age_seconds / 86400)}d ago"
+
+
+def _get_cache_stats(db_path: Path) -> dict | None:
+    """
+    Get cache statistics if cache file exists.
+
+    Args:
+        db_path: Path to the index database.
+
+    Returns:
+        Dict with cache stats, or None if no cache file.
+    """
+    from ..cache import connect_cache, get_cache_health_stats, get_cache_path
+
+    cache_path = get_cache_path(db_path)
+    if not cache_path.exists():
+        return None
+
+    try:
+        cache_con = connect_cache(cache_path)
+        stats = get_cache_health_stats(cache_con)
+        stats["path"] = str(cache_path)
+        stats["size_bytes"] = cache_path.stat().st_size
+        cache_con.close()
+        return stats
+    except Exception:
+        return None
+
+
 def _get_table_stats(con: sqlite3.Connection) -> list[tuple[str, int, int]]:
     """
     Get row count and estimated size for each table.
@@ -416,6 +470,7 @@ def cmd_health(args: argparse.Namespace) -> int:
             dedup_stats = _get_dedup_stats(con)
             quick_check = _run_quick_check(con)
             total_size = db_path.stat().st_size
+            cache_stats = _get_cache_stats(db_path)
 
             # Get embedding model
             cur = con.cursor()
@@ -445,6 +500,9 @@ def cmd_health(args: argparse.Namespace) -> int:
                     "total_size_bytes": total_size,
                     "status": "healthy" if exit_code == 0 else "issues_detected",
                 }
+                # Add cache stats if available
+                if cache_stats:
+                    output["cache"] = cache_stats
                 print(json.dumps(output))
             else:
                 # Tables
@@ -511,8 +569,62 @@ def cmd_health(args: argparse.Namespace) -> int:
                     print(f"  Model: {model_row[0]}")
                     print(f"  Dimensions: {model_row[1]}")
 
+                # Cache stats
+                if cache_stats:
+                    print("\n── Cache Stats ──")
+                    print(f"  File: {cache_stats['path']}")
+                    print(f"  Size: {_format_size(cache_stats['size_bytes'])}")
+
+                    # Entry counts table
+                    print("\n  Entries:")
+                    print(f"    {'Level':<12} {'Count':>8} {'Hits':>8}")
+                    print(f"    {'─' * 30}")
+                    for level in ["L1", "L2", "L3"]:
+                        lvl = cache_stats["levels"].get(level, {})
+                        desc = lvl.get("description", level)
+                        entries = lvl.get("entries", 0)
+                        entry_hits = lvl.get("entry_hits", 0)
+                        print(f"    {desc:<12} {entries:>8} {entry_hits:>8}")
+                    print(f"    {'─' * 30}")
+                    totals = cache_stats["totals"]
+                    print(f"    {'Total':<12} {totals['entries']:>8}")
+
+                    # Hit/Miss rates (if we have data)
+                    if totals["lifetime_hits"] + totals["lifetime_misses"] > 0:
+                        print("\n  Performance (lifetime):")
+                        print(f"    {'Level':<12} {'Hits':>8} {'Misses':>8} {'Rate':>10} {'Saved':>12}")
+                        print(f"    {'─' * 52}")
+                        for level in ["L1", "L2", "L3"]:
+                            lvl = cache_stats["levels"].get(level, {})
+                            desc = lvl.get("description", level)
+                            hits = lvl.get("lifetime_hits", 0)
+                            misses = lvl.get("lifetime_misses", 0)
+                            rate = lvl.get("lifetime_hit_rate")
+                            saved = lvl.get("time_saved_ms", 0)
+                            rate_str = f"{rate:.1f}%" if rate is not None else "N/A"
+                            saved_str = _format_time_saved(saved) if saved > 0 else "-"
+                            print(f"    {desc:<12} {hits:>8} {misses:>8} {rate_str:>10} {saved_str:>12}")
+                        print(f"    {'─' * 52}")
+                        total_rate = totals.get("lifetime_hit_rate")
+                        total_rate_str = f"{total_rate:.1f}%" if total_rate is not None else "N/A"
+                        total_saved_str = _format_time_saved(totals["time_saved_ms"]) if totals["time_saved_ms"] > 0 else "-"
+                        print(
+                            f"    {'Total':<12} {totals['lifetime_hits']:>8} "
+                            f"{totals['lifetime_misses']:>8} {total_rate_str:>10} {total_saved_str:>12}"
+                        )
+
+                    # Recent stats (last 24h)
+                    if totals["recent_hits"] + totals["recent_misses"] > 0:
+                        recent_rate = totals.get("recent_hit_rate")
+                        recent_rate_str = f"{recent_rate:.1f}%" if recent_rate is not None else "N/A"
+                        print(f"\n  Last 24h: {totals['recent_hits']} hits, "
+                              f"{totals['recent_misses']} misses ({recent_rate_str})")
+
                 # Total size
                 print(f"\nTotal size: {_format_size(total_size)}")
+                if cache_stats:
+                    combined = total_size + cache_stats["size_bytes"]
+                    print(f"  (with cache: {_format_size(combined)})")
 
                 # Status summary
                 if exit_code == 0:

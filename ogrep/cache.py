@@ -591,6 +591,136 @@ def get_cache_report(cache_con: sqlite3.Connection, since_hours: int = 24) -> di
     return report
 
 
+def get_cache_health_stats(cache_con: sqlite3.Connection) -> dict:
+    """
+    Get comprehensive cache health statistics for the health command.
+
+    Returns stats including:
+    - Entry counts per level
+    - Hit/miss ratios (lifetime and recent)
+    - Time saved estimates
+    - Cache age information
+    - Total hit counts from entries
+
+    Args:
+        cache_con: Cache database connection.
+
+    Returns:
+        Dict with comprehensive cache statistics.
+    """
+    stats: dict = {
+        "levels": {},
+        "totals": {
+            "entries": 0,
+            "lifetime_hits": 0,
+            "lifetime_misses": 0,
+            "recent_hits": 0,
+            "recent_misses": 0,
+            "time_saved_ms": 0,
+        },
+    }
+
+    # Per-level stats
+    tables = [
+        ("L1", "query_embeddings", "Embeddings"),
+        ("L2", "search_results", "Search"),
+        ("L3", "rerank_results", "Rerank"),
+    ]
+
+    for level, table, description in tables:
+        try:
+            # Entry count and total hit count from entries
+            row = cache_con.execute(
+                f"SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM {table}"
+            ).fetchone()
+            entries = row[0] if row else 0
+            entry_hits = row[1] if row else 0
+
+            # Oldest and newest entry
+            oldest = cache_con.execute(
+                f"SELECT MIN(created_at) FROM {table}"
+            ).fetchone()
+            newest = cache_con.execute(
+                f"SELECT MAX(created_at) FROM {table}"
+            ).fetchone()
+
+            # Recent stats from cache_stats (last 24h)
+            cutoff_24h = time.time() - (24 * 60 * 60)
+            recent = cache_con.execute(
+                """SELECT
+                    SUM(CASE WHEN event = 'hit' THEN 1 ELSE 0 END) as hits,
+                    SUM(CASE WHEN event = 'miss' THEN 1 ELSE 0 END) as misses,
+                    COALESCE(SUM(CASE WHEN event = 'hit' THEN time_saved_ms ELSE 0 END), 0) as saved
+                FROM cache_stats
+                WHERE level = ? AND timestamp > ?""",
+                (level, cutoff_24h),
+            ).fetchone()
+
+            # Lifetime stats from cache_stats
+            lifetime = cache_con.execute(
+                """SELECT
+                    SUM(CASE WHEN event = 'hit' THEN 1 ELSE 0 END) as hits,
+                    SUM(CASE WHEN event = 'miss' THEN 1 ELSE 0 END) as misses,
+                    COALESCE(SUM(CASE WHEN event = 'hit' THEN time_saved_ms ELSE 0 END), 0) as saved
+                FROM cache_stats
+                WHERE level = ?""",
+                (level,),
+            ).fetchone()
+
+            recent_hits = recent[0] or 0 if recent else 0
+            recent_misses = recent[1] or 0 if recent else 0
+            recent_saved = recent[2] or 0 if recent else 0
+            lifetime_hits = lifetime[0] or 0 if lifetime else 0
+            lifetime_misses = lifetime[1] or 0 if lifetime else 0
+            lifetime_saved = lifetime[2] or 0 if lifetime else 0
+
+            # Calculate hit rates
+            recent_total = recent_hits + recent_misses
+            lifetime_total = lifetime_hits + lifetime_misses
+
+            level_stats = {
+                "description": description,
+                "entries": entries,
+                "entry_hits": entry_hits,  # Cumulative hits on cached entries
+                "recent_hits": recent_hits,
+                "recent_misses": recent_misses,
+                "recent_hit_rate": (recent_hits / recent_total * 100) if recent_total > 0 else None,
+                "lifetime_hits": lifetime_hits,
+                "lifetime_misses": lifetime_misses,
+                "lifetime_hit_rate": (lifetime_hits / lifetime_total * 100) if lifetime_total > 0 else None,
+                "time_saved_ms": lifetime_saved,
+                "oldest_entry": oldest[0] if oldest and oldest[0] else None,
+                "newest_entry": newest[0] if newest and newest[0] else None,
+            }
+
+            stats["levels"][level] = level_stats
+
+            # Aggregate totals
+            stats["totals"]["entries"] += entries
+            stats["totals"]["lifetime_hits"] += lifetime_hits
+            stats["totals"]["lifetime_misses"] += lifetime_misses
+            stats["totals"]["recent_hits"] += recent_hits
+            stats["totals"]["recent_misses"] += recent_misses
+            stats["totals"]["time_saved_ms"] += lifetime_saved
+
+        except sqlite3.OperationalError:
+            # Table doesn't exist
+            stats["levels"][level] = {
+                "description": description,
+                "entries": 0,
+                "error": "table not found",
+            }
+
+    # Calculate total hit rates
+    totals = stats["totals"]
+    recent_total = totals["recent_hits"] + totals["recent_misses"]
+    lifetime_total = totals["lifetime_hits"] + totals["lifetime_misses"]
+    totals["recent_hit_rate"] = (totals["recent_hits"] / recent_total * 100) if recent_total > 0 else None
+    totals["lifetime_hit_rate"] = (totals["lifetime_hits"] / lifetime_total * 100) if lifetime_total > 0 else None
+
+    return stats
+
+
 # =============================================================================
 # Maintenance
 # =============================================================================
