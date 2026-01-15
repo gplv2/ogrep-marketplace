@@ -312,7 +312,48 @@ def cmd_health(args: argparse.Namespace) -> int:
             print("Status: Not indexed")
         return 0
 
-    con = sqlite3.connect(str(db_path))
+    # Check if the path is a directory, not a file
+    if db_path.is_dir():
+        error_msg = f"Path is a directory, not a database file: {db_path}"
+        if use_json:
+            print(json.dumps({"database": str(db_path), "error": error_msg, "status": "invalid_path"}))
+        else:
+            print(f"Error: {error_msg}")
+            print("Hint: Use --db /path/to/.ogrep/index.sqlite or let ogrep find it automatically")
+        return 1
+
+    # Try to open the database file and verify it's a valid ogrep index
+    try:
+        con = sqlite3.connect(str(db_path))
+        # Verify it's actually a SQLite database with ogrep tables
+        tables = con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('files', 'chunks')"
+        ).fetchall()
+        if not tables:
+            error_msg = "File is not an ogrep index database (missing required tables)"
+            if use_json:
+                print(json.dumps({"database": str(db_path), "error": error_msg, "status": "not_ogrep_db"}))
+            else:
+                print(f"Error: {error_msg}")
+                print("Hint: This may be a different SQLite database, not an ogrep index")
+            con.close()
+            return 1
+    except sqlite3.OperationalError as e:
+        error_msg = f"Cannot open database: {e}"
+        if use_json:
+            print(json.dumps({"database": str(db_path), "error": error_msg, "status": "invalid_database"}))
+        else:
+            print(f"Error: {error_msg}")
+            print("Hint: The file may not be a valid SQLite database")
+        return 1
+    except sqlite3.DatabaseError as e:
+        error_msg = f"Invalid database file: {e}"
+        if use_json:
+            print(json.dumps({"database": str(db_path), "error": error_msg, "status": "corrupted"}))
+        else:
+            print(f"Error: {error_msg}")
+            print("Hint: The file may be corrupted or not a SQLite database")
+        return 1
     exit_code = 0
 
     try:

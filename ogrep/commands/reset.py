@@ -76,6 +76,15 @@ def cmd_reset(args: argparse.Namespace) -> int:
 
     db.unlink()
 
+    # Also delete cache file if it exists
+    from ..cache import get_cache_path
+
+    cache_path = get_cache_path(db)
+    cache_removed = False
+    if cache_path.exists():
+        cache_path.unlink()
+        cache_removed = True
+
     # Clean up empty parent directories
     parent = db.parent
     parent_removed = False
@@ -93,11 +102,14 @@ def cmd_reset(args: argparse.Namespace) -> int:
                     "database": str(db),
                     "existed": True,
                     "removed": True,
+                    "cache_removed": cache_removed,
                     "parent_removed": parent_removed,
                 }
             )
         )
     else:
         print(f"Removed {db}")
+        if cache_removed:
+            print(f"Removed cache at {cache_path}")
 
     return 0

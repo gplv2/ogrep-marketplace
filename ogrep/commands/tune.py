@@ -302,6 +302,13 @@ def cmd_tune(args: argparse.Namespace) -> int:
         if db.exists():
             db.unlink()
 
+            # Also delete cache file if it exists
+            from ..cache import get_cache_path
+
+            cache_path = get_cache_path(db)
+            if cache_path.exists():
+                cache_path.unlink()
+
         try:
             stats = index_path(
                 root=root,

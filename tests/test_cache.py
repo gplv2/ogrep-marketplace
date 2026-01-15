@@ -640,3 +640,145 @@ class TestCachePerformance:
 
         avg_ms = (elapsed / 100) * 1000
         assert avg_ms < 10, f"L3 lookup too slow: {avg_ms:.2f}ms average"
+
+
+# === Cache Cleanup Tests ===
+
+
+class TestCacheCleanup:
+    """Tests for cache file cleanup when index is deleted."""
+
+    def test_get_cache_path_from_index_path(self, temp_dir):
+        """get_cache_path derives cache path from index path."""
+        from ogrep.cache import get_cache_path
+
+        index_path = temp_dir / "index.sqlite"
+        cache_path = get_cache_path(index_path)
+
+        assert cache_path == temp_dir / "cache.sqlite"
+        assert cache_path.parent == index_path.parent
+
+    def test_reset_removes_cache_file(self, tmp_path, monkeypatch):
+        """Reset command should delete cache.sqlite along with index.sqlite."""
+        import argparse
+
+        from ogrep.cache import connect_cache, get_cache_path, set_query_embedding
+        from ogrep.commands.reset import cmd_reset
+        from ogrep.db import connect
+
+        # Create .ogrep directory with index and cache
+        ogrep_dir = tmp_path / ".ogrep"
+        ogrep_dir.mkdir()
+        index_path = ogrep_dir / "index.sqlite"
+        cache_path = get_cache_path(index_path)
+
+        # Create index database
+        index_con = connect(index_path)
+        index_con.close()
+
+        # Create cache database with some data
+        cache_con = connect_cache(cache_path)
+        set_query_embedding(cache_con, "test query", "model", 1536, None, b"embedding")
+        cache_con.close()
+
+        # Verify both files exist
+        assert index_path.exists()
+        assert cache_path.exists()
+
+        # Run reset command
+        args = argparse.Namespace(
+            force=True,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=tmp_path,
+        )
+
+        result = cmd_reset(args)
+
+        # Verify both files are deleted
+        assert result == 0
+        assert not index_path.exists()
+        assert not cache_path.exists()
+
+    def test_reindex_removes_cache_file(self, tmp_path, monkeypatch):
+        """Reindex command should delete cache.sqlite along with index.sqlite."""
+        import argparse
+
+        from ogrep.cache import connect_cache, get_cache_path, set_query_embedding
+        from ogrep.db import connect
+
+        # Set up test environment
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+        # Create .ogrep directory with index and cache
+        ogrep_dir = tmp_path / ".ogrep"
+        ogrep_dir.mkdir()
+        index_path = ogrep_dir / "index.sqlite"
+        cache_path = get_cache_path(index_path)
+
+        # Create a test file to index
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        # Create index database
+        index_con = connect(index_path)
+        index_con.close()
+
+        # Create cache database with some data
+        cache_con = connect_cache(cache_path)
+        set_query_embedding(cache_con, "test query", "model", 1536, None, b"embedding")
+        cache_con.close()
+
+        # Verify both files exist
+        assert index_path.exists()
+        assert cache_path.exists()
+
+        # Import reindex command
+        from ogrep.commands.reindex import cmd_reindex
+
+        # Mock the index_path function to avoid real API calls
+        def mock_index_path(**kwargs):
+            from ogrep.indexer import IndexStats
+
+            # Create the new index database
+            new_con = connect(kwargs["db_path"])
+            new_con.close()
+            return IndexStats(
+                files_scanned=1,
+                files_indexed=1,
+                files_skipped=0,
+                chunks_total=1,
+                chunks_reused=0,
+                chunks_reused_global=0,
+                chunks_reused_local=0,
+                chunks_embedded=1,
+            )
+
+        monkeypatch.setattr("ogrep.commands.reindex.index_path", mock_index_path)
+
+        # Run reindex command
+        args = argparse.Namespace(
+            path=str(tmp_path),
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=tmp_path,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            chunk_lines=60,
+            overlap=10,
+            max_bytes=1024 * 1024,
+            exclude=[],
+            include=[],
+            ast=False,
+        )
+
+        result = cmd_reindex(args)
+
+        # Verify old cache is deleted (new index is created)
+        assert result == 0
+        assert index_path.exists()  # New index was created
+        assert not cache_path.exists()  # Old cache was deleted

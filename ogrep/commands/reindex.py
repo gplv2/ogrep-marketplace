@@ -67,13 +67,25 @@ def cmd_reindex(args: argparse.Namespace) -> int:
     if overlap is None:
         overlap = get_optimal_overlap(args.model)
 
-    # Remove existing database
+    # Remove existing database and cache
     removed_existing = False
+    cache_removed = False
     if db.exists():
         db.unlink()
         removed_existing = True
+
+        # Also delete cache file if it exists
+        from ..cache import get_cache_path
+
+        cache_path = get_cache_path(db)
+        if cache_path.exists():
+            cache_path.unlink()
+            cache_removed = True
+
         if not use_json:
             print(f"Removed existing index at {db}")
+            if cache_removed:
+                print(f"Removed cache at {cache_path}")
 
     # Reindex
     try:
@@ -118,6 +130,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
                 {
                     "database": str(db),
                     "removed_existing": removed_existing,
+                    "cache_removed": cache_removed,
                     "files_indexed": stats.files_indexed,
                     "files_skipped": stats.files_skipped,
                     "files_scanned": stats.files_scanned,
