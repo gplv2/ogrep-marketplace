@@ -685,7 +685,8 @@ class TestCacheCleanup:
         assert index_path.exists()
         assert cache_path.exists()
 
-        # Run reset command
+        # Run reset command with --all to delete entire database
+        # (default behavior is now branch-scoped reset)
         args = argparse.Namespace(
             force=True,
             json=True,
@@ -693,6 +694,7 @@ class TestCacheCleanup:
             profile=None,
             global_cache=False,
             repo_root=tmp_path,
+            all=True,  # Required to delete entire database (new branch-aware behavior)
         )
 
         result = cmd_reset(args)

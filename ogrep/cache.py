@@ -294,6 +294,7 @@ def get_search_results(
     embedding_key: str,
     mode: str,
     top_k: int,
+    branch: str = "default",
 ) -> CacheResult:
     """
     Look up cached search results, checking db_version.
@@ -304,11 +305,12 @@ def get_search_results(
         embedding_key: Key from L1 embedding cache.
         mode: Search mode (semantic, fulltext, hybrid).
         top_k: Number of results requested.
+        branch: Git branch for this search (cache is branch-scoped).
 
     Returns:
         CacheResult with hit=True and results if found and db_version matches.
     """
-    key = cache_key(embedding_key, mode, top_k)
+    key = cache_key(embedding_key, mode, top_k, branch)
     current_version = get_db_version(index_con)
 
     row = cache_con.execute(
@@ -353,6 +355,7 @@ def set_search_results(
     top_k: int,
     results: list,
     fts_available: bool,
+    branch: str = "default",
 ) -> None:
     """
     Store search results with current db_version.
@@ -365,8 +368,9 @@ def set_search_results(
         top_k: Number of results.
         results: List of (chunk_id, score) tuples.
         fts_available: Whether FTS5 was available.
+        branch: Git branch for this search (cache is branch-scoped).
     """
-    key = cache_key(embedding_key, mode, top_k)
+    key = cache_key(embedding_key, mode, top_k, branch)
     current_version = get_db_version(index_con)
 
     cache_con.execute(

@@ -179,14 +179,15 @@ class TestSearchModes:
 
     def test_semantic_mode(self, indexed_db: Path) -> None:
         """Test semantic-only search mode."""
-        hits, fts_available = query(indexed_db, "user login authentication", mode="semantic")
+        # Use branch='default' since test fixtures insert with default branch
+        hits, fts_available = query(indexed_db, "user login authentication", mode="semantic", branch="default")
 
         assert len(hits) > 0
         assert fts_available  # FTS is available but not used
 
     def test_fulltext_mode(self, indexed_db: Path) -> None:
         """Test fulltext-only search mode."""
-        hits, fts_available = query(indexed_db, "authenticate", mode="fulltext")
+        hits, fts_available = query(indexed_db, "authenticate", mode="fulltext", branch="default")
 
         assert fts_available
         # Should find the chunk containing "authenticate"
@@ -195,7 +196,7 @@ class TestSearchModes:
 
     def test_hybrid_mode(self, indexed_db: Path) -> None:
         """Test hybrid search mode."""
-        hits, fts_available = query(indexed_db, "user authentication", mode="hybrid")
+        hits, fts_available = query(indexed_db, "user authentication", mode="hybrid", branch="default")
 
         assert fts_available
         assert len(hits) > 0
@@ -222,14 +223,14 @@ class TestSearchModes:
         con.close()
 
         # Query with hybrid mode should fall back to semantic
-        hits, fts_available = query(db_path, "test function", mode="hybrid")
+        hits, fts_available = query(db_path, "test function", mode="hybrid", branch="default")
 
         assert not fts_available  # FTS not available
         assert len(hits) > 0  # But semantic search still works
 
     def test_mode_from_default(self, indexed_db: Path) -> None:
         """Test that mode defaults to hybrid."""
-        hits, fts_available = query(indexed_db, "authentication")
+        hits, fts_available = query(indexed_db, "authentication", branch="default")
 
         # Should use hybrid by default
         assert len(hits) > 0

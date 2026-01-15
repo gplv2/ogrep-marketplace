@@ -153,6 +153,13 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         "hybrid (combined, default). Uses OGREP_SEARCH_MODE env var if not specified.",
     )
     p.add_argument(
+        "--branch",
+        "-b",
+        default=None,
+        help="Git branch to search (default: auto-detect current branch). "
+        "Allows querying a different branch's index without switching.",
+    )
+    p.add_argument(
         "--rerank",
         action="store_true",
         help="Enable cross-encoder reranking for improved result ordering. "
@@ -231,8 +238,8 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'reset' subcommand."""
     p = sub.add_parser(
         "reset",
-        help="Remove the index database",
-        description="Delete the index database for the current scope.",
+        help="Clear indexed data (current branch by default)",
+        description="Clear indexed data for the current branch. Use --all to delete the entire database.",
     )
     add_scope_args(p)
     p.add_argument(
@@ -240,6 +247,12 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
         "-f",
         action="store_true",
         help="Skip confirmation prompt",
+    )
+    p.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Delete entire database instead of just current branch",
     )
     p.add_argument(
         "--json",

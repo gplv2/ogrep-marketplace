@@ -351,6 +351,7 @@ def query(
     dimensions: int | None = None,
     mode: SearchMode | None = None,
     no_cache: bool = False,
+    branch: str | None = None,
 ) -> tuple[list[Hit], bool]:
     """
     Perform search against the indexed codebase.
@@ -370,6 +371,8 @@ def query(
         mode: Search mode (semantic, fulltext, hybrid). Default from
             OGREP_SEARCH_MODE env var or "hybrid".
         no_cache: Disable L1/L2 caching for this query (default: False).
+        branch: Git branch to search (None for auto-detect from current).
+            Only files indexed on this branch will be searched.
 
     Returns:
         Tuple of (hits, fts_available):
@@ -396,6 +399,12 @@ def query(
         mode = DEFAULT_SEARCH_MODE
 
     con = connect(db_path, init_fts=False)
+
+    # Resolve branch - auto-detect if not specified
+    if branch is None:
+        from .commands._common import get_current_branch
+
+        branch = get_current_branch()
 
     # Cache setup (lazy initialization)
     cache_con = None
@@ -432,15 +441,15 @@ def query(
         if not fts_scores:
             return [], fts_available
 
-        # Fetch chunk details for FTS matches
+        # Fetch chunk details for FTS matches (filtered by branch)
         chunk_ids = list(fts_scores.keys())
         placeholders = ",".join("?" * len(chunk_ids))
         rows = con.execute(
             f"""SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text
                 FROM chunks c
                 JOIN files f ON f.id = c.file_id
-                WHERE c.id IN ({placeholders})""",
-            chunk_ids,
+                WHERE c.id IN ({placeholders}) AND f.branch = ?""",
+            [*chunk_ids, branch],
         ).fetchall()
 
         # Build hits with scores, sorted by score descending
@@ -531,8 +540,9 @@ def query(
         embedding_key = cache_key(q, model, dimensions, base_url or "openai")
 
         # Check L2 cache (db_version validated inside get_search_results)
+        # Branch is included in cache key to prevent cross-branch cache pollution
         l2_result = get_search_results(
-            cache_con, con, embedding_key, effective_mode, top_k
+            cache_con, con, embedding_key, effective_mode, top_k, branch
         )
         if l2_result.hit:
             # Cache hit - reconstruct Hits from cached chunk_ids and scores
@@ -545,8 +555,8 @@ def query(
                     f"""SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text
                         FROM chunks c
                         JOIN files f ON f.id = c.file_id
-                        WHERE c.id IN ({placeholders})""",
-                    chunk_ids,
+                        WHERE c.id IN ({placeholders}) AND f.branch = ?""",
+                    [*chunk_ids, branch],
                 ).fetchall()
 
                 # Build lookup for chunk details
@@ -582,11 +592,13 @@ def query(
             log_cache_event(cache_con, "L2", "hit", time_saved_ms=l2_result.time_saved_ms)
             return [], fts_available
 
-    # Fetch all chunks
+    # Fetch all chunks for current branch
     rows = con.execute(
         """SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text, c.embedding
            FROM chunks c
-           JOIN files f ON f.id = c.file_id"""
+           JOIN files f ON f.id = c.file_id
+           WHERE f.branch = ?""",
+        (branch,),
     ).fetchall()
 
     # Get FTS scores and ranks if in hybrid mode
@@ -695,11 +707,11 @@ def query(
         base_url = os.environ.get("OGREP_BASE_URL")
         embedding_key = cache_key(q, model, dimensions, base_url or "openai")
 
-        # Store (chunk_id, score) pairs
+        # Store (chunk_id, score) pairs (branch-scoped cache key)
         results_to_cache = [(h.chunk_id, h.score) for h in hits]
         set_search_results(
             cache_con, con, embedding_key, effective_mode, top_k,
-            results_to_cache, fts_available
+            results_to_cache, fts_available, branch
         )
         log_cache_event(cache_con, "L2", "miss")
 

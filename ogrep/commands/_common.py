@@ -2,7 +2,7 @@
 Shared utilities for ogrep CLI commands.
 
 This module provides common functionality used across multiple commands,
-including database path resolution and argument parsing helpers.
+including database path resolution, branch detection, and argument parsing helpers.
 """
 
 from __future__ import annotations
@@ -10,8 +10,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+# Cache for branch detection (avoid repeated git calls in same session)
+_branch_cache: dict[str, str] = {}
 
 
 def require_embedding_config() -> bool:
@@ -99,6 +103,114 @@ def resolve_db_path(
         return root / ".ogrep" / profile / "index.sqlite"
 
     return root / ".ogrep" / "index.sqlite"
+
+
+def get_current_branch(repo_root: Path | None = None) -> str:
+    """
+    Detect the current git branch, with caching.
+
+    Returns 'default' for non-git directories or when git is unavailable.
+    For detached HEAD state, returns 'detached-<short-hash>'.
+
+    Args:
+        repo_root: Repository root path (defaults to current directory).
+
+    Returns:
+        Branch name, or 'default' if not in a git repo.
+
+    Examples:
+        >>> get_current_branch()
+        'main'
+        >>> get_current_branch(Path("/non-git-dir"))
+        'default'
+    """
+    root = repo_root or Path.cwd()
+    root_key = str(root.resolve())
+
+    # Return cached result if available
+    if root_key in _branch_cache:
+        return _branch_cache[root_key]
+
+    branch = _detect_git_branch(root)
+    _branch_cache[root_key] = branch
+    return branch
+
+
+def _detect_git_branch(repo_root: Path) -> str:
+    """
+    Detect git branch without caching.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Branch name, 'detached-<hash>' for detached HEAD, or 'default'.
+    """
+    try:
+        # Try to get symbolic ref (branch name)
+        result = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+
+        # Detached HEAD - get short commit hash
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return f"detached-{result.stdout.strip()}"
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # git not available or timed out
+        pass
+
+    return "default"
+
+
+def get_git_branches(repo_root: Path | None = None) -> set[str]:
+    """
+    Get all git branch names (local branches only).
+
+    Used for pruning orphaned branch data.
+
+    Args:
+        repo_root: Repository root path.
+
+    Returns:
+        Set of branch names, or empty set if not in a git repo.
+    """
+    root = repo_root or Path.cwd()
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+            capture_output=True,
+            text=True,
+            cwd=root,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            branches = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+            # Always include 'default' as it's used for non-git contexts
+            branches.add("default")
+            return branches
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    return {"default"}
+
+
+def clear_branch_cache() -> None:
+    """Clear the branch detection cache."""
+    _branch_cache.clear()
 
 
 def add_scope_args(parser: argparse.ArgumentParser) -> None:

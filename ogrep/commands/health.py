@@ -13,7 +13,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ._common import resolve_db_path
+from ..db import connect as db_connect, get_branch_file_counts
+from ._common import get_current_branch, resolve_db_path
 
 
 def _format_size(size_bytes: int) -> str:
@@ -378,11 +379,13 @@ def cmd_health(args: argparse.Namespace) -> int:
 
     # Try to open the database file and verify it's a valid ogrep index
     try:
-        con = sqlite3.connect(str(db_path))
-        # Verify it's actually a SQLite database with ogrep tables
-        tables = con.execute(
+        # First, quick validation that it's a valid ogrep database
+        raw_con = sqlite3.connect(str(db_path))
+        tables = raw_con.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('files', 'chunks')"
         ).fetchall()
+        raw_con.close()
+
         if not tables:
             error_msg = "File is not an ogrep index database (missing required tables)"
             if use_json:
@@ -390,8 +393,10 @@ def cmd_health(args: argparse.Namespace) -> int:
             else:
                 print(f"Error: {error_msg}")
                 print("Hint: This may be a different SQLite database, not an ogrep index")
-            con.close()
             return 1
+
+        # Now open with db_connect to run any pending migrations
+        con = db_connect(db_path, init_fts=False)
     except sqlite3.OperationalError as e:
         error_msg = f"Cannot open database: {e}"
         if use_json:
@@ -472,6 +477,10 @@ def cmd_health(args: argparse.Namespace) -> int:
             total_size = db_path.stat().st_size
             cache_stats = _get_cache_stats(db_path)
 
+            # Branch info
+            current_branch = get_current_branch(repo_root)
+            branch_counts = get_branch_file_counts(con)
+
             # Get embedding model
             cur = con.cursor()
             cur.execute("SELECT model, dim FROM chunks LIMIT 1")
@@ -484,6 +493,8 @@ def cmd_health(args: argparse.Namespace) -> int:
                 output = {
                     "database": str(db_path),
                     "exists": True,
+                    "branch": current_branch,
+                    "branches": branch_counts,
                     "tables": [
                         {"name": name, "rows": rows, "size_bytes": size}
                         for name, rows, size in table_stats
@@ -505,6 +516,17 @@ def cmd_health(args: argparse.Namespace) -> int:
                     output["cache"] = cache_stats
                 print(json.dumps(output))
             else:
+                # Branch info
+                print(f"\n── Branch Info ──")
+                print(f"  Current: {current_branch}")
+                if branch_counts:
+                    print(f"  Indexed branches: {len(branch_counts)}")
+                    for branch_name, count in sorted(branch_counts.items()):
+                        marker = " *" if branch_name == current_branch else ""
+                        print(f"    {branch_name}: {count} files{marker}")
+                else:
+                    print("  No files indexed yet")
+
                 # Tables
                 print("\n── Tables ──")
                 for name, rows, size in table_stats:

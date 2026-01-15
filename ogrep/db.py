@@ -24,10 +24,12 @@ PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE,
+  path TEXT NOT NULL,
+  branch TEXT NOT NULL DEFAULT 'default',
   mtime_ns INTEGER NOT NULL,
   size INTEGER NOT NULL,
-  sha256 TEXT NOT NULL
+  sha256 TEXT NOT NULL,
+  UNIQUE(path, branch)
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -103,7 +105,8 @@ def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     Connect to the ogrep SQLite database, creating it if necessary.
 
     Creates the parent directory if it doesn't exist, opens the database,
-    and initializes the schema if tables don't exist.
+    and initializes the schema if tables don't exist. Also runs migrations
+    for existing databases (e.g., adding branch column).
 
     Args:
         db_path: Path to the SQLite database file.
@@ -122,6 +125,9 @@ def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(db_path))
     con.executescript(SCHEMA)
+
+    # Run migrations for existing databases
+    _migrate_branch_column(con)
 
     if init_fts:
         try:
@@ -269,3 +275,105 @@ def get_all_metadata(con: sqlite3.Connection) -> dict[str, str]:
     """
     rows = con.execute("SELECT key, value FROM index_metadata").fetchall()
     return dict(rows)
+
+
+def _migrate_branch_column(con: sqlite3.Connection) -> bool:
+    """
+    Migrate existing database to add branch column if missing.
+
+    This handles databases created before branch-aware indexing was added.
+    Existing files get branch='default'.
+
+    SQLite doesn't allow modifying UNIQUE constraints in-place, so we use
+    the table recreation approach:
+    1. Create new table with correct schema
+    2. Copy data from old table
+    3. Drop old table
+    4. Rename new table
+
+    Args:
+        con: Open database connection.
+
+    Returns:
+        True if migration was performed, False if already migrated.
+    """
+    # Check if branch column exists
+    columns = con.execute("PRAGMA table_info(files)").fetchall()
+    column_names = {col[1] for col in columns}
+
+    if "branch" in column_names:
+        return False  # Already migrated
+
+    # SQLite doesn't allow dropping auto-generated unique indexes,
+    # so we need to recreate the table with the new schema
+
+    # Step 1: Create new table with branch column and updated unique constraint
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS files_new (
+            id INTEGER PRIMARY KEY,
+            path TEXT NOT NULL,
+            branch TEXT NOT NULL DEFAULT 'default',
+            mtime_ns INTEGER NOT NULL,
+            size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            UNIQUE(path, branch)
+        )
+    """)
+
+    # Step 2: Copy data from old table (all existing files get branch='default')
+    con.execute("""
+        INSERT INTO files_new (id, path, branch, mtime_ns, size, sha256)
+        SELECT id, path, 'default', mtime_ns, size, sha256 FROM files
+    """)
+
+    # Step 3: Drop old table
+    con.execute("DROP TABLE files")
+
+    # Step 4: Rename new table
+    con.execute("ALTER TABLE files_new RENAME TO files")
+
+    con.commit()
+    return True
+
+
+def get_indexed_branches(con: sqlite3.Connection) -> set[str]:
+    """
+    Get all branches that have indexed files.
+
+    Returns:
+        Set of branch names.
+    """
+    rows = con.execute("SELECT DISTINCT branch FROM files").fetchall()
+    return {row[0] for row in rows}
+
+
+def get_branch_file_counts(con: sqlite3.Connection) -> dict[str, int]:
+    """
+    Get file counts per branch.
+
+    Returns:
+        Dict mapping branch name to file count.
+    """
+    rows = con.execute(
+        "SELECT branch, COUNT(*) FROM files GROUP BY branch ORDER BY COUNT(*) DESC"
+    ).fetchall()
+    return dict(rows)
+
+
+def delete_branch_files(con: sqlite3.Connection, branch: str) -> int:
+    """
+    Delete all file entries for a specific branch.
+
+    Note: Chunks are deleted via CASCADE, but shared embeddings
+    (same text_sha256) used by other branches are preserved.
+
+    Args:
+        con: Open database connection.
+        branch: Branch name to delete.
+
+    Returns:
+        Number of files deleted.
+    """
+    cur = con.execute("DELETE FROM files WHERE branch = ?", (branch,))
+    con.commit()
+    return cur.rowcount

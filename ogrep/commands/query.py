@@ -32,7 +32,7 @@ from typing import Any
 
 from ..search import FUSION_METHOD, Hit
 from ..search import query as query_db
-from ._common import detect_language, require_embedding_config, resolve_db_path
+from ._common import detect_language, get_current_branch, require_embedding_config, resolve_db_path
 
 
 def _get_index_info(db_path: Path) -> tuple[str, int] | None:
@@ -312,6 +312,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
         fetch_limit = max(args.top, rerank_n)
 
+    # Get branch - from CLI arg or auto-detect
+    branch = getattr(args, "branch", None) or get_current_branch(repo_root)
+
     hits, fts_available = query_db(
         db_path=db,
         q=query_text,
@@ -319,6 +322,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         model=index_model,
         dimensions=index_dim,
         mode=search_mode,
+        branch=branch,
     )
 
     # Apply reranking if requested
@@ -416,6 +420,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
         output: dict[str, Any] = {
             "query": query_text,
+            "branch": branch,
             "results": results,
             "stats": {
                 "total_results": len(hits),
@@ -430,6 +435,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                 "index_dimensions": index_dim,
                 "refreshed_files": refreshed_files,
                 "confidence_summary": confidence_summary,
+                "branch": branch,
             },
         }
 

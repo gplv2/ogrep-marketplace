@@ -319,7 +319,7 @@ class TestQuery:
         con.commit()
 
         # Query
-        hits, fts_available = query(db_path, "user authentication", top_k=5)
+        hits, fts_available = query(db_path, "user authentication", top_k=5, branch="default")
         assert len(hits) == 1
         assert isinstance(hits[0], Hit)
         assert hits[0].path == "/test/file.py"
@@ -369,9 +369,9 @@ class TestQuery:
         con.commit()
 
         # Query with different top_k values
-        hits_2, _ = query(db_path, "function", top_k=2)
-        hits_3, _ = query(db_path, "function", top_k=3)
-        hits_10, _ = query(db_path, "function", top_k=10)
+        hits_2, _ = query(db_path, "function", top_k=2, branch="default")
+        hits_3, _ = query(db_path, "function", top_k=3, branch="default")
+        hits_10, _ = query(db_path, "function", top_k=10, branch="default")
 
         assert len(hits_2) == 2
         assert len(hits_3) == 3
@@ -416,7 +416,7 @@ class TestQuery:
             )
         con.commit()
 
-        hits, _ = query(db_path, "user login authentication", top_k=10)
+        hits, _ = query(db_path, "user login authentication", top_k=10, branch="default")
 
         # Verify descending order
         scores = [h.score for h in hits]
@@ -479,7 +479,7 @@ class TestQueryScoring:
         con.commit()
 
         # Query with exact same text (use semantic mode to avoid FTS5 issues)
-        hits, _ = query(db_path, text, top_k=1, mode="semantic")
+        hits, _ = query(db_path, text, top_k=1, mode="semantic", branch="default")
         assert len(hits) == 1
         # Score should be very high (close to 1.0) for identical text
         assert hits[0].score > 0.9
@@ -508,7 +508,7 @@ class TestQueryScoring:
         con.commit()
 
         # Query with semantically similar text
-        hits, _ = query(db_path, "database connection", top_k=1)
+        hits, _ = query(db_path, "database connection", top_k=1, branch="default")
         assert len(hits) == 1
         # Score should be positive for related concepts
         assert hits[0].score > 0
@@ -598,7 +598,7 @@ class TestConfidenceLevels:
         con.commit()
 
         # Query
-        hits, _ = query(db_path, "user authentication", top_k=5)
+        hits, _ = query(db_path, "user authentication", top_k=5, branch="default")
         assert len(hits) == 1
         assert hasattr(hits[0], "confidence")
         assert hits[0].confidence in ("high", "medium", "low", "very_low")
