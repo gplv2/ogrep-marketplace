@@ -1,10 +1,32 @@
 ---
-name: semantic-grep
+name: ogrep
 description: |
-  Semantic code search - finds code by meaning, not just keywords. Helpful when:
-  - User asks WHERE something is implemented ("where is X handled", "how does Y work")
-  - You need to understand code behavior without knowing exact function names
-  - Exploring unfamiliar codebases where you don't know the terminology yet
+  Semantic code search and extraction - finds code by meaning, not just keywords.
+  
+  TRIGGER PHRASES - use ogrep when user says:
+  - "where is...", "where do we...", "find where..."
+  - "how does... work", "how do we handle..."
+  - "show me the code that...", "find the function that..."
+  - "what handles...", "what validates...", "what processes..."
+  - "I need to understand...", "help me find..."
+  
+  USE CASES:
+  - Finding where something is implemented
+  - Extracting complete functions/classes with surrounding context
+  - Understanding unfamiliar or legacy codebases
+  - Tracing flows from vague descriptions ("the thing that sends emails after signup")
+  - Discovering related code ("what else touches user sessions")
+  - Mapping behavior before refactoring legacy systems
+  
+  WORKFLOW:
+  1. Query to find relevant chunks: ogrep query "..." -n 10
+  2. Expand context around results: ogrep chunk "file.py:N" --context 1
+  3. Use confidence scores and line numbers to extract the right code
+  
+  AST-aware chunking keeps functions/classes intact (not split mid-method).
+  Results include actual code, line numbers, confidence scores, and language detection.
+  
+  Unlike grep: you describe intent, ogrep finds implementation regardless of naming.
 allowed-tools: Bash, Read
 ---
 
@@ -16,6 +38,12 @@ You're looking for authentication code. Is it called `authenticate`, `login`, `v
 ogrep query "where is user authentication handled"
 ```
 
+## Prerequisites
+
+- `ogrep` must be installed and in PATH
+- `OPENAI_API_KEY` must be set (or `OGREP_BASE_URL` for local embeddings)
+- Index must exist: run `ogrep index .` first
+
 ## The Sweet Spot
 
 ogrep fills a specific gap: **conceptual code questions**.
@@ -24,7 +52,7 @@ ogrep fills a specific gap: **conceptual code questions**.
 |-------------------|----------------------|
 | "Where is error handling done?" | `class ErrorHandler` |
 | "How does caching work here?" | `def get_cache` |
-| "What validates user input?" | `validate_email` |
+| "What validates user input?" | Looking for `validate_email` |
 | Exploring unfamiliar code | You know the exact term |
 | User asks a conceptual question | Looking for imports/strings |
 
@@ -55,6 +83,43 @@ ogrep status --no-json
 
 ---
 
+## Core Workflow: Find → Expand → Extract
+
+### Step 1: Query to find relevant code
+
+```bash
+ogrep query "invoice validation logic" -n 10
+```
+
+Returns ranked results with confidence scores:
+
+```json
+{
+  "results": [{
+    "rank": 1,
+    "chunk_ref": "src/billing/validator.py:3",
+    "confidence": "high",
+    "start_line": 45,
+    "end_line": 92,
+    "text": "def validate_invoice(invoice: Invoice) -> ValidationResult:..."
+  }]
+}
+```
+
+### Step 2: Expand context around interesting results
+
+```bash
+ogrep chunk "src/billing/validator.py:3" --context 1
+```
+
+Gets the chunk plus surrounding code (imports, class definitions, related methods).
+
+### Step 3: Extract the complete implementation
+
+Use the line numbers and expanded context to get exactly the code you need - complete functions, full classes, or entire modules.
+
+---
+
 ## Practical Patterns
 
 ### Pattern 1: Answering "Where is X?"
@@ -63,19 +128,6 @@ User asks: "Where does invoice validation happen?"
 
 ```bash
 ogrep query "invoice validation logic"
-```
-
-Returns results ranked by relevance. The `chunk_ref` field lets you expand context:
-
-```json
-{
-  "results": [{
-    "rank": 1,
-    "chunk_ref": "src/billing/validator.py:3",
-    "confidence": "high",
-    "text": "def validate_invoice(invoice: Invoice) -> ValidationResult:..."
-  }]
-}
 ```
 
 ### Pattern 2: Exploring Unfamiliar Code
@@ -102,11 +154,19 @@ ogrep query "payment error handling"
 ogrep query "payment refund logic"
 ```
 
-### Pattern 4: Precision Mode with Reranking
+### Pattern 4: Legacy Code Archaeology
 
-Standard search gets you to the neighborhood. Reranking gets you to the exact house.
+Tracing behavior in code where naming is inconsistent or misleading:
 
-The problem: semantic search retrieves good candidates, but the #1 result isn't always the best match. Reranking uses a cross-encoder model to re-score the top candidates with much higher precision.
+```bash
+ogrep query "the thing that sends emails after user signup"
+ogrep query "where do we store session state"
+ogrep query "how are database connections managed"
+```
+
+### Pattern 5: Precision Mode with Reranking
+
+Standard search gets you to the neighborhood. Reranking gets you to the exact house. (but slow)
 
 ```bash
 # Install reranking support (one-time, ~300MB model download)
@@ -116,7 +176,7 @@ pip install "ogrep[rerank]"
 ogrep query "database connection pooling" --rerank
 
 # Control how many candidates to rerank
-ogrep query "complex auth flow" --rerank --rerank-top 30
+ogrep query "complex auth flow" --rerank --rerank-top 20
 ```
 
 When to use `--rerank`:
@@ -220,10 +280,19 @@ ogrep status
 ```
 
 **Key fields:**
-- `chunk_ref` - Use with `ogrep chunk` to expand context
+- `chunk_ref` - Use with `ogrep chunk` to expand context (format: `"file.py:N"` where N is 0-based chunk index, NOT line number)
+- `start_line`, `end_line` - Exact location in the file
 - `confidence` - `high` (90%+ of top score), `medium`, `low`, `very_low`
-- `reranked` - Whether results were reranked with cross-encoder
 - `text` - Full chunk content for analysis
+
+**No results:**
+```json
+{
+  "results": [],
+  "stats": {"total_results": 0, ...}
+}
+```
+If this happens, try broader terms or check if index is stale with `ogrep status`.
 
 ---
 
@@ -241,8 +310,6 @@ ogrep chunk "models/user.py:5" --before 2
 # What comes after (see what follows)
 ogrep chunk "handler.py:3" --after 1
 ```
-
-**chunk_ref format:** `"file.py:N"` where N is chunk index (0-based)
 
 ---
 
@@ -300,6 +367,12 @@ pip install "ogrep[ast]"         # If not installed
 ogrep reindex . --ast
 ```
 
+**"Auth/API errors"**
+```bash
+# Check OPENAI_API_KEY is set, or for local:
+# Check OGREP_BASE_URL points to running server
+```
+
 **"Check index health"**
 ```bash
 ogrep status
@@ -334,7 +407,7 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENAI_API_KEY` | - | Required for embeddings |
+| `OPENAI_API_KEY` | - | Required for embeddings (unless using local) |
 | `OGREP_BASE_URL` | - | Local embeddings server (e.g., LM Studio) |
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
 | `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion (`rrf` or `alpha`) |
