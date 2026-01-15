@@ -13,8 +13,23 @@ of which optional features are available.
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 
 import pytest
+
+
+@dataclass
+class MockHit:
+    """Mock Hit for testing without importing from search."""
+
+    score: float
+    path: str
+    start_line: int
+    end_line: int
+    text: str
+    chunk_id: int
+    chunk_index: int
+    confidence: str
 
 
 class TestGracefulDegradationCLI:
@@ -103,9 +118,21 @@ class TestGracefulDegradationUnit:
         from ogrep.rerank import is_reranker_available, rerank_results
 
         if not is_reranker_available():
+            # Create a mock hit - must be non-empty to trigger reranker check
+            mock_hit = MockHit(
+                score=0.5,
+                path="test.py",
+                start_line=1,
+                end_line=10,
+                text="def test(): pass",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="high",
+            )
+
             # Should raise ImportError with helpful message
             with pytest.raises(ImportError) as exc_info:
-                rerank_results("test query", [])
+                rerank_results("test query", [mock_hit])
 
             assert (
                 "sentence-transformers" in str(exc_info.value).lower()
