@@ -10,6 +10,7 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 - *"what kind of API key mechanism do we use?"*
 
 **GitHub:** [github.com/gplv2/ogrep-marketplace](https://github.com/gplv2/ogrep-marketplace)
+**Website:** [ogrep.be](https://ogrep.be) — quick overview
 
 ---
 
