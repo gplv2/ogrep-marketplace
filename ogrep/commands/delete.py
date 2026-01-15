@@ -34,11 +34,11 @@ def _add_to_ogrepignore(root: Path, paths: list[str]) -> tuple[bool, str]:
     existing = set()
     if ignore_file.exists():
         try:
-            existing = set(
+            existing = {
                 line.strip()
                 for line in ignore_file.read_text().splitlines()
                 if line.strip() and not line.strip().startswith("#")
-            )
+            }
         except Exception:
             pass
 
@@ -150,13 +150,17 @@ def cmd_delete(args: argparse.Namespace) -> int:
 
         if not matches:
             if use_json:
-                print(json.dumps({
-                    "database": str(db),
-                    "patterns": args.paths,
-                    "matched": 0,
-                    "deleted": 0,
-                    "dry_run": dry_run,
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "database": str(db),
+                            "patterns": args.paths,
+                            "matched": 0,
+                            "deleted": 0,
+                            "dry_run": dry_run,
+                        }
+                    )
+                )
             else:
                 print(f"No files matched: {', '.join(args.paths)}")
             con.close()
@@ -184,8 +188,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
                     "deleted": 0,
                     "dry_run": True,
                     "would_delete": [
-                        {"path": rel, "chunks": chunk_counts.get(fid, 0)}
-                        for fid, _, rel in matches
+                        {"path": rel, "chunks": chunk_counts.get(fid, 0)} for fid, _, rel in matches
                     ],
                     "total_chunks": total_chunks,
                     "save": save,
@@ -199,11 +202,11 @@ def cmd_delete(args: argparse.Namespace) -> int:
                     chunks = chunk_counts.get(fid, 0)
                     print(f"  {rel} ({chunks} chunks)")
                 if save:
-                    print(f"\nWould add to .ogrepignore:")
+                    print("\nWould add to .ogrepignore:")
                     for p in deleted_paths:
                         print(f"  {p}")
                 else:
-                    print(f"\nTip: Use --save to add these to .ogrepignore and prevent re-indexing")
+                    print("\nTip: Use --save to add these to .ogrepignore and prevent re-indexing")
             con.close()
             return 0
 
@@ -256,13 +259,13 @@ def cmd_delete(args: argparse.Namespace) -> int:
                 print(f"  {p}")
             if save:
                 if saved_to_ignore:
-                    print(f"\nAdded to .ogrepignore (will be excluded from future indexing):")
+                    print("\nAdded to .ogrepignore (will be excluded from future indexing):")
                     for p in deleted_paths:
                         print(f"  {p}")
                 else:
                     print(f"\nWarning: Failed to update .ogrepignore: {ignore_file_path}")
             else:
-                print(f"\nTip: Use --save to add these to .ogrepignore and prevent re-indexing")
+                print("\nTip: Use --save to add these to .ogrepignore and prevent re-indexing")
 
     except KeyboardInterrupt:
         con.close()

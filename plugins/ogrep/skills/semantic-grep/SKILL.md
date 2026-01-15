@@ -13,7 +13,7 @@ allowed-tools: Bash, Read
 You're looking for authentication code. Is it called `authenticate`, `login`, `verify_credentials`, `check_token`, or `validate_session`? With grep, you'd have to guess. With ogrep, you just ask.
 
 ```bash
-ogrep query "where is user authentication handled" --json
+ogrep query "where is user authentication handled"
 ```
 
 ## The Sweet Spot
@@ -34,18 +34,23 @@ ogrep fills a specific gap: **conceptual code questions**.
 
 ## Quick Reference
 
+**All commands output JSON by default.** Use `--no-json` for human-readable text.
+
 ```bash
 # Index (first time - takes a minute)
-ogrep index . --json
+ogrep index .
 
 # Search by concept (this is the main use case)
-ogrep query "how are payments processed" --json
+ogrep query "how are payments processed"
 
 # After editing files, refresh before searching
-ogrep query "the code I just modified" --refresh --json
+ogrep query "the code I just modified" --refresh
 
 # Expand context around an interesting result
-ogrep chunk "billing/processor.py:2" --context 1 --json
+ogrep chunk "billing/processor.py:2" --context 1
+
+# Human-readable output (when needed)
+ogrep status --no-json
 ```
 
 ---
@@ -57,7 +62,7 @@ ogrep chunk "billing/processor.py:2" --context 1 --json
 User asks: "Where does invoice validation happen?"
 
 ```bash
-ogrep query "invoice validation logic" --json
+ogrep query "invoice validation logic"
 ```
 
 Returns results ranked by relevance. The `chunk_ref` field lets you expand context:
@@ -78,14 +83,14 @@ Returns results ranked by relevance. The `chunk_ref` field lets you expand conte
 You've never seen this codebase. Start broad:
 
 ```bash
-ogrep query "main entry point" --json
-ogrep query "how does the API handle requests" -n 15 --json
+ogrep query "main entry point"
+ogrep query "how does the API handle requests" -n 15
 ```
 
 Found something interesting? Drill into it:
 
 ```bash
-ogrep chunk "api/routes.py:2" --context 1 --json
+ogrep chunk "api/routes.py:2" --context 1
 ```
 
 ### Pattern 3: Finding Related Code
@@ -93,8 +98,8 @@ ogrep chunk "api/routes.py:2" --context 1 --json
 You found the payment handler, now you need related pieces:
 
 ```bash
-ogrep query "payment error handling" --json
-ogrep query "payment refund logic" --json
+ogrep query "payment error handling"
+ogrep query "payment refund logic"
 ```
 
 ### Pattern 4: Precision Mode with Reranking
@@ -108,10 +113,10 @@ The problem: semantic search retrieves good candidates, but the #1 result isn't 
 pip install "ogrep[rerank]"
 
 # Basic reranking - reorders top 50 candidates
-ogrep query "database connection pooling" --rerank --json
+ogrep query "database connection pooling" --rerank
 
 # Control how many candidates to rerank
-ogrep query "complex auth flow" --rerank --rerank-top 30 --json
+ogrep query "complex auth flow" --rerank --rerank-top 30
 ```
 
 When to use `--rerank`:
@@ -130,9 +135,9 @@ When to use `--rerank`:
 | `fulltext` | Known terms | "def validate_token" |
 
 ```bash
-ogrep query "handle errors" --mode semantic --json
-ogrep query "class ErrorHandler" --mode fulltext --json
-ogrep query "error handling logic" --json  # hybrid (default)
+ogrep query "handle errors" --mode semantic
+ogrep query "class ErrorHandler" --mode fulltext
+ogrep query "error handling logic"  # hybrid (default)
 ```
 
 ---
@@ -168,13 +173,13 @@ pip install "ogrep[ast]"        # Core languages
 pip install "ogrep[ast-all]"    # All languages
 
 # Index with AST chunking
-ogrep index . --ast --json
+ogrep index . --ast
 
 # Rebuild existing index with AST
-ogrep reindex . --ast --json
+ogrep reindex . --ast
 
 # Check if AST is being used
-ogrep status --json
+ogrep status
 ```
 
 **When to use AST chunking:**
@@ -228,13 +233,13 @@ Query found something interesting? Get more:
 
 ```bash
 # Surrounding context (1 chunk before and after)
-ogrep chunk "auth.py:2" --context 1 --json
+ogrep chunk "auth.py:2" --context 1
 
 # What comes before (find class definition)
-ogrep chunk "models/user.py:5" --before 2 --json
+ogrep chunk "models/user.py:5" --before 2
 
 # What comes after (see what follows)
-ogrep chunk "handler.py:3" --after 1 --json
+ogrep chunk "handler.py:3" --after 1
 ```
 
 **chunk_ref format:** `"file.py:N"` where N is chunk index (0-based)
@@ -245,28 +250,28 @@ ogrep chunk "handler.py:3" --after 1 --json
 
 ```bash
 # Create new index
-ogrep index . --json
-ogrep index . --ast --json              # With AST chunking
+ogrep index .
+ogrep index . --ast              # With AST chunking
 
 # Rebuild from scratch
-ogrep reindex . --json
-ogrep reindex . --ast --json            # Rebuild with AST
+ogrep reindex .
+ogrep reindex . --ast            # Rebuild with AST
 
 # Update changed files only
-ogrep refresh . --json
+ogrep refresh .
 
 # Check index status
-ogrep status --json
+ogrep status
 
 # View recent changes
-ogrep log --limit 10 --json
+ogrep log --limit 10
 
 # Database health
-ogrep health --json
+ogrep health
 
 # Clean up stale entries
-ogrep clean --json
-ogrep clean --vacuum --json             # Also compact database
+ogrep clean
+ogrep clean --vacuum             # Also compact database
 ```
 
 ---
@@ -275,50 +280,53 @@ ogrep clean --vacuum --json             # Also compact database
 
 **"No index found"**
 ```bash
-ogrep index . --json
+ogrep index .
 ```
 
 **"Results seem stale"**
 ```bash
-ogrep query "..." --refresh --json      # Reindexes changed files first
+ogrep query "..." --refresh      # Reindexes changed files first
 ```
 
 **"Right answer is in results but not #1"**
 ```bash
-pip install "ogrep[rerank]"             # If not installed
-ogrep query "..." --rerank --json
+pip install "ogrep[rerank]"      # If not installed
+ogrep query "..." --rerank
 ```
 
 **"Functions are being split awkwardly"**
 ```bash
-pip install "ogrep[ast]"                # If not installed
-ogrep reindex . --ast --json
+pip install "ogrep[ast]"         # If not installed
+ogrep reindex . --ast
 ```
 
 **"Check index health"**
 ```bash
-ogrep status --json
-ogrep health --json
+ogrep status
+ogrep health
 ```
 
 ---
 
 ## Command Summary
 
+All commands output JSON by default. Use `--no-json` for human-readable text.
+
 | Task | Command |
 |------|---------|
-| Create index | `ogrep index . --json` |
-| Create index (AST) | `ogrep index . --ast --json` |
-| Find implementation | `ogrep query "how does X work" --json` |
-| Find exact name | `ogrep query "def function_name" --mode fulltext --json` |
-| Precision search | `ogrep query "..." --rerank --json` |
-| Fresh results | `ogrep query "..." --refresh --json` |
-| More context | `ogrep chunk "file.py:N" --context 1 --json` |
-| Rebuild index | `ogrep reindex . --json` |
-| Index status | `ogrep status --json` |
-| Recent changes | `ogrep log --limit 5 --json` |
-| Health check | `ogrep health --json` |
-| Clean stale | `ogrep clean --json` |
+| Create index | `ogrep index .` |
+| Create index (AST) | `ogrep index . --ast` |
+| Find implementation | `ogrep query "how does X work"` |
+| Find exact name | `ogrep query "def function_name" --mode fulltext` |
+| Precision search | `ogrep query "..." --rerank` |
+| Fresh results | `ogrep query "..." --refresh` |
+| More context | `ogrep chunk "file.py:N" --context 1` |
+| Rebuild index | `ogrep reindex .` |
+| Index status | `ogrep status` |
+| Recent changes | `ogrep log --limit 5` |
+| Health check | `ogrep health` |
+| Clean stale | `ogrep clean` |
+| Human output | `ogrep status --no-json` |
 
 ---
 
@@ -338,7 +346,7 @@ ogrep health --json
 **Local embeddings (optional):**
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
-ogrep index . -m nomic --json
+ogrep index . -m nomic
 ```
 
 ---

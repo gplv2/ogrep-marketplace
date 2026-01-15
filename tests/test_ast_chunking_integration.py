@@ -15,7 +15,7 @@ import pytest
 
 # Skip all tests if tree-sitter not installed
 try:
-    from ogrep.ast_chunking import is_ast_available, chunk_ast, SUPPORTED_LANGUAGES
+    from ogrep.ast_chunking import SUPPORTED_LANGUAGES, chunk_ast, is_ast_available
 
     HAS_TREE_SITTER = is_ast_available()
 except ImportError:
@@ -176,7 +176,7 @@ def handle_update_user(user_id: int, data: dict) -> APIResponse:
 }
 
 JAVASCRIPT_PROJECT = {
-    "utils.js": '''/**
+    "utils.js": """/**
  * Utility functions for string manipulation.
  */
 
@@ -218,11 +218,11 @@ class StringBuilder {
 }
 
 module.exports = { capitalize, truncate, slugify, StringBuilder };
-''',
+""",
 }
 
 GO_PROJECT = {
-    "server.go": '''package main
+    "server.go": """package main
 
 import (
     "encoding/json"
@@ -269,11 +269,11 @@ func HandleNotFound(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(404)
     json.NewEncoder(w).Encode(resp)
 }
-''',
+""",
 }
 
 RUST_PROJECT = {
-    "lib.rs": '''//! A simple key-value store implementation.
+    "lib.rs": """//! A simple key-value store implementation.
 
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(store.get("key"), Some("value".to_string()));
     }
 }
-''',
+""",
 }
 
 
@@ -464,12 +464,12 @@ class TestPythonChunkBoundaries:
 
     def test_chunk_start_line_matches_definition(self):
         """Chunk start_line should match the function/class definition line."""
-        code = '''def hello():
+        code = """def hello():
     pass
 
 def world():
     pass
-'''
+"""
         chunks = chunk_ast(code, language="python")
 
         assert len(chunks) == 2
@@ -478,12 +478,12 @@ def world():
 
     def test_chunk_end_line_includes_body(self):
         """Chunk end_line should include the entire body."""
-        code = '''def multiline():
+        code = """def multiline():
     x = 1
     y = 2
     z = 3
     return x + y + z
-'''
+"""
         chunks = chunk_ast(code, language="python")
 
         assert len(chunks) == 1
@@ -492,11 +492,11 @@ def world():
 
     def test_nested_function_stays_with_parent(self):
         """Nested functions should be part of their parent chunk."""
-        code = '''def outer():
+        code = """def outer():
     def inner():
         return 42
     return inner()
-'''
+"""
         chunks = chunk_ast(code, language="python")
 
         assert len(chunks) == 1
@@ -677,9 +677,7 @@ class TestASTIndexingIntegration:
 
         # Check that PasswordHasher class is a single chunk
         auth_chunks = [c for c in chunks if "auth.py" in c[0]]
-        class_chunk = next(
-            (c for c in auth_chunks if "class PasswordHasher" in c[4]), None
-        )
+        class_chunk = next((c for c in auth_chunks if "class PasswordHasher" in c[4]), None)
         assert class_chunk is not None, "PasswordHasher class should be indexed"
 
         # The class methods should be in the same chunk
@@ -710,19 +708,19 @@ class TestASTChunkingEdgeCases:
 
     def test_comments_only(self):
         """Comment-only files should be handled gracefully."""
-        code = '''# This is a comment
+        code = """# This is a comment
 # Another comment
 # Yet another
-'''
+"""
         chunks = chunk_ast(code, language="python")
         # May return empty or a single module chunk
         assert isinstance(chunks, list)
 
     def test_syntax_error_fallback(self):
         """Syntax errors should fall back to line-based chunking."""
-        broken_code = '''def broken(
+        broken_code = """def broken(
     # Missing closing paren
-'''
+"""
         chunks = chunk_ast(broken_code, language="python")
         # Should not raise, should return something
         assert isinstance(chunks, list)
@@ -749,19 +747,19 @@ class TestASTChunkingEdgeCases:
 
     def test_small_function_not_split(self):
         """Small functions should remain as single chunks."""
-        code = '''def small():
+        code = """def small():
     return 42
-'''
+"""
         chunks = chunk_ast(code, language="python", max_chunk_lines=100)
         assert len(chunks) == 1
 
     def test_decorator_included(self):
         """Decorated functions should include the decorator."""
-        code = '''@decorator
+        code = """@decorator
 @another_decorator
 def decorated_function():
     pass
-'''
+"""
         chunks = chunk_ast(code, language="python")
         assert len(chunks) >= 1
 
@@ -772,7 +770,7 @@ def decorated_function():
 
     def test_mixed_content(self):
         """Files with mixed content (classes, functions, module code) should be handled."""
-        code = '''import os
+        code = """import os
 
 CONSTANT = 42
 
@@ -783,7 +781,7 @@ def my_function():
     pass
 
 another_var = "test"
-'''
+"""
         chunks = chunk_ast(code, language="python")
 
         # Should have multiple chunks

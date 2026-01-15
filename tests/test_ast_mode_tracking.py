@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from ogrep.db import connect, get_metadata, set_metadata, get_all_metadata
+from ogrep.db import connect, get_all_metadata, get_metadata, set_metadata
 from ogrep.indexer import index_path
 
 
@@ -99,9 +98,7 @@ def goodbye():
         )
 
         con = sqlite3.connect(str(db_path))
-        ast_mode = con.execute(
-            "SELECT value FROM index_metadata WHERE key = 'ast_mode'"
-        ).fetchone()
+        ast_mode = con.execute("SELECT value FROM index_metadata WHERE key = 'ast_mode'").fetchone()
         con.close()
 
         assert ast_mode is not None
@@ -114,6 +111,7 @@ def goodbye():
         # Check if tree-sitter is available
         try:
             from ogrep.ast_chunking import is_ast_available
+
             ast_available = is_ast_available()
         except ImportError:
             ast_available = False
@@ -125,9 +123,7 @@ def goodbye():
         )
 
         con = sqlite3.connect(str(db_path))
-        ast_mode = con.execute(
-            "SELECT value FROM index_metadata WHERE key = 'ast_mode'"
-        ).fetchone()
+        ast_mode = con.execute("SELECT value FROM index_metadata WHERE key = 'ast_mode'").fetchone()
         con.close()
 
         assert ast_mode is not None
@@ -153,9 +149,10 @@ class TestStatusCommandAstMode:
 
     def test_status_shows_ast_mode(self, indexed_repo: Path) -> None:
         """Status command should show ast_mode in JSON output."""
-        from ogrep.commands.status import cmd_status
         import io
         import sys
+
+        from ogrep.commands.status import cmd_status
 
         db_path = indexed_repo / ".ogrep" / "index.sqlite"
 
@@ -231,12 +228,23 @@ class TestOldDatabaseWithoutMetadata:
         # Create a dummy embedding (just zeros)
         # text-embedding-3-small defaults to 256D in current config
         import array
+
         dummy_embedding = array.array("f", [0.0] * 256).tobytes()
         con.execute(
             """INSERT INTO chunks (file_id, chunk_index, start_line, end_line,
                text, text_sha256, embedding, dim, model)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (1, 0, 1, 5, "def test(): pass", "sha256", dummy_embedding, 256, "text-embedding-3-small"),
+            (
+                1,
+                0,
+                1,
+                5,
+                "def test(): pass",
+                "sha256",
+                dummy_embedding,
+                256,
+                "text-embedding-3-small",
+            ),
         )
         con.commit()
         con.close()
@@ -245,9 +253,10 @@ class TestOldDatabaseWithoutMetadata:
 
     def test_status_handles_old_database(self, old_database: Path) -> None:
         """Status command should work with old databases without metadata table."""
-        from ogrep.commands.status import cmd_status
         import io
         import sys
+
+        from ogrep.commands.status import cmd_status
 
         db_path = old_database / ".ogrep" / "index.sqlite"
 
@@ -277,9 +286,10 @@ class TestOldDatabaseWithoutMetadata:
 
     def test_query_handles_old_database(self, old_database: Path) -> None:
         """Query command should work with old databases and not show AST hint."""
-        from ogrep.commands.query import cmd_query
         import io
         import sys
+
+        from ogrep.commands.query import cmd_query
 
         db_path = old_database / ".ogrep" / "index.sqlite"
 
@@ -345,9 +355,10 @@ class TestQueryCommandAstHint:
 
     def test_query_shows_hint_for_non_ast(self, non_ast_index: Path) -> None:
         """Query on non-AST index should show hint."""
-        from ogrep.commands.query import cmd_query
         import io
         import sys
+
+        from ogrep.commands.query import cmd_query
 
         db_path = non_ast_index / ".ogrep" / "index.sqlite"
 
@@ -387,13 +398,15 @@ class TestQueryCommandAstHint:
 
     def test_query_no_hint_for_ast_index(self, ast_index: Path) -> None:
         """Query on AST index should not show hint."""
-        from ogrep.commands.query import cmd_query
         import io
         import sys
+
+        from ogrep.commands.query import cmd_query
 
         # Check if tree-sitter is available
         try:
             from ogrep.ast_chunking import is_ast_available
+
             if not is_ast_available():
                 pytest.skip("tree-sitter not available")
         except ImportError:

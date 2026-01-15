@@ -57,11 +57,15 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     if not db.exists():
         if use_json:
-            print(json.dumps({
-                "database": str(db),
-                "status": "not_indexed",
-                "indexed": False,
-            }))
+            print(
+                json.dumps(
+                    {
+                        "database": str(db),
+                        "status": "not_indexed",
+                        "indexed": False,
+                    }
+                )
+            )
         else:
             print(f"Database: {db}")
             print("Status: Not indexed")

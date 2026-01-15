@@ -25,7 +25,7 @@ def test_cli_version() -> None:
         text=True,
     )
     assert result.returncode == 0
-    assert "0.6.4" in result.stdout
+    assert "0.7.2" in result.stdout
 
 
 def test_cli_index_help() -> None:
@@ -94,15 +94,33 @@ def test_cli_status_help() -> None:
 
 
 def test_cli_models() -> None:
-    """Test that ogrep models works."""
+    """Test that ogrep models works (JSON output is default)."""
+    import json
+
     result = subprocess.run(
         [sys.executable, "-m", "ogrep", "models"],
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0
+
+    # JSON is now default output
+    output = json.loads(result.stdout)
+    assert "models" in output
+    model_ids = [m["id"] for m in output["models"]]
+    assert "text-embedding-3-small" in model_ids
+    assert "text-embedding-3-large" in model_ids
+
+
+def test_cli_models_no_json() -> None:
+    """Test that ogrep models --no-json works for human-readable output."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ogrep", "models", "--no-json"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
     assert "text-embedding-3-small" in result.stdout
-    assert "text-embedding-3-large" in result.stdout
     assert "OGREP_MODEL" in result.stdout
 
 

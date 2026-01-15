@@ -85,13 +85,17 @@ def cmd_clean(args: argparse.Namespace) -> int:
                 print("Database compacted")
 
         if use_json:
-            print(json.dumps({
-                "database": str(db),
-                "exists": True,
-                "removed": removed,
-                "removed_paths": removed_paths,
-                "vacuumed": vacuumed,
-            }))
+            print(
+                json.dumps(
+                    {
+                        "database": str(db),
+                        "exists": True,
+                        "removed": removed,
+                        "removed_paths": removed_paths,
+                        "vacuumed": vacuumed,
+                    }
+                )
+            )
         else:
             print(f"Removed {removed} stale file entries")
 

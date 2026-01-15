@@ -1,7 +1,7 @@
 ---
 description: Remove the ogrep index database for the current scope
 allowed-tools: Bash
-argument-hint: [--force] [--json]
+argument-hint: [--force] [--no-json]
 ---
 
 Remove the semantic search index.
@@ -12,8 +12,8 @@ Remove the semantic search index.
 # Reset index (requires -f in non-interactive mode)
 ogrep reset -f
 
-# Reset with JSON output
-ogrep reset -f --json
+# Reset with human-readable output
+ogrep reset -f --no-json
 ```
 
 ## Flags
@@ -21,7 +21,7 @@ ogrep reset -f --json
 | Flag | Description |
 |------|-------------|
 | `-f`, `--force` | Skip confirmation (required in non-interactive mode) |
-| `--json` | Output results as JSON |
+| `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
 
 ## JSON Output
 

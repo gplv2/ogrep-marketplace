@@ -5,11 +5,11 @@ argument-hint: <query text>
 ---
 
 Run:
-- `ogrep query "$ARGUMENTS" --top 15 --refresh --json`
+- `ogrep query "$ARGUMENTS" --top 15 --refresh`
 
 **Flags explained:**
 - `--refresh` ensures results reflect current code by checking for changed files and reindexing them before querying
-- `--json` returns structured output with full chunk text, language detection, and metadata
+- JSON output is the default (use `--no-json` for human-readable text)
 - `--mode MODE` (optional) selects search mode: `semantic`, `fulltext`, or `hybrid` (default)
 
 **Search modes:**

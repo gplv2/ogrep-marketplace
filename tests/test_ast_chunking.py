@@ -9,10 +9,10 @@ from ogrep.chunking import Chunk
 # Import will fail if tree-sitter not installed - tests will skip
 try:
     from ogrep.ast_chunking import (
+        SUPPORTED_LANGUAGES,
         chunk_ast,
         get_language_for_file,
         is_ast_available,
-        SUPPORTED_LANGUAGES,
     )
 
     HAS_TREE_SITTER = is_ast_available()
@@ -153,14 +153,14 @@ def test_chunk_ast_empty_file():
 
 def test_chunk_ast_no_functions():
     """Test file with only module-level code."""
-    code = '''
+    code = """
 # Just comments and imports
 import os
 import sys
 
 x = 1
 y = 2
-'''
+"""
     chunks = chunk_ast(code, language="python")
     # Should still produce at least one chunk with the module-level code
     assert len(chunks) >= 1
@@ -181,7 +181,7 @@ def test_chunk_ast_nested_classes():
 # =============================================================================
 
 
-JAVASCRIPT_SIMPLE = '''
+JAVASCRIPT_SIMPLE = """
 function greet(name) {
     console.log("Hello, " + name);
 }
@@ -199,7 +199,7 @@ class Person {
         greet(this.name);
     }
 }
-'''
+"""
 
 
 @pytest.mark.skipif(
@@ -268,10 +268,10 @@ def test_chunk_ast_fallback_on_unsupported():
 
 def test_chunk_ast_fallback_on_syntax_error():
     """Test that syntax errors don't crash, fall back gracefully."""
-    broken_python = '''
+    broken_python = """
 def broken_function(
     # Missing closing paren and body
-'''
+"""
     # Should not raise, should return something reasonable
     chunks = chunk_ast(broken_python, language="python")
     assert isinstance(chunks, list)

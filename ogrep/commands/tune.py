@@ -181,11 +181,15 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
     if len(samples) < 3:
         if use_json:
-            print(json.dumps({
-                "error": "Not enough significant code patterns found for tuning",
-                "samples_found": len(samples),
-                "samples_required": 3,
-            }))
+            print(
+                json.dumps(
+                    {
+                        "error": "Not enough significant code patterns found for tuning",
+                        "samples_found": len(samples),
+                        "samples_required": 3,
+                    }
+                )
+            )
         else:
             print("Not enough significant code patterns found for tuning.")
             print("Need at least 3 function/class definitions.")
@@ -238,7 +242,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
     best_chunk = 60  # default
     best_accuracy = 0.0
 
-    for chunk_size, accuracy, hits in results:
+    for chunk_size, accuracy, _hits in results:
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_chunk = chunk_size

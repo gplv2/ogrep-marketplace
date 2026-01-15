@@ -8,3 +8,4 @@ build/
 .env
 *.egg-info/
 test.*
+index.html

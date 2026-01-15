@@ -269,8 +269,7 @@ def _list_files(
                 "excluded_size": excluded_size,
             },
             "by_extension": {
-                ext: {"count": count, "size": total}
-                for ext, (count, total) in ext_stats.items()
+                ext: {"count": count, "size": total} for ext, (count, total) in ext_stats.items()
             },
         }
         print(json.dumps(output))

@@ -46,22 +46,30 @@ def cmd_reset(args: argparse.Namespace) -> int:
 
         if not sys.stdin.isatty():
             if use_json:
-                print(json.dumps({
-                    "error": "Non-interactive mode requires --force (-f) flag",
-                    "database": str(db),
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "error": "Non-interactive mode requires --force (-f) flag",
+                            "database": str(db),
+                        }
+                    )
+                )
             else:
                 print("Non-interactive mode requires --force (-f) flag.")
             return 1
         confirm = input(f"Delete {db}? [y/N]: ").strip().lower()
         if confirm not in ("y", "yes"):
             if use_json:
-                print(json.dumps({
-                    "database": str(db),
-                    "existed": True,
-                    "removed": False,
-                    "aborted": True,
-                }))
+                print(
+                    json.dumps(
+                        {
+                            "database": str(db),
+                            "existed": True,
+                            "removed": False,
+                            "aborted": True,
+                        }
+                    )
+                )
             else:
                 print("Aborted.")
             return 1
@@ -79,12 +87,16 @@ def cmd_reset(args: argparse.Namespace) -> int:
         pass
 
     if use_json:
-        print(json.dumps({
-            "database": str(db),
-            "existed": True,
-            "removed": True,
-            "parent_removed": parent_removed,
-        }))
+        print(
+            json.dumps(
+                {
+                    "database": str(db),
+                    "existed": True,
+                    "removed": True,
+                    "parent_removed": parent_removed,
+                }
+            )
+        )
     else:
         print(f"Removed {db}")
 

@@ -1,7 +1,7 @@
 ---
 description: Force rebuild of the semantic search index from scratch
 allowed-tools: Bash
-argument-hint: [path] [--json]
+argument-hint: [path] [--no-json]
 ---
 
 Completely rebuild the index by removing it and reindexing from scratch.
@@ -9,18 +9,18 @@ Completely rebuild the index by removing it and reindexing from scratch.
 ## Commands
 
 ```bash
-# Rebuild index for current directory
+# Rebuild index for current directory (JSON output is default)
 ogrep reindex ${1:-.}
 
-# Rebuild with JSON output
-ogrep reindex ${1:-.} --json
+# Rebuild with human-readable output
+ogrep reindex ${1:-.} --no-json
 ```
 
 ## Flags
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output results as JSON |
+| `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
 | `-m MODEL` | Use specific embedding model |
 | `--chunk-lines N` | Lines per chunk (default: 60) |
 | `--overlap N` | Overlap lines between chunks (default: 10) |

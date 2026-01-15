@@ -5,11 +5,12 @@
 ### 1. Install
 
 ```bash
-# Option A: pipx (recommended)
-pipx install ogrep
 
-# Option B: pip
+# Option A: pip (recommended)
 pip install ogrep
+
+# Option B: pipx 
+pipx install ogrep
 ```
 
 ### 2. Set API Key
@@ -22,7 +23,8 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 ```bash
 cd /path/to/your/repo
-ogrep index .
+ogrep index . -ls
+ogrep index . 
 ogrep query "where is authentication handled?" -n 15
 ```
 
@@ -45,7 +47,8 @@ export OGREP_MODEL=large
 
 ### 1. Install LM Studio
 
-Download from [lmstudio.ai](https://lmstudio.ai/) and launch it once.
+Download from [lmstudio.ai](https://lmstudio.ai/) and launch it once.  
+
 
 ### 2. Setup CLI and Model
 

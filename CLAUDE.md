@@ -58,49 +58,66 @@ ogrep-marketplace/
 
 ## CLI Commands
 
-All commands support `--json` for structured output (AI tool integration).
+**JSON output is the default** for all commands (optimized for AI/machine use).
+Use `--no-json` for human-readable text output.
 
-| Command | Description | JSON |
-|---------|-------------|------|
-| `ogrep index .` | Index a directory (source files only) | `--json` |
-| `ogrep index . --list` | Preview files that would be indexed | `--json` |
-| `ogrep query "text" -n 10 -r --json` | Semantic search (refresh, JSON) | `--json` |
-| `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) | `--json` |
-| `ogrep chunk "path:N" -C 1` | Get chunk by ref with context | `--json` |
-| `ogrep status` | Show index stats | `--json` |
-| `ogrep health` | Full database diagnostics | `--json` |
-| `ogrep health --vacuum` | Reclaim space, defragment | `--json` |
-| `ogrep health --rebuild-fts` | Rebuild FTS5 index | `--json` |
-| `ogrep health --integrity` | Full integrity check | `--json` |
-| `ogrep reset -f` | Delete index | `--json` |
-| `ogrep reindex .` | Rebuild index (enables FTS5) | `--json` |
-| `ogrep clean --vacuum` | Remove stale entries | `--json` |
-| `ogrep models` | List available models | `--json` |
-| `ogrep tune .` | Auto-tune chunk size | `--json` |
-| `ogrep benchmark .` | Compare all models | `--json` |
+| Command | Description |
+|---------|-------------|
+| `ogrep index .` | Index a directory (source files only) |
+| `ogrep index . --list` | Preview files that would be indexed |
+| `ogrep query "text" -n 10 -r` | Semantic search (refresh) |
+| `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) |
+| `ogrep query "text" --rerank` | Cross-encoder reranking for better ordering |
+| `ogrep chunk "path:N" -C 1` | Get chunk by ref with context |
+| `ogrep status` | Show index stats |
+| `ogrep health` | Full database diagnostics |
+| `ogrep health --vacuum` | Reclaim space, defragment |
+| `ogrep health --rebuild-fts` | Rebuild FTS5 index |
+| `ogrep health --integrity` | Full integrity check |
+| `ogrep reset -f` | Delete index |
+| `ogrep reindex .` | Rebuild index (enables FTS5) |
+| `ogrep clean --vacuum` | Remove stale entries |
+| `ogrep models` | List available models |
+| `ogrep device` | Check GPU/CPU for reranking |
+| `ogrep tune .` | Auto-tune chunk size |
+| `ogrep benchmark .` | Compare all models |
+| `ogrep log` | Show index change history |
+| `ogrep delete "path"` | Remove files from index |
+
+**Human-readable output:**
+```bash
+ogrep status --no-json      # Human-friendly status
+ogrep query "text" --no-json  # Traditional grep-style output
+```
 
 ### JSON Output Examples
 
+All commands output JSON by default:
+
 ```bash
-# Index with JSON output
-ogrep index . --json
+# Index (JSON output is default)
+ogrep index .
 # {"status":"success","files_indexed":42,"chunks_total":217,...}
 
-# Status as JSON
-ogrep status --json
+# Status
+ogrep status
 # {"indexed":true,"files":42,"chunks":217,"model":"text-embedding-3-small",...}
 
-# Clean with JSON
-ogrep clean --json
+# Clean
+ogrep clean
 # {"status":"success","removed_count":3,"removed_paths":[...],"vacuumed":false}
 
-# Health as JSON
-ogrep health --json
+# Health
+ogrep health
 # {"tables":{...},"dedup_stats":{...},"fts5":{...},"sqlite_info":{...}}
 
-# Models as JSON
-ogrep models --json
+# Models
+ogrep models
 # {"models":[{"id":"text-embedding-3-small","dimensions":1536,...}],...}
+
+# Device (GPU/CPU)
+ogrep device
+# {"rerank_available":true,"device":"cuda","cuda_available":true,...}
 ```
 
 ## AI Tool Integration (IMPORTANT)
@@ -133,9 +150,9 @@ ogrep supports three search modes via `--mode` (or `-M`):
 | `hybrid` | Mixed/unsure (default) | "authenticate user validation" |
 
 ```bash
-ogrep query "authenticate" --mode semantic --json   # Embeddings only
-ogrep query "def authenticate" --mode fulltext --json  # FTS5 keywords only
-ogrep query "user login" --mode hybrid --json       # Combined (default)
+ogrep query "authenticate" --mode semantic   # Embeddings only
+ogrep query "def authenticate" --mode fulltext  # FTS5 keywords only
+ogrep query "user login" --mode hybrid       # Combined (default)
 ```
 
 **Default behavior:**
@@ -152,6 +169,71 @@ ogrep chunk "src/auth.py:2"              # Get chunk by ref (from query results)
 ogrep chunk "src/auth.py:2" --before 1   # + 1 chunk before
 ogrep chunk "src/auth.py:2" --context 1  # + 1 before AND after
 ```
+
+### Reranking (Cross-Encoder)
+
+For improved result ordering, use `--rerank` to apply cross-encoder reranking:
+
+```bash
+ogrep query "authentication" --rerank           # Rerank top 50 candidates
+ogrep query "authentication" --rerank-top 30    # Rerank top 30 candidates
+```
+
+**Two-stage retrieval pattern:**
+1. **Fast retrieval**: Embeddings + BM25 find top 50-100 candidates (fast, pre-computed)
+2. **Slow reranking**: Cross-encoder scores (query, document) pairs (accurate, slower)
+
+**Requirements:**
+```bash
+pip install "ogrep[rerank]"  # Installs sentence-transformers + dependencies
+```
+
+**Check hardware support:**
+```bash
+ogrep device              # Show GPU/CPU capabilities (JSON default)
+ogrep device --no-json    # Human-readable output
+```
+
+#### GPU/CPU Usage
+
+Cross-encoder models are computationally intensive:
+
+| Hardware | Performance | Notes |
+|----------|-------------|-------|
+| **NVIDIA GPU (CUDA)** | ~10x faster | Requires CUDA 12.x drivers |
+| **Apple Silicon (MPS)** | ~3-5x faster | Automatic on macOS 12.3+ |
+| **CPU only** | Baseline | Works but slower, may cause high CPU usage |
+
+**CPU fallback behavior:**
+- If no GPU is available, PyTorch falls back to CPU automatically
+- First query is slower (model loading), subsequent queries use cached model
+- On CPU, expect 2-5 seconds per query depending on result count
+
+**GPU driver warnings:**
+- If you see CUDA driver warnings, they're captured and included in JSON output
+- JSON output (default) includes warnings in structured `"warnings"` field
+- Example warning: "CUDA initialization: The NVIDIA driver is too old"
+
+**Recommendations:**
+- For interactive use on CPU: limit `--rerank-top` to 20-30 for faster response
+- For batch processing: higher `--rerank-top` values are fine
+- Without GPU: consider using `--mode hybrid` without `--rerank` for faster results
+
+### Graceful Degradation
+
+ogrep is designed to work reliably with or without optional features:
+
+| Feature | Without | Behavior |
+|---------|---------|----------|
+| **Reranking** | No sentence-transformers | Search still works, returns helpful error if `--rerank` used |
+| **FTS5** | SQLite without FTS5 | Falls back to semantic-only search |
+| **GPU** | No CUDA/MPS | Falls back to CPU (slower but works) |
+| **AST chunking** | No tree-sitter | Falls back to line-based chunking |
+
+**Error handling:**
+- All commands return valid JSON even on errors
+- Helpful error messages explain what's missing
+- Exit codes indicate success (0) or failure (non-zero)
 
 ### Claude Code Hooks (Alternative)
 

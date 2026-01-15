@@ -393,8 +393,7 @@ def cmd_health(args: argparse.Namespace) -> int:
                         for name, rows, size in table_stats
                     ],
                     "indexes": [
-                        {"name": name, "definition": definition}
-                        for name, definition in indexes
+                        {"name": name, "definition": definition} for name, definition in indexes
                     ],
                     "sqlite": info,
                     "fts5": fts_stats,

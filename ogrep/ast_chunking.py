@@ -32,8 +32,8 @@ ENV_AST_CHUNKING = "OGREP_AST_CHUNKING"
 DEFAULT_MAX_CHUNK_LINES = 150
 
 # Language parsers - lazy loaded
-_PARSERS: dict[str, "Parser"] = {}
-_LANGUAGES: dict[str, "Language"] = {}
+_PARSERS: dict[str, Parser] = {}
+_LANGUAGES: dict[str, Language] = {}
 
 # File extension to language mapping
 EXTENSION_TO_LANGUAGE = {
@@ -162,7 +162,7 @@ def is_ast_available() -> bool:
         return False
 
 
-def _load_language(lang: str) -> "Language | None":
+def _load_language(lang: str) -> Language | None:
     """
     Load a tree-sitter language parser.
 
@@ -247,7 +247,7 @@ def _load_language(lang: str) -> "Language | None":
         return None
 
 
-def _get_parser(lang: str) -> "Parser | None":
+def _get_parser(lang: str) -> Parser | None:
     """
     Get or create a parser for the given language.
 
@@ -311,7 +311,7 @@ class SemanticUnit:
 
 
 def _extract_semantic_units(
-    tree: "Tree",
+    tree: Tree,
     source: bytes,
     lang: str,
 ) -> list[SemanticUnit]:
@@ -333,7 +333,7 @@ def _extract_semantic_units(
     units: list[SemanticUnit] = []
     node_type_set = set(node_types)
 
-    def visit(node: "Node", depth: int = 0) -> None:
+    def visit(node: Node, depth: int = 0) -> None:
         """Recursively visit nodes, extracting semantic units."""
         if node.type in node_type_set:
             # Extract the name if available
@@ -351,9 +351,7 @@ def _extract_semantic_units(
                     node_type=node.type,
                     start_line=node.start_point[0] + 1,  # 1-indexed
                     end_line=node.end_point[0] + 1,
-                    text=source[node.start_byte : node.end_byte].decode(
-                        "utf-8", errors="replace"
-                    ),
+                    text=source[node.start_byte : node.end_byte].decode("utf-8", errors="replace"),
                 )
             )
             # Don't recurse into nested functions/classes - they're part of parent

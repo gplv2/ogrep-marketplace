@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-01-14
+
+### ⚠️ BREAKING CHANGE
+
+#### JSON Output is Now Default
+
+All commands now output **JSON by default** instead of human-readable text. This change prioritizes AI/machine consumption, which is ogrep's primary use case.
+
+**Migration:**
+```bash
+# Before (0.7.1 and earlier)
+ogrep status              # Human-readable text
+ogrep status --json       # JSON output
+
+# After (0.7.2+)
+ogrep status              # JSON output (new default)
+ogrep status --no-json    # Human-readable text
+```
+
+**Backwards compatibility:** The `--json` flag is still accepted (silently) for scripts that explicitly request JSON output.
+
+**Affected commands:** All commands (`index`, `query`, `chunk`, `status`, `health`, `reset`, `reindex`, `clean`, `delete`, `log`, `models`, `device`, `tune`, `benchmark`)
+
+### ✨ New Features
+
+- **`--no-json` flag**: All commands now support `--no-json` to get human-readable text output
+- **Graceful degradation tests**: New test suite verifying ogrep works correctly when optional features (sentence-transformers, FTS5) are unavailable
+
+### 🐛 Bug Fixes
+
+- **Missing `device` command**: Fixed CLI missing the `ogrep device` command for GPU/CPU detection
+- **Rerank warning capture**: Restored CUDA warning suppression to prevent JSON output corruption
+- **Query error handling**: Improved reranking error handling with graceful degradation
+- **Device test for CI**: Fixed test that failed when sentence-transformers not installed
+- **Reranker availability test**: Fixed test passing empty list that bypassed reranker check
+
+### 📚 Documentation
+
+- **Website link**: Added [ogrep.be](https://ogrep.be) quick overview link to README
+- **JSON-first updates**: Updated all documentation to reflect JSON as default output:
+  - README.md: Updated "What's New" section with breaking change notice
+  - CLAUDE.md: Updated CLI Commands section and examples
+  - LOCAL_EMBEDDINGS_GUIDE.md: Removed redundant `--json` flags from examples
+  - Plugin SKILL.md: Comprehensive update with JSON default notice
+  - All plugin command files: Updated argument hints and examples
+- **AST chunking docs**: Updated LOCAL_EMBEDDINGS_GUIDE.md with tree-sitter installation details and language support
+
+### 🧪 Testing
+
+- **New test file**: `tests/test_graceful_degradation.py` with 15 tests covering:
+  - CLI graceful degradation (status, device, models, help commands)
+  - Unit-level degradation (rerank, device functions)
+  - JSON output consistency across commands
+  - Search mode degradation when FTS5 unavailable
+- **Updated CLI tests**: `test_cli_models` updated to parse JSON output (new default)
+- **All 408 tests passing**
+
+## [0.7.1] - 2026-01-14
+
+### 🔧 Maintenance
+
+- **Version consistency**: All package files now report version 0.7.1
+- **Index exclusions**: HTML files added to `.gitignore` and `.ogrepignore` by default
+
 ## [0.7.0] - 2026-01-13
 
 ### ✨ New Features

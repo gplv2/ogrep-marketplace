@@ -235,9 +235,7 @@ def get_metadata(con: sqlite3.Connection, key: str, default: str | None = None) 
     Returns:
         The metadata value, or default if not found.
     """
-    row = con.execute(
-        "SELECT value FROM index_metadata WHERE key = ?", (key,)
-    ).fetchone()
+    row = con.execute("SELECT value FROM index_metadata WHERE key = ?", (key,)).fetchone()
     return row[0] if row else default
 
 
@@ -270,4 +268,4 @@ def get_all_metadata(con: sqlite3.Connection) -> dict[str, str]:
         Dict of key-value pairs.
     """
     rows = con.execute("SELECT key, value FROM index_metadata").fetchall()
-    return {k: v for k, v in rows}
+    return dict(rows)

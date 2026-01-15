@@ -217,15 +217,9 @@ class TestConfidenceScoring:
             return levels.index(level)
 
         # Higher scores should have >= confidence
-        assert level_rank(get_confidence_level(1.0)) >= level_rank(
-            get_confidence_level(0.5)
-        )
-        assert level_rank(get_confidence_level(0.5)) >= level_rank(
-            get_confidence_level(0.3)
-        )
-        assert level_rank(get_confidence_level(0.3)) >= level_rank(
-            get_confidence_level(0.1)
-        )
+        assert level_rank(get_confidence_level(1.0)) >= level_rank(get_confidence_level(0.5))
+        assert level_rank(get_confidence_level(0.5)) >= level_rank(get_confidence_level(0.3))
+        assert level_rank(get_confidence_level(0.3)) >= level_rank(get_confidence_level(0.1))
 
     def test_absolute_confidence_extremes(self) -> None:
         """Test absolute confidence at extremes."""
