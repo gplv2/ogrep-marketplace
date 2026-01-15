@@ -39,9 +39,11 @@ ogrep status --no-json    # Human-readable text
 - **Rerank warning capture**: Restored CUDA warning suppression to prevent JSON output corruption
 - **Query error handling**: Improved reranking error handling with graceful degradation
 - **Device test for CI**: Fixed test that failed when sentence-transformers not installed
+- **Reranker availability test**: Fixed test passing empty list that bypassed reranker check
 
 ### 📚 Documentation
 
+- **Website link**: Added [ogrep.be](https://ogrep.be) quick overview link to README
 - **JSON-first updates**: Updated all documentation to reflect JSON as default output:
   - README.md: Updated "What's New" section with breaking change notice
   - CLAUDE.md: Updated CLI Commands section and examples
