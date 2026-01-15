@@ -1,5 +1,5 @@
 ---
-name: semantic-grep
+name: ogrep
 description: |
   Semantic code search - finds code by meaning, not just keywords. Helpful when:
   - User asks WHERE something is implemented ("where is X handled", "how does Y work")
