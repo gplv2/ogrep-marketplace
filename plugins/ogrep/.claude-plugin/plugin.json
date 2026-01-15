@@ -1,6 +1,6 @@
 {
   "name": "ogrep",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). Supports local models via LM Studio (offline, free) or OpenAI embeddings. JSON output for AI tools.",
   "author": {
     "name": "gplv2",
