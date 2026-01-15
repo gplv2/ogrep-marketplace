@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-01-15
+
+### ✨ New Features
+
+#### Branch-Aware Indexing with Implicit Embedding Reuse
+
+ogrep now tracks files per git branch, preventing stale search results when switching branches. The key innovation is that embeddings are shared across branches via content addressing (`text_sha256`), so switching branches only embeds genuinely new code.
+
+**How it works:**
+- Files are indexed with `(path, branch)` as the unique key
+- Chunks table stores embeddings by content hash, shared across all branches
+- Branch detection via `git symbolic-ref --short HEAD` with fallbacks for detached HEAD and non-git directories
+
+**New commands:**
+```bash
+# Query a specific branch (cross-branch queries)
+ogrep query "authentication" --branch main
+
+# Reset only current branch (preserves other branches)
+ogrep reset -f
+
+# Reset entire database (all branches)
+ogrep reset -f --all
+```
+
+**Automatic branch pruning:**
+- `ogrep clean` now detects and removes entries for deleted git branches
+- Shared embeddings are preserved if used by other branches
+
+**Embedding reuse scenarios:**
+| Scenario | API Calls |
+|----------|-----------|
+| Same file, same content | 0 (already indexed on this branch) |
+| Same code on different branch | 0 (`text_sha256` matches) |
+| 1 function changed | 1-2 (only changed chunks) |
+| Switch main→feature→main | 0 (files already indexed on main) |
+
+**Branch detection:**
+| Scenario | Branch Value |
+|----------|--------------|
+| Normal git branch | `main`, `feature/auth`, etc. |
+| Detached HEAD | `detached-abc1234` (short commit hash) |
+| Non-git directory | `default` |
+
+#### Branch-Aware L2 Cache
+
+The query result cache (L2) now includes branch in the cache key, preventing cross-branch cache pollution. Cache key format: `hash(embedding_key, mode, top_k, branch)`.
+
+### 🔧 Changes
+
+- **`ogrep status`**: Now shows branch info (`branch`, `branch_files`, `branches`)
+- **`ogrep health`**: Now includes branch info section in diagnostics
+- **`ogrep reset`**: Default behavior is now branch-scoped; use `--all` for previous behavior
+- **`ogrep clean`**: Now automatically prunes deleted git branches
+
+### 📚 Documentation
+
+- **CLAUDE.md**: Added comprehensive "Branch-Aware Indexing" section
+- **README.md**: Added v0.7.3 release notes and Branch-Aware Indexing section
+- **Plugin commands**: Updated reset, query, status, clean, health command docs
+- **SKILL.md**: Added branch-aware indexing section and updated command summary
+
+### 🧪 Testing
+
+- Updated test fixtures to pass `branch="default"` explicitly for test databases
+- Fixed test_cache.py, test_hybrid_search.py, test_roundtrip.py, test_search.py
+
 ## [0.7.2] - 2026-01-14
 
 ### ⚠️ BREAKING CHANGE

@@ -14,7 +14,16 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ---
 
-## What's New in v0.7.2
+## What's New in v0.7.3
+
+### Branch-Aware Indexing (v0.7.3)
+
+- **Automatic branch tracking** — ogrep now indexes files per-branch, preventing stale search results when switching branches
+- **Implicit embedding reuse** — Same code on different branches reuses embeddings via `text_sha256` content addressing (zero API cost for identical content)
+- **Cross-branch queries** — New `--branch` flag to query a specific branch: `ogrep query "auth" --branch main`
+- **Branch-scoped reset** — `ogrep reset -f` clears only current branch; use `--all` for entire database
+- **Automatic branch pruning** — `ogrep clean` removes entries for deleted branches
+- **L2 cache isolation** — Query cache is branch-aware, preventing cross-branch cache pollution
 
 ### Breaking Change (v0.7.2)
 
@@ -336,7 +345,10 @@ ogrep status
   "database": ".ogrep/index.sqlite",
   "status": "indexed",
   "indexed": true,
+  "branch": "main",
+  "branch_files": 45,
   "files": 45,
+  "branches": {"main": 45},
   "chunks": 234,
   "model": "text-embedding-3-small",
   "dimensions": 1536,
@@ -369,6 +381,7 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 | `ogrep query "text" --no-json` | Human-readable output |
 | `ogrep query "text" --mode semantic` | Pure semantic search |
 | `ogrep query "text" --mode fulltext` | Keyword search (FTS5) |
+| `ogrep query "text" --branch main` | Query a specific branch |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index statistics |
 | `ogrep device` | Check GPU/CPU for reranking |
@@ -377,7 +390,8 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 | `ogrep health --full` | Vacuum + rebuild FTS5 + integrity check |
 | `ogrep log` | Show index change history |
 | `ogrep delete "path"` | Remove files from index |
-| `ogrep reset -f` | Delete index |
+| `ogrep reset -f` | Delete current branch from index |
+| `ogrep reset -f --all` | Delete entire index (all branches) |
 | `ogrep reindex . --ast` | Rebuild with AST chunking |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available embedding models |
@@ -680,6 +694,70 @@ Prevent cross-repo pollution:
 | `--profile NAME` | Named profile (`.ogrep/<name>/index.sqlite`) |
 | `--global-cache` | Use `~/.cache/ogrep/<hash>/index.sqlite` |
 | `--repo-root PATH` | Explicit repo root |
+
+---
+
+## Branch-Aware Indexing
+
+ogrep tracks files per-branch to prevent stale search results when switching branches.
+
+### How It Works
+
+```
+files table: (path, branch) → file metadata (branch-specific)
+chunks table: text_sha256 → embedding (SHARED across all branches)
+```
+
+Same code on different branches shares embeddings — switching branches only embeds genuinely new code.
+
+### Branch Detection
+
+| Scenario | Branch Value |
+|----------|--------------|
+| Normal git branch | `main`, `feature/auth`, etc. |
+| Detached HEAD | `detached-abc1234` |
+| Non-git directory | `default` |
+
+### Cross-Branch Queries
+
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+
+# While on feature branch, find code in main
+git checkout feature/new-auth
+ogrep query "old auth function" --branch main
+```
+
+### Branch-Scoped Reset
+
+```bash
+# Clear only current branch (preserves other branches)
+ogrep reset -f
+
+# Clear entire database (all branches)
+ogrep reset -f --all
+```
+
+### Automatic Cleanup
+
+```bash
+ogrep clean
+# - Removes files for deleted branches
+# - Shared embeddings are preserved if used by other branches
+```
+
+### Embedding Reuse Across Branches
+
+| Scenario | API Calls |
+|----------|-----------|
+| Same file, same content | 0 (already indexed on this branch) |
+| Same code on different branch | 0 (`text_sha256` matches) |
+| 1 function changed | 1-2 (only changed chunks) |
+| Switch main→feature→main | 0 (files already indexed on main) |
 
 ---
 

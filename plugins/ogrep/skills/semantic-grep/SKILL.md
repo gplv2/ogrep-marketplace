@@ -276,6 +276,56 @@ ogrep clean --vacuum             # Also compact database
 
 ---
 
+## Branch-Aware Indexing
+
+ogrep tracks files per git branch to prevent stale results when switching branches.
+
+### How It Works
+
+- Files are indexed with their branch name: `(path, branch)` as the key
+- Embeddings (chunks) are shared across branches via `text_sha256` content addressing
+- Switching branches only embeds genuinely new code
+
+### Cross-Branch Queries
+
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+
+# While on feature branch, find code in main
+ogrep query "old auth function" --branch main
+```
+
+### Branch-Scoped Reset
+
+```bash
+# Clear only current branch (preserves other branches)
+ogrep reset -f
+
+# Clear entire database (all branches)
+ogrep reset -f --all
+```
+
+### Automatic Cleanup
+
+```bash
+# Also prunes entries for deleted git branches
+ogrep clean
+```
+
+### Embedding Reuse
+
+| Scenario | API Calls |
+|----------|-----------|
+| Same file, same content | 0 |
+| Same code on different branch | 0 (text_sha256 matches) |
+| 1 function changed | 1-2 (only changed chunks) |
+
+---
+
 ## When Things Go Wrong
 
 **"No index found"**
@@ -320,12 +370,15 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 | Find exact name | `ogrep query "def function_name" --mode fulltext` |
 | Precision search | `ogrep query "..." --rerank` |
 | Fresh results | `ogrep query "..." --refresh` |
+| Query other branch | `ogrep query "..." --branch main` |
 | More context | `ogrep chunk "file.py:N" --context 1` |
 | Rebuild index | `ogrep reindex .` |
 | Index status | `ogrep status` |
 | Recent changes | `ogrep log --limit 5` |
 | Health check | `ogrep health` |
 | Clean stale | `ogrep clean` |
+| Reset branch | `ogrep reset -f` |
+| Reset all | `ogrep reset -f --all` |
 | Human output | `ogrep status --no-json` |
 
 ---

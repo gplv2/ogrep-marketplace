@@ -11,6 +11,7 @@ This file provides guidance for Claude Code when working in this repository.
 - Auto-tuning for optimal chunk size
 - Claude Code plugin/skill integration
 - Multi-repo scope fencing
+- Branch-aware indexing with implicit embedding reuse
 
 ## Directory Structure
 
@@ -68,13 +69,15 @@ Use `--no-json` for human-readable text output.
 | `ogrep query "text" -n 10 -r` | Semantic search (refresh) |
 | `ogrep query "text" --mode hybrid` | Hybrid search (semantic + keyword) |
 | `ogrep query "text" --rerank` | Cross-encoder reranking for better ordering |
+| `ogrep query "text" --branch main` | Query a specific branch |
 | `ogrep chunk "path:N" -C 1` | Get chunk by ref with context |
 | `ogrep status` | Show index stats |
 | `ogrep health` | Full database diagnostics |
 | `ogrep health --vacuum` | Reclaim space, defragment |
 | `ogrep health --rebuild-fts` | Rebuild FTS5 index |
 | `ogrep health --integrity` | Full integrity check |
-| `ogrep reset -f` | Delete index |
+| `ogrep reset -f` | Delete current branch from index |
+| `ogrep reset -f --all` | Delete entire index (all branches) |
 | `ogrep reindex .` | Rebuild index (enables FTS5) |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
@@ -99,17 +102,17 @@ All commands output JSON by default:
 ogrep index .
 # {"status":"success","files_indexed":42,"chunks_total":217,...}
 
-# Status
+# Status (includes branch info)
 ogrep status
-# {"indexed":true,"files":42,"chunks":217,"model":"text-embedding-3-small",...}
+# {"indexed":true,"branch":"main","branch_files":42,"files":42,"branches":{"main":42},...}
 
 # Clean
 ogrep clean
 # {"status":"success","removed_count":3,"removed_paths":[...],"vacuumed":false}
 
-# Health
+# Health (includes branch stats)
 ogrep health
-# {"tables":{...},"dedup_stats":{...},"fts5":{...},"sqlite_info":{...}}
+# {"tables":{...},"dedup_stats":{...},"fts5":{...},"branch_info":{"current":"main","branches":{"main":42}},...}
 
 # Models
 ogrep models
@@ -295,6 +298,121 @@ Create or edit `.claude/settings.json` in your project root:
 **Recommendation**: The semantic-grep skill uses `--refresh` by default.
 Add hooks as an optimization if query latency becomes noticeable during
 heavy editing sessions.
+
+## Branch-Aware Indexing
+
+When switching git branches, ogrep automatically tracks which files belong to which branch. This prevents stale search results that reference code from other branches.
+
+### How It Works
+
+```
+files table: (path, branch) → file metadata (branch-specific)
+chunks table: text_sha256 → embedding (SHARED across all branches)
+```
+
+**The key insight:** Embeddings are content-addressed. The same code produces the same embedding regardless of which branch it's on. This enables **implicit embedding reuse** across branches.
+
+### Branch Switch Flow
+
+When you switch branches and run `ogrep index .`:
+
+1. Detect current branch via `git symbolic-ref --short HEAD`
+2. For each file, check if indexed on this branch: `WHERE path=? AND branch=?`
+3. If not found on this branch → chunk the file
+4. For each chunk, check if `text_sha256` already exists (from any branch)
+5. If exists → **reuse embedding** (no API call!)
+6. If not → embed (unavoidable for truly new content)
+
+**Result:** Switching branches only embeds genuinely new code.
+
+### Embedding Reuse Scenarios
+
+| Scenario | API Calls | Why |
+|----------|-----------|-----|
+| Same file, same content | 0 | File already indexed on this branch |
+| Same file, 1 function changed | 1-2 | Only changed chunks need embedding |
+| New file with copied code | 0 | `text_sha256` matches existing chunks |
+| Completely new code | Full | Unavoidable |
+| Switch main→feature→main | 0 | Files already indexed on main |
+
+### Branch Detection
+
+ogrep detects the current branch automatically:
+
+| Scenario | Branch Value |
+|----------|--------------|
+| Normal git branch | `main`, `feature/auth`, etc. |
+| Detached HEAD | `detached-abc1234` (short commit hash) |
+| Non-git directory | `default` |
+
+### Cross-Branch Queries
+
+By default, queries search only the current branch. Use `--branch` to query a different branch:
+
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+
+# Query while on feature branch
+git checkout feature/new-auth
+ogrep query "old auth function" --branch main  # Find code in main
+```
+
+### Branch-Scoped Reset
+
+The `reset` command now operates on the current branch by default:
+
+```bash
+# Clear only current branch (preserves other branches)
+ogrep reset -f
+
+# Clear entire database (all branches)
+ogrep reset -f --all
+```
+
+This prevents accidentally wiping embeddings for other branches when you just want to reindex the current branch.
+
+### Automatic Branch Pruning
+
+The `clean` command automatically removes entries for branches that no longer exist in git:
+
+```bash
+ogrep clean
+# Removes files for deleted branches (e.g., merged feature branches)
+# Shared embeddings are preserved if used by other branches
+```
+
+### Status and Health Output
+
+Both commands now show branch information:
+
+```bash
+ogrep status --no-json
+# Branch: main (42 files)
+# Total files: 85 across 3 branches
+# Branches: main (42), feature/auth (25), hotfix/login (18)
+
+ogrep health --no-json
+# ── Branch Info ──
+#   Current: main
+#   Indexed branches: 3
+#     main: 42 files *
+#     feature/auth: 25 files
+#     hotfix/login: 18 files
+```
+
+### L2 Cache Branch Isolation
+
+The query result cache (L2) is branch-aware. Cache keys include the branch name, preventing stale cached results when switching branches:
+
+```
+Cache key: hash(embedding_key, mode, top_k, branch)
+```
+
+This ensures queries return fresh results for the current branch, even if you previously queried the same text on a different branch.
 
 ## Smart Defaults
 
@@ -1049,6 +1167,12 @@ The `ogrep health` command shows comprehensive diagnostics:
 ── Tables ──
   chunks          217 rows      1.7 MB
   files            41 rows      8.0 KB
+
+── Branch Info ──
+  Current: main
+  Indexed branches: 2
+    main: 35 files *
+    feature/auth: 6 files
 
 ── Dedup Stats ──
   Total chunks: 11

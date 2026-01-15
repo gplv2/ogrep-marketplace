@@ -163,8 +163,10 @@ make check          # All checks
 |---------|-------------|
 | `ogrep index .` | Index current directory |
 | `ogrep query "text" -n N` | Semantic search |
+| `ogrep query "text" --branch main` | Query a specific branch |
 | `ogrep status` | Show index statistics |
-| `ogrep reset -f` | Delete index |
+| `ogrep reset -f` | Delete current branch from index |
+| `ogrep reset -f --all` | Delete entire index |
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
@@ -179,6 +181,8 @@ make check          # All checks
 | `-n N` | Number of results (query) |
 | `-r` | Refresh index before query |
 | `-f` | Force/skip confirmation |
+| `--branch NAME` | Query a specific branch |
+| `--all` | Reset all branches (with reset command) |
 | `--db PATH` | Custom database path |
 | `--samples N` | Test samples for tune/benchmark |
 

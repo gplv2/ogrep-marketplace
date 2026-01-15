@@ -35,6 +35,10 @@ ogrep health --no-json
     "chunks": {"rows": 217, "size_bytes": 1782579},
     "files": {"rows": 42, "size_bytes": 8192}
   },
+  "branch_info": {
+    "current": "main",
+    "branches": {"main": 35, "feature/auth": 7}
+  },
   "dedup_stats": {
     "total_chunks": 217,
     "unique_hashes": 200,
@@ -47,3 +51,7 @@ ogrep health --no-json
   "operations": {"vacuum": true, "rebuild_fts": false}
 }
 ```
+
+**Branch info fields:**
+- `current`: Current git branch name
+- `branches`: Map of all indexed branches to their file counts

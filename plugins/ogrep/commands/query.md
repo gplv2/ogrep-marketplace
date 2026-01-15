@@ -11,11 +11,21 @@ Run:
 - `--refresh` ensures results reflect current code by checking for changed files and reindexing them before querying
 - JSON output is the default (use `--no-json` for human-readable text)
 - `--mode MODE` (optional) selects search mode: `semantic`, `fulltext`, or `hybrid` (default)
+- `--branch BRANCH` (optional) query a specific branch instead of current branch
 
 **Search modes:**
 - `semantic`: Embedding similarity only (conceptual questions)
 - `fulltext`: FTS5 keyword matching (exact identifiers)
 - `hybrid`: Combined scoring (default, best of both)
+
+**Cross-branch queries:**
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+```
 
 **JSON output structure:**
 ```json
