@@ -231,6 +231,11 @@ def cmd_delete(args: argparse.Namespace) -> int:
             },
         )
 
+        # Increment db_version to invalidate L2 cache
+        from ..cache import increment_db_version
+
+        increment_db_version(con)
+
         # Handle --save: add to .ogrepignore
         saved_to_ignore = False
         ignore_file_path = None

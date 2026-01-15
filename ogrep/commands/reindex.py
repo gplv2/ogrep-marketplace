@@ -100,6 +100,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
     # Log reindex action to history (overrides the "index" entry from index_path)
     # We update the most recent entry to be "reindex" for clarity
+    # Note: db_version is already incremented by index_path, no need to increment again
     con = sqlite3.connect(str(db))
     try:
         con.execute(

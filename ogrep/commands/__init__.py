@@ -22,6 +22,7 @@ Commands:
 from __future__ import annotations
 
 from .benchmark import cmd_benchmark
+from .cache_report import cmd_cache_report
 from .chunk import cmd_chunk
 from .clean import cmd_clean
 from .delete import cmd_delete
@@ -38,6 +39,7 @@ from .tune import cmd_tune
 
 __all__ = [
     "cmd_benchmark",
+    "cmd_cache_report",
     "cmd_chunk",
     "cmd_clean",
     "cmd_delete",

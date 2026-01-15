@@ -289,6 +289,7 @@ def rerank_results(
     hits: list[Any],
     top_n: int | None = None,
     model_name: str | None = None,
+    cache_path: Any | None = None,
 ) -> list[Any]:
     """
     Rerank search results using a cross-encoder model.
@@ -302,10 +303,17 @@ def rerank_results(
         hits: List of Hit objects from initial search.
         top_n: Number of candidates to rerank (default: OGREP_RERANK_TOPN or 50).
         model_name: Optional model override (default: OGREP_RERANK_MODEL).
+        cache_path: Path to cache.sqlite for L3 caching (optional).
 
     Returns:
         List of Hit objects reordered by cross-encoder scores, with updated
         score and confidence fields.
+
+    Note:
+        L3 caching is content-addressable: results are cached based on
+        the actual text content of chunks, not their IDs. This means
+        cached results survive file moves and reindexing as long as the
+        text content remains the same.
 
     Example:
         >>> hits = search(db_path, query, mode="hybrid", limit=50)
@@ -322,7 +330,66 @@ def rerank_results(
     if len(candidates) == 0:
         return []
 
-    # Get reranker model
+    # Determine model name for cache key
+    model = model_name or os.environ.get("OGREP_RERANK_MODEL", DEFAULT_RERANK_MODEL)
+
+    # L3 Cache setup
+    cache_con = None
+    cache_enabled = cache_path is not None and not os.environ.get("OGREP_CACHE_DISABLED")
+    chunk_hashes: list[str] = []
+    l3_hit = False
+
+    if cache_enabled:
+        import hashlib
+
+        from .cache import (
+            connect_cache,
+            get_rerank_results,
+            log_cache_event,
+            set_rerank_results,
+        )
+
+        cache_con = connect_cache(cache_path)
+
+        # Compute content-addressable chunk hashes
+        chunk_hashes = [
+            hashlib.sha256(hit.text.encode()).hexdigest()[:16]
+            for hit in candidates
+        ]
+
+        # Check L3 cache
+        l3_result = get_rerank_results(cache_con, query, chunk_hashes, model, n)
+        if l3_result.hit:
+            # Cache hit - reconstruct reranked hits from cached scores
+            cached_scores = l3_result.data  # List of (chunk_id, score)
+
+            # Build chunk_id to candidate lookup
+            candidate_lookup = {hit.chunk_id: hit for hit in candidates}
+
+            # Get top score for confidence
+            top_score = max(s for _, s in cached_scores) if cached_scores else 0.0
+
+            reranked_hits = []
+            for chunk_id, score in cached_scores:
+                if chunk_id in candidate_lookup:
+                    hit = candidate_lookup[chunk_id]
+                    confidence = _compute_confidence(score, top_score)
+                    reranked = RerankedHit(
+                        score=float(score),
+                        path=hit.path,
+                        start_line=hit.start_line,
+                        end_line=hit.end_line,
+                        text=hit.text,
+                        chunk_id=hit.chunk_id,
+                        chunk_index=hit.chunk_index,
+                        confidence=confidence,
+                    )
+                    reranked_hits.append(reranked)
+
+            log_cache_event(cache_con, "L3", "hit", time_saved_ms=l3_result.time_saved_ms)
+            return reranked_hits
+
+    # Get reranker model (cache miss path)
     reranker = _get_reranker(model_name)
 
     # Create (query, document) pairs for cross-encoder
@@ -358,6 +425,15 @@ def rerank_results(
 
     # Sort by reranker score (descending)
     scored_hits.sort(key=lambda x: x[0], reverse=True)
+
+    # L3 Cache: Store rerank results
+    if cache_enabled and cache_con is not None:
+        from .cache import log_cache_event, set_rerank_results
+
+        # Store (chunk_id, score) pairs in sorted order
+        results_to_cache = [(hit.chunk_id, score) for score, hit in scored_hits]
+        set_rerank_results(cache_con, query, chunk_hashes, model, n, results_to_cache)
+        log_cache_event(cache_con, "L3", "miss")
 
     # Return just the hits
     return [hit for _, hit in scored_hits]

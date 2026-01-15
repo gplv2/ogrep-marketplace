@@ -959,4 +959,9 @@ def index_path(
             },
         )
 
+        # Increment db_version to invalidate L2 cache
+        from .cache import increment_db_version
+
+        increment_db_version(con)
+
     return stats

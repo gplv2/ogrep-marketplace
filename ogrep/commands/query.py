@@ -339,7 +339,14 @@ def cmd_query(args: argparse.Namespace) -> int:
             if is_reranker_available():
                 rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
                 try:
-                    hits = rerank_results(query_text, hits, top_n=rerank_n)
+                    # Get cache path for L3 caching (if caching enabled)
+                    cache_path = None
+                    no_cache = getattr(args, "no_cache", False)
+                    if not no_cache:
+                        from ..cache import get_cache_path
+                        cache_path = get_cache_path(db)
+
+                    hits = rerank_results(query_text, hits, top_n=rerank_n, cache_path=cache_path)
                     # Trim to requested number after reranking
                     hits = hits[: args.top]
                     reranked = True

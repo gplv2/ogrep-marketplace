@@ -75,6 +75,11 @@ def cmd_clean(args: argparse.Namespace) -> int:
                 },
             )
 
+            # Increment db_version to invalidate L2 cache
+            from ..cache import increment_db_version
+
+            increment_db_version(con)
+
         vacuumed = False
         if args.vacuum:
             if not use_json:

@@ -350,6 +350,7 @@ def query(
     model: str = "text-embedding-3-small",
     dimensions: int | None = None,
     mode: SearchMode | None = None,
+    no_cache: bool = False,
 ) -> tuple[list[Hit], bool]:
     """
     Perform search against the indexed codebase.
@@ -368,6 +369,7 @@ def query(
         dimensions: Embedding dimensions. Must match indexing dimensions.
         mode: Search mode (semantic, fulltext, hybrid). Default from
             OGREP_SEARCH_MODE env var or "hybrid".
+        no_cache: Disable L1/L2 caching for this query (default: False).
 
     Returns:
         Tuple of (hits, fts_available):
@@ -382,6 +384,9 @@ def query(
         If FTS5 is unavailable and mode is hybrid/fulltext, falls back
         to semantic search and returns fts_available=False.
 
+        Caching: Query embeddings are cached in L1 (TTL-based, 24h default).
+        Set no_cache=True or OGREP_CACHE_DISABLED=1 to bypass.
+
     Example:
         >>> hits, fts_ok = query(Path(".ogrep/index.sqlite"), "database connection")
         >>> for h in hits[:3]:
@@ -391,6 +396,10 @@ def query(
         mode = DEFAULT_SEARCH_MODE
 
     con = connect(db_path, init_fts=False)
+
+    # Cache setup (lazy initialization)
+    cache_con = None
+    cache_enabled = not no_cache and not os.environ.get("OGREP_CACHE_DISABLED")
 
     # Check for mixed dimensions (corrupted index)
     distinct_dims = con.execute("SELECT DISTINCT dim FROM chunks").fetchall()
@@ -460,8 +469,41 @@ def query(
         return hits, fts_available
 
     # Semantic search (needed for semantic and hybrid modes)
-    # Embed the query
-    q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+    # Embed the query (with L1 cache if enabled)
+    embedding_key = None
+    l1_hit = False
+
+    if cache_enabled:
+        from .cache import (
+            connect_cache,
+            get_cache_path,
+            get_query_embedding,
+            log_cache_event,
+            set_query_embedding,
+        )
+
+        cache_path = get_cache_path(db_path)
+        cache_con = connect_cache(cache_path)
+        base_url = os.environ.get("OGREP_BASE_URL")
+
+        # Check L1 cache
+        result = get_query_embedding(cache_con, q, model, dimensions, base_url)
+        if result.hit:
+            # Cache hit - use cached embedding
+            q_blob = [result.data]
+            # Dimension = number of float32 values = byte_length / 4
+            q_dim = len(result.data) // 4 if result.data else 0
+            l1_hit = True
+            log_cache_event(cache_con, "L1", "hit", time_saved_ms=result.time_saved_ms)
+        else:
+            # Cache miss - embed and store
+            q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+            set_query_embedding(cache_con, q, model, dimensions, base_url, q_blob[0])
+            log_cache_event(cache_con, "L1", "miss")
+    else:
+        # No caching - embed directly
+        q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+
     q_arr = array.array("f")
     q_arr.frombytes(q_blob[0])
 
@@ -479,6 +521,66 @@ def query(
             f"but index was built with {index_dim}D ({index_model}). "
             f"Use -m {index_alias} or reindex with -m {query_alias}."
         )
+
+    # L2 Cache: Check for cached search results
+    l2_hit = False
+    if cache_enabled and cache_con is not None:
+        from .cache import cache_key, get_search_results, log_cache_event, set_search_results
+
+        base_url = os.environ.get("OGREP_BASE_URL")
+        embedding_key = cache_key(q, model, dimensions, base_url or "openai")
+
+        # Check L2 cache (db_version validated inside get_search_results)
+        l2_result = get_search_results(
+            cache_con, con, embedding_key, effective_mode, top_k
+        )
+        if l2_result.hit:
+            # Cache hit - reconstruct Hits from cached chunk_ids and scores
+            cached_results = l2_result.data  # List of (chunk_id, score)
+            chunk_ids = [r[0] for r in cached_results]
+
+            if chunk_ids:
+                placeholders = ",".join("?" * len(chunk_ids))
+                rows = con.execute(
+                    f"""SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text
+                        FROM chunks c
+                        JOIN files f ON f.id = c.file_id
+                        WHERE c.id IN ({placeholders})""",
+                    chunk_ids,
+                ).fetchall()
+
+                # Build lookup for chunk details
+                chunk_lookup = {row[0]: row for row in rows}
+
+                # Get top score for relative confidence
+                top_score = cached_results[0][1] if cached_results else 0.0
+
+                hits = []
+                for chunk_id, score in cached_results:
+                    if chunk_id in chunk_lookup:
+                        row = chunk_lookup[chunk_id]
+                        hits.append(
+                            Hit(
+                                score=score,
+                                path=row[2],
+                                start_line=int(row[3]),
+                                end_line=int(row[4]),
+                                text=row[5],
+                                chunk_id=int(row[0]),
+                                chunk_index=int(row[1]),
+                                confidence=assign_confidence(score, top_score),
+                            )
+                        )
+
+                log_cache_event(
+                    cache_con, "L2", "hit",
+                    time_saved_ms=l2_result.time_saved_ms
+                )
+                return hits, l2_result.fts_available if l2_result.fts_available is not None else fts_available
+
+            # Empty cached results
+            log_cache_event(cache_con, "L2", "hit", time_saved_ms=l2_result.time_saved_ms)
+            return [], fts_available
 
     # Fetch all chunks
     rows = con.execute(
@@ -585,5 +687,20 @@ def query(
         )
         for score, chunk_id, chunk_idx, path, sl, el, text in top_results
     ]
+
+    # L2 Cache: Store search results
+    if cache_enabled and cache_con is not None:
+        from .cache import cache_key, log_cache_event, set_search_results
+
+        base_url = os.environ.get("OGREP_BASE_URL")
+        embedding_key = cache_key(q, model, dimensions, base_url or "openai")
+
+        # Store (chunk_id, score) pairs
+        results_to_cache = [(h.chunk_id, h.score) for h in hits]
+        set_search_results(
+            cache_con, con, embedding_key, effective_mode, top_k,
+            results_to_cache, fts_available
+        )
+        log_cache_event(cache_con, "L2", "miss")
 
     return hits, fts_available

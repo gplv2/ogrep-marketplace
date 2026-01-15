@@ -43,6 +43,7 @@ import sys
 
 from .commands import (
     cmd_benchmark,
+    cmd_cache_report,
     cmd_chunk,
     cmd_clean,
     cmd_delete,
@@ -164,6 +165,11 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         metavar="N",
         help="Number of candidates to rerank (default: 50, via OGREP_RERANK_TOPN). "
         "Implies --rerank.",
+    )
+    p.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable query result caching (L1/L2/L3). Useful for debugging or benchmarking.",
     )
     add_model_args(p, for_query=True)
     p.set_defaults(func=cmd_query)
@@ -561,6 +567,41 @@ def _add_tune_command(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_tune)
 
 
+def _add_cache_report_command(sub: argparse._SubParsersAction) -> None:
+    """Add the 'cache-report' subcommand."""
+    p = sub.add_parser(
+        "cache-report",
+        help="Show cache effectiveness report",
+        description="Display hit rates, time saved, and entry counts for L1/L2/L3 caches.",
+    )
+    add_scope_args(p)
+    p.add_argument(
+        "--hours",
+        type=int,
+        default=24,
+        metavar="N",
+        help="Time period to analyze in hours (default: 24)",
+    )
+    p.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear all caches instead of showing report",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
+    )
+    p.set_defaults(func=cmd_cache_report)
+
+
 def _add_benchmark_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'benchmark' subcommand."""
     p = sub.add_parser(
@@ -599,6 +640,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_reset_command(sub)
     _add_reindex_command(sub)
     _add_clean_command(sub)
+    _add_cache_report_command(sub)
     _add_delete_command(sub)
     _add_log_command(sub)
     _add_status_command(sub)
