@@ -509,16 +509,25 @@ def filter_hits_by_path(
     before_count = len(hits)
     filtered = []
 
+    # Compute relative paths from cwd for pattern matching
+    cwd = os.getcwd()
+    cwd_prefix = cwd + "/" if not cwd.endswith("/") else cwd
+
     for hit in hits:
         # Get relative path for matching
         path = hit.path
-        # If path is absolute, try to get the relative portion
-        # This handles both absolute paths and relative paths in chunks
-        rel_path = path
-        if path.startswith("/"):
-            # For absolute paths, use the filename or a reasonable relative path
-            # In practice, hit.path should already be appropriate for matching
-            rel_path = path.split("/")[-1] if "/" in path else path
+
+        # Compute relative path from cwd
+        if path.startswith(cwd_prefix):
+            rel_path = path[len(cwd_prefix):]
+        elif path.startswith("/"):
+            # Fallback: use everything after first component for absolute paths
+            # e.g., /home/user/repo/tests/foo.py -> tests/foo.py (try last 2+ components)
+            parts = path.split("/")
+            # Try progressively shorter paths to find a match
+            rel_path = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            rel_path = path
 
         # Check glob patterns (include)
         if path_filter.glob_patterns:
