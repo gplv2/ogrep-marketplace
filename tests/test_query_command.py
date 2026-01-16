@@ -1223,6 +1223,140 @@ class TestRerankValidation:
         # No invalid args error should be present
         assert "error_code" not in output or output.get("error_code") != "INVALID_RERANK_ARGS"
 
+    def test_rerank_model_without_rerank_top_valid(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-model without --rerank-top is valid (uses default)."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,  # Not explicitly set, but rerank_model implies it
+            rerank_top=None,  # Not specified - should use default
+            rerank_model="flashrank",  # This should imply rerank=True
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should succeed (or gracefully degrade if reranker unavailable)
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # No INVALID_RERANK_ARGS error should be present
+        # (Previously this would fail with TypeError: '<' not supported)
+        assert "error_code" not in output or output.get("error_code") != "INVALID_RERANK_ARGS"
+
+    def test_rerank_model_with_rerank_top_valid(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-model with explicit --rerank-top is valid."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,  # Not explicitly set, but rerank_model implies it
+            rerank_top=30,  # Explicitly set and > top
+            rerank_model="bge-m3",  # This should imply rerank=True
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should succeed (or gracefully degrade if reranker unavailable)
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # No INVALID_RERANK_ARGS error should be present
+        assert "error_code" not in output or output.get("error_code") != "INVALID_RERANK_ARGS"
+
+    def test_rerank_model_with_invalid_rerank_top_error(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-model with --rerank-top < -n produces error."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=20,  # Request 20 results
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,
+            rerank_top=10,  # Invalid: less than top
+            rerank_model="flashrank",
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should return error code
+        assert result == 1
+
+        # Check error output
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        assert "error" in output
+        assert output["error_code"] == "INVALID_RERANK_ARGS"
+        assert "--rerank-top (10) must be >= -n (20)" in output["error"]
+
 
 class TestSummarizeMode:
     """Tests for --summarize mode."""

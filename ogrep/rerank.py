@@ -68,8 +68,19 @@ FLASHRANK_ALIASES = {
     "flashrank:mini": "ms-marco-MiniLM-L-12-v2",
 }
 
+# Voyage AI models (REST API backend - code-optimized reranking)
+VOYAGE_RERANK_ALIASES = {
+    "voyage": "rerank-2.5",
+    "voyage:lite": "rerank-2.5-lite",
+    "voyage:2": "rerank-2",
+}
+
 # Combined aliases for model resolution
-RERANK_MODEL_ALIASES = {**SENTENCE_TRANSFORMERS_ALIASES, **FLASHRANK_ALIASES}
+RERANK_MODEL_ALIASES = {
+    **SENTENCE_TRANSFORMERS_ALIASES,
+    **FLASHRANK_ALIASES,
+    **VOYAGE_RERANK_ALIASES,
+}
 
 # Default configuration
 DEFAULT_RERANK_MODEL = "flashrank"  # Lightweight, parallel-safe, best for local embeddings
@@ -92,10 +103,19 @@ def _is_flashrank_model(model_name: str) -> bool:
     return model_name.startswith("flashrank") or model_name in FLASHRANK_ALIASES.values()
 
 
+def _is_voyage_rerank_model(model_name: str) -> bool:
+    """Check if the model name indicates a Voyage AI reranking backend."""
+    return (
+        model_name.startswith("voyage")
+        or model_name in VOYAGE_RERANK_ALIASES
+        or model_name in VOYAGE_RERANK_ALIASES.values()
+    )
+
+
 def _is_sentence_transformers_model(model_name: str) -> bool:
     """Check if the model name indicates a sentence-transformers backend."""
-    # If it's a FlashRank model, it's not sentence-transformers
-    if _is_flashrank_model(model_name):
+    # If it's a FlashRank or Voyage model, it's not sentence-transformers
+    if _is_flashrank_model(model_name) or _is_voyage_rerank_model(model_name):
         return False
     # Otherwise assume sentence-transformers (includes full HuggingFace paths)
     return True
@@ -134,6 +154,16 @@ def is_sentence_transformers_available() -> bool:
         return False
 
 
+def is_voyage_rerank_available() -> bool:
+    """Check if Voyage AI reranking is available (SDK installed + API key set)."""
+    try:
+        import voyageai  # noqa: F401
+
+        return os.environ.get("VOYAGE_API_KEY") is not None
+    except ImportError:
+        return False
+
+
 # =============================================================================
 # Lazy-loaded State
 # =============================================================================
@@ -147,6 +177,7 @@ _crossencoder_import_attempted: bool = False
 _reranker_model: Any = None  # sentence-transformers CrossEncoder
 _flashrank_ranker: Any = None  # FlashRank Ranker
 _flashrank_model_name: str | None = None  # Track which FlashRank model is loaded
+_voyage_rerank_client: Any = None  # Voyage AI Client for reranking
 
 # Captured warnings from model loading (CUDA, etc.)
 _captured_warnings: list[str] = []
@@ -379,6 +410,11 @@ def get_available_backends() -> dict[str, Any]:
                 "install": str,
                 "models": [{"alias": str, "name": str, "size": str}, ...],
             },
+            "voyage_ai": {
+                "available": bool,
+                "install": str,
+                "models": [{"alias": str, "name": str, "context": str}, ...],
+            },
             "default_model": str,
         }
     """
@@ -423,6 +459,30 @@ def get_available_backends() -> dict[str, Any]:
                 },
             ],
         },
+        "voyage_ai": {
+            "available": is_voyage_rerank_available(),
+            "install": "pip install 'ogrep[voyage]' (+ set VOYAGE_API_KEY)",
+            "models": [
+                {
+                    "alias": "voyage",
+                    "name": "rerank-2.5",
+                    "context": "32K tokens",
+                    "note": "Code-optimized, instruction-following (REST API)",
+                },
+                {
+                    "alias": "voyage:lite",
+                    "name": "rerank-2.5-lite",
+                    "context": "32K tokens",
+                    "note": "Faster, cheaper (REST API)",
+                },
+                {
+                    "alias": "voyage:2",
+                    "name": "rerank-2",
+                    "context": "16K tokens",
+                    "note": "Previous generation (REST API)",
+                },
+            ],
+        },
         "default_model": DEFAULT_RERANK_MODEL,
     }
 
@@ -439,10 +499,16 @@ def is_reranker_available(model_name: str | None = None) -> bool:
     """
     if model_name is None:
         # Check if any backend is available
-        return is_flashrank_available() or is_sentence_transformers_available()
+        return (
+            is_flashrank_available()
+            or is_sentence_transformers_available()
+            or is_voyage_rerank_available()
+        )
 
     # Check specific backend based on model
-    if _is_flashrank_model(model_name):
+    if _is_voyage_rerank_model(model_name):
+        return is_voyage_rerank_available()
+    elif _is_flashrank_model(model_name):
         return is_flashrank_available()
     else:
         CrossEncoder = _lazy_import_crossencoder()
@@ -599,6 +665,77 @@ def _flashrank_predict(ranker: Any, query: str, texts: list[str]) -> list[float]
     return scores
 
 
+def _get_voyage_reranker() -> Any:
+    """
+    Get or create the cached Voyage AI client for reranking.
+
+    Voyage AI provides code-optimized reranking via REST API.
+    Unlike local models, this calls the Voyage AI API.
+
+    Returns:
+        Voyage AI Client instance.
+
+    Raises:
+        ImportError: If voyageai is not installed.
+        ValueError: If VOYAGE_API_KEY is not set.
+    """
+    global _voyage_rerank_client, _captured_warnings
+
+    if _voyage_rerank_client is not None:
+        return _voyage_rerank_client
+
+    try:
+        import voyageai
+    except ImportError as e:
+        raise ImportError(
+            "Voyage AI reranking requires the voyageai package. "
+            "Install with: pip install 'ogrep[voyage]'"
+        ) from e
+
+    api_key = os.environ.get("VOYAGE_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "VOYAGE_API_KEY environment variable is not set. "
+            "Get your API key from https://dash.voyageai.com/"
+        )
+
+    _voyage_rerank_client = voyageai.Client(api_key=api_key)
+    return _voyage_rerank_client
+
+
+def _voyage_rerank_predict(query: str, texts: list[str], model: str) -> list[float]:
+    """
+    Get reranking scores from Voyage AI API.
+
+    Args:
+        query: The search query.
+        texts: List of document texts to score.
+        model: Model name or alias (e.g., "voyage", "rerank-2.5").
+
+    Returns:
+        List of scores in the SAME ORDER as input texts.
+    """
+    client = _get_voyage_reranker()
+
+    # Resolve alias to actual model name
+    actual_model = VOYAGE_RERANK_ALIASES.get(model, model)
+
+    # Call Voyage rerank API
+    result = client.rerank(
+        query=query,
+        documents=texts,
+        model=actual_model,
+    )
+
+    # Voyage returns results with index and relevance_score
+    # Map scores back to original order
+    scores = [0.0] * len(texts)
+    for r in result.results:
+        scores[r.index] = float(r.relevance_score)
+
+    return scores
+
+
 def _compute_confidence(score: float, top_score: float) -> str:
     """
     Compute confidence level for a reranked result.
@@ -697,6 +834,7 @@ def rerank_results(
     model = model_name or os.environ.get("OGREP_RERANK_MODEL", DEFAULT_RERANK_MODEL)
 
     # Detect which backend to use based on model name
+    use_voyage = _is_voyage_rerank_model(model)
     use_flashrank = _is_flashrank_model(model)
 
     # L3 Cache setup
@@ -756,7 +894,16 @@ def rerank_results(
             return reranked_hits
 
     # Route to appropriate backend
-    if use_flashrank:
+    if use_voyage:
+        # Voyage AI path - REST API, no lock needed
+        if not is_voyage_rerank_available():
+            raise ImportError(
+                "Voyage AI not available. Install with: pip install 'ogrep[voyage]' "
+                "and set VOYAGE_API_KEY environment variable."
+            )
+        texts = [hit.text for hit in candidates]
+        scores = _voyage_rerank_predict(query, texts, model)
+    elif use_flashrank:
         # FlashRank path - no lock needed (ONNX is parallel-safe)
         if not is_flashrank_available():
             raise ImportError(

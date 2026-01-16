@@ -177,8 +177,9 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         "--rerank-model",
         metavar="MODEL",
         default=None,
-        help="Reranking model: bge-m3 (default), minilm, flashrank, flashrank:mini. "
-        "FlashRank models are lightweight ONNX (~4-50MB) and parallel-safe. "
+        help="Reranking model: flashrank (default), flashrank:mini, voyage, voyage:lite, "
+        "minilm, bge-m3. FlashRank models are lightweight ONNX (~4-50MB) and parallel-safe. "
+        "Voyage models require VOYAGE_API_KEY (code-optimized, 32K context). "
         "Use OGREP_RERANK_MODEL env var for persistent setting. Implies --rerank.",
     )
     p.add_argument(

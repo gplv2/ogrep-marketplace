@@ -100,6 +100,12 @@ END;
 """
 
 
+class DatabaseError(Exception):
+    """Raised when database operations fail with helpful context."""
+
+    pass
+
+
 def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     """
     Connect to the ogrep SQLite database, creating it if necessary.
@@ -117,14 +123,67 @@ def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     Returns:
         An open sqlite3.Connection with the schema initialized.
 
+    Raises:
+        DatabaseError: If the database cannot be opened or initialized,
+            with a helpful error message explaining the issue.
+
     Example:
         >>> con = connect(Path(".ogrep/index.sqlite"))
         >>> con.execute("SELECT COUNT(*) FROM files").fetchone()
         (0,)
     """
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(db_path))
-    con.executescript(SCHEMA)
+    # Create parent directory
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise DatabaseError(
+            f"Cannot create database directory '{db_path.parent}': {e}. "
+            f"Check that you have write permissions to this location."
+        ) from e
+
+    # Open database
+    try:
+        con = sqlite3.connect(str(db_path))
+    except sqlite3.OperationalError as e:
+        error_msg = str(e).lower()
+        if "unable to open" in error_msg:
+            # Check if file exists but is not readable
+            if db_path.exists():
+                raise DatabaseError(
+                    f"Cannot open database '{db_path}': file exists but is not accessible. "
+                    f"Check file permissions or remove the corrupted file with: rm '{db_path}'"
+                ) from e
+            else:
+                raise DatabaseError(
+                    f"Cannot create database '{db_path}': {e}. "
+                    f"Check that you have write permissions to '{db_path.parent}'."
+                ) from e
+        raise DatabaseError(f"Database error opening '{db_path}': {e}") from e
+
+    # Initialize schema
+    try:
+        con.executescript(SCHEMA)
+    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+        con.close()
+        error_msg = str(e).lower()
+        if "database is locked" in error_msg:
+            raise DatabaseError(
+                f"Database '{db_path}' is locked by another process. "
+                f"Wait for other ogrep commands to finish, or remove stale locks."
+            ) from e
+        if "disk i/o error" in error_msg or "readonly" in error_msg:
+            raise DatabaseError(
+                f"Cannot write to database '{db_path}': {e}. "
+                f"Check disk space and write permissions."
+            ) from e
+        if "malformed" in error_msg or "corrupt" in error_msg or "not a database" in error_msg:
+            raise DatabaseError(
+                f"Database '{db_path}' is corrupted or not a valid SQLite database. "
+                f"Remove it and reindex: rm '{db_path}' && ogrep index ."
+            ) from e
+        raise DatabaseError(
+            f"Failed to initialize database '{db_path}': {e}"
+        ) from e
 
     # Run migrations for existing databases
     _migrate_branch_column(con)

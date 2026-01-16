@@ -56,20 +56,24 @@ ogrep chunk "src/auth.py:2" --context 1
 
 ### Reranking
 
-Two backend options with multiple models:
+Three backend options with multiple models:
 
 | Model | Backend | Size | Context | Install |
 |-------|---------|------|---------|---------|
 | `flashrank` (default) | ONNX | ~4MB | 512 | `[rerank-light]` |
 | `flashrank:mini` | ONNX | ~50MB | 512 | `[rerank-light]` |
+| `voyage` | Voyage AI API | - | 32K | `[voyage]` |
+| `voyage:lite` | Voyage AI API | - | 32K | `[voyage]` |
 | `minilm` | sentence-transformers | ~90MB | 512 | `[rerank]` |
 | `bge-m3` | sentence-transformers | ~300MB | 8K | `[rerank]` |
 
-**FlashRank models are parallel-safe** (no locking needed). Sentence-transformers models use file-based locking to prevent OOM.
+**FlashRank models are parallel-safe** (no locking needed). **Voyage models** use REST API (code-optimized, needs VOYAGE_API_KEY). Sentence-transformers models use file-based locking to prevent OOM.
 
 ```bash
 ogrep query "auth" --rerank                       # Default (flashrank)
 ogrep query "auth" --rerank-model flashrank:mini  # Better quality ONNX (50MB)
+ogrep query "auth" --rerank-model voyage          # Voyage AI (code-optimized, 32K)
+ogrep query "auth" --rerank-model voyage:lite     # Voyage AI (faster, cheaper)
 ogrep query "auth" --rerank-model minilm          # Smaller PyTorch (90MB)
 ogrep query "auth" --rerank-model bge-m3          # Heavy PyTorch (GPU only)
 ogrep query "auth" --rerank-top 30                # Rerank top 30 candidates
@@ -78,8 +82,9 @@ ogrep query "auth" --rerank-top 30                # Rerank top 30 candidates
 Install backends:
 ```bash
 pip install "ogrep[rerank-light]"  # Lightweight (FlashRank + ONNX, parallel-safe) - RECOMMENDED
+pip install "ogrep[voyage]"        # Voyage AI (code-optimized embeddings + reranking)
 pip install "ogrep[rerank]"        # Full-featured (sentence-transformers + PyTorch)
-pip install "ogrep[rerank-all]"    # Both backends
+pip install "ogrep[rerank-all]"    # All backends
 ```
 
 Check hardware and available backends: `ogrep device`.
@@ -199,12 +204,50 @@ Excluded categories: binaries, secrets (`.env`), docs (`*.md`), config (`*.json`
 |-------|-------|------|----------|
 | text-embedding-3-small | `small` | 1536 | Default (OpenAI) |
 | text-embedding-3-large | `large` | 3072 | High accuracy |
+| voyage-code-3 | `voyage` | 1024 | Code-optimized (Voyage AI) |
+| voyage-3-lite | `voyage-lite` | 512 | Faster/cheaper (Voyage AI) |
 | nomic-embed-text-v1.5 | `nomic` | 768 | Local (recommended) |
 | all-MiniLM-L6-v2 | `minilm` | 384 | Local (fastest) |
 
 **Local models:** See `LOCAL_EMBEDDINGS_GUIDE.md` for LM Studio setup.
 
 **Smart default:** If `OGREP_BASE_URL` set → `nomic`, else → `small`.
+
+## Voyage AI Backend
+
+Voyage AI provides **code-optimized** embeddings and reranking. Particularly good for code search.
+
+**Setup:**
+```bash
+pip install "ogrep[voyage]"
+export VOYAGE_API_KEY=pa-...  # Get from https://dash.voyageai.com/
+```
+
+**Embeddings:**
+```bash
+ogrep index . -m voyage-code-3  # Code-optimized (1024D, 32K context)
+ogrep index . -m voyage-3-lite  # Faster/cheaper (512D)
+```
+
+**Reranking:**
+```bash
+ogrep query "auth" --rerank --rerank-model voyage       # rerank-2.5 (instruction-following)
+ogrep query "auth" --rerank --rerank-model voyage:lite  # rerank-2.5-lite (faster)
+```
+
+**Full Voyage stack:**
+```bash
+export VOYAGE_API_KEY=pa-...
+ogrep index . -m voyage-code-3
+ogrep query "where is auth" --rerank --rerank-model voyage
+```
+
+| Component | Model | Context | Notes |
+|-----------|-------|---------|-------|
+| Embeddings | voyage-code-3 | 32K | Code-optimized, 1024D |
+| Embeddings | voyage-3-lite | 32K | Faster, 512D |
+| Reranking | rerank-2.5 | 32K | Instruction-following |
+| Reranking | rerank-2.5-lite | 32K | Faster/cheaper |
 
 ## Recommended Configurations
 
@@ -247,11 +290,12 @@ ogrep query "your search" --rerank  # flashrank default
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | Required for OpenAI models |
+| `VOYAGE_API_KEY` | Required for Voyage AI models |
 | `OGREP_MODEL` | Default embedding model |
 | `OGREP_BASE_URL` | Local server URL |
 | `OGREP_SEARCH_MODE` | Default mode (semantic/fulltext/hybrid) |
 | `OGREP_CHUNK_LINES` | Override chunk size |
-| `OGREP_RERANK_MODEL` | Default rerank model (flashrank/flashrank:mini/minilm/bge-m3) |
+| `OGREP_RERANK_MODEL` | Default rerank model (flashrank/voyage/minilm/bge-m3) |
 | `OGREP_RERANK_TOPN` | Candidates to rerank (default: 50) |
 | `OGREP_RERANK_LOCK` | Lock file path for parallel safety (sentence-transformers only) |
 | `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds (default: 120) |

@@ -67,6 +67,8 @@ mcp = ["mcp>=1.0.0"]
 rerank = ["sentence-transformers>=2.2.0"]  # Full-featured, needs PyTorch (~500MB)
 rerank-light = ["flashrank>=0.2.0"]  # Lightweight ONNX (~50MB), parallel-safe
 rerank-all = ["sentence-transformers>=2.2.0", "flashrank>=0.2.0"]  # Both backends
+# Voyage AI backend (embeddings + reranking)
+voyage = ["voyageai>=0.3.0"]  # Code-optimized embeddings and reranking
 ast = [
     "tree-sitter>=0.23.0",
     "tree-sitter-python>=0.23.0",

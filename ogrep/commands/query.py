@@ -387,9 +387,9 @@ def cmd_query(args: argparse.Namespace) -> int:
     if rerank_top is not None or rerank_model is not None:
         do_rerank = True
 
-        # Validate: --rerank-top must be >= -n
+        # Validate: --rerank-top must be >= -n (only if explicitly specified)
         # Otherwise we can't return -n results from a smaller rerank pool
-        if rerank_top < args.top:
+        if rerank_top is not None and rerank_top < args.top:
             error_msg = f"--rerank-top ({rerank_top}) must be >= -n ({args.top})"
             if use_json:
                 print(
