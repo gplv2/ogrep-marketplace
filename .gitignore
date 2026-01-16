@@ -9,3 +9,4 @@ build/
 *.egg-info/
 test.*
 index.html
+.mcp.json

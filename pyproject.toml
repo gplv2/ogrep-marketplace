@@ -42,6 +42,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "openai>=1.0.0",
     "tqdm>=4.0.0",
+    "httpx[socks]",
 ]
 
 [project.urls]
