@@ -86,8 +86,10 @@ MODELS = [
     {"name": "baseline", "rerank": False, "model": None},
     {"name": "flashrank", "rerank": True, "model": "flashrank"},
     {"name": "flashrank:mini", "rerank": True, "model": "flashrank:mini"},
+    {"name": "voyage", "rerank": True, "model": "voyage"},
+    {"name": "voyage:lite", "rerank": True, "model": "voyage:lite"},
     {"name": "minilm", "rerank": True, "model": "minilm"},
-    {"name": "bge-m3", "rerank": True, "model": "bge-m3"},
+    # {"name": "bge-m3", "rerank": True, "model": "bge-m3"},  # Disabled: too slow
 ]
 
 
@@ -100,8 +102,10 @@ def run_query(
     rerank_top: int = 50,
 ) -> dict:
     """Run ogrep query and return results."""
+    # Use ogrep from the project's venv to avoid PATH conflicts
+    ogrep_bin = Path(__file__).parent.parent / ".venv" / "bin" / "ogrep"
     cmd = [
-        "ogrep",
+        str(ogrep_bin),
         "query",
         query,
         "-n",

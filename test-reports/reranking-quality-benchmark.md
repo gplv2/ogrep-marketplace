@@ -1,20 +1,22 @@
 # Reranking Quality Benchmark
 
-**Date:** 2026-01-16 21:30
+**Date:** 2026-01-16
 **Codebase:** julan_peppol
 **Queries:** 10
+**Embedding Model:** text-embedding-3-small (OpenAI)
 
 ## Summary
 
 | Model | Hit@1 | Hit@3 | Hit@5 | MRR |
 |-------|-------|-------|-------|-----|
-| baseline | 4/10 | 6/10 | 8/10 | 0.545 |
-| flashrank | 6/10 | 7/10 | 7/10 | 0.633 |
-| flashrank:mini | 4/10 | 6/10 | 6/10 | 0.512 |
-| minilm | 4/10 | 7/10 | 8/10 | 0.568 |
-| bge-m3 | 3/10 | 7/10 | 7/10 | 0.516 |
+| baseline | 6/10 | 8/10 | 8/10 | 0.700 |
+| flashrank | 5/10 | 6/10 | 6/10 | 0.550 |
+| flashrank:mini | 4/10 | 5/10 | 7/10 | 0.478 |
+| voyage | 5/10 | 6/10 | 7/10 | 0.599 |
+| voyage:lite | 3/10 | 5/10 | 8/10 | 0.458 |
+| minilm | 5/10 | 6/10 | 8/10 | 0.617 |
 
-**Winner:** flashrank (MRR 0.633)
+**Winner:** baseline (MRR 0.700)
 
 ---
 
@@ -27,11 +29,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 3 | Yes |
+| baseline | 1 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 6 | Yes |
-| minilm | 5 | Yes |
-| bge-m3 | 9 | Yes |
+| flashrank:mini | 5 | Yes |
+| voyage | 2 | Yes |
+| voyage:lite | 5 | Yes |
+| minilm | 2 | Yes |
 
 ### Query 2: "how does frontend authenticate to backend"
 
@@ -43,8 +46,9 @@
 | baseline | 1 | Yes |
 | flashrank | - | No |
 | flashrank:mini | - | No |
-| minilm | - | No |
-| bge-m3 | 10 | Yes |
+| voyage | 4 | Yes |
+| voyage:lite | 5 | Yes |
+| minilm | 6 | Yes |
 
 ### Query 3: "export to CSV JSON"
 
@@ -54,10 +58,11 @@
 | Model | Rank | Found |
 |-------|------|-------|
 | baseline | 1 | Yes |
-| flashrank | 1 | Yes |
-| flashrank:mini | 1 | Yes |
+| flashrank | - | No |
+| flashrank:mini | 3 | Yes |
+| voyage | 1 | Yes |
+| voyage:lite | 1 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 1 | Yes |
 
 ### Query 4: "VAT calculation"
 
@@ -66,11 +71,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 5 | Yes |
-| flashrank | - | No |
-| flashrank:mini | - | No |
-| minilm | 7 | Yes |
-| bge-m3 | 9 | Yes |
+| baseline | 1 | Yes |
+| flashrank | 2 | Yes |
+| flashrank:mini | 4 | Yes |
+| voyage | 8 | Yes |
+| voyage:lite | 5 | Yes |
+| minilm | 4 | Yes |
 
 ### Query 5: "database connection pool"
 
@@ -79,11 +85,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 4 | Yes |
+| baseline | 2 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
+| voyage | 1 | Yes |
+| voyage:lite | 3 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 1 | Yes |
 
 ### Query 6: "invoice list API endpoint"
 
@@ -92,11 +99,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 6 | Yes |
-| flashrank | 3 | Yes |
-| flashrank:mini | 3 | Yes |
-| minilm | 2 | Yes |
-| bge-m3 | 3 | Yes |
+| baseline | - | No |
+| flashrank | - | No |
+| flashrank:mini | - | No |
+| voyage | 1 | Yes |
+| voyage:lite | 3 | Yes |
+| minilm | - | No |
 
 ### Query 7: "payment status workflow"
 
@@ -108,8 +116,9 @@
 | baseline | 1 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
+| voyage | - | No |
+| voyage:lite | 7 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 2 | Yes |
 
 ### Query 8: "how are billing runs created"
 
@@ -121,8 +130,9 @@
 | baseline | 2 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
+| voyage | 1 | Yes |
+| voyage:lite | 1 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 2 | Yes |
 
 ### Query 9: "API error response handling"
 
@@ -133,9 +143,10 @@
 |-------|------|-------|
 | baseline | 1 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 2 | Yes |
-| minilm | 2 | Yes |
-| bge-m3 | 2 | Yes |
+| flashrank:mini | 1 | Yes |
+| voyage | 9 | Yes |
+| voyage:lite | 6 | Yes |
+| minilm | 1 | Yes |
 
 ### Query 10: "BillingApiException"
 
@@ -146,9 +157,10 @@
 |-------|------|-------|
 | baseline | - | No |
 | flashrank | - | No |
-| flashrank:mini | 8 | Yes |
-| minilm | 3 | Yes |
-| bge-m3 | 1 | Yes |
+| flashrank:mini | - | No |
+| voyage | 1 | Yes |
+| voyage:lite | 1 | Yes |
+| minilm | 4 | Yes |
 
 ---
 
@@ -158,3 +170,10 @@
 - **MRR**: Mean Reciprocal Rank = average of 1/rank for each query
   - MRR 1.0 = all queries have correct file at rank 1
   - MRR 0.5 = average rank is 2
+
+## Key Insights
+
+1. **Baseline wins**: OpenAI text-embedding-3-small without reranking achieves the best MRR (0.700)
+2. **Voyage finds unique matches**: Query 6 ("invoice list API endpoint") and Query 10 ("BillingApiException") are only found by Voyage models
+3. **Reranking can hurt**: flashrank loses Query 2 and Query 3 that baseline found
+4. **Trade-offs exist**: Different models excel at different query types
