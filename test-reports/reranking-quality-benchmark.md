@@ -1,6 +1,6 @@
 # Reranking Quality Benchmark
 
-**Date:** 2026-01-16 20:35
+**Date:** 2026-01-16 21:30
 **Codebase:** julan_peppol
 **Queries:** 10
 
@@ -8,13 +8,13 @@
 
 | Model | Hit@1 | Hit@3 | Hit@5 | MRR |
 |-------|-------|-------|-------|-----|
-| baseline | 6/10 | 8/10 | 8/10 | 0.700 |
-| flashrank | 5/10 | 6/10 | 6/10 | 0.550 |
-| flashrank:mini | 4/10 | 5/10 | 7/10 | 0.478 |
-| minilm | 5/10 | 6/10 | 8/10 | 0.617 |
-| bge-m3 | 6/10 | 6/10 | 8/10 | 0.650 |
+| baseline | 4/10 | 6/10 | 8/10 | 0.545 |
+| flashrank | 6/10 | 7/10 | 7/10 | 0.633 |
+| flashrank:mini | 4/10 | 6/10 | 6/10 | 0.512 |
+| minilm | 4/10 | 7/10 | 8/10 | 0.568 |
+| bge-m3 | 3/10 | 7/10 | 7/10 | 0.516 |
 
-**Winner:** baseline (MRR 0.700)
+**Winner:** flashrank (MRR 0.633)
 
 ---
 
@@ -27,11 +27,11 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 1 | Yes |
+| baseline | 3 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 5 | Yes |
-| minilm | 2 | Yes |
-| bge-m3 | 4 | Yes |
+| flashrank:mini | 6 | Yes |
+| minilm | 5 | Yes |
+| bge-m3 | 9 | Yes |
 
 ### Query 2: "how does frontend authenticate to backend"
 
@@ -43,8 +43,8 @@
 | baseline | 1 | Yes |
 | flashrank | - | No |
 | flashrank:mini | - | No |
-| minilm | 6 | Yes |
-| bge-m3 | - | No |
+| minilm | - | No |
+| bge-m3 | 10 | Yes |
 
 ### Query 3: "export to CSV JSON"
 
@@ -54,8 +54,8 @@
 | Model | Rank | Found |
 |-------|------|-------|
 | baseline | 1 | Yes |
-| flashrank | - | No |
-| flashrank:mini | 3 | Yes |
+| flashrank | 1 | Yes |
+| flashrank:mini | 1 | Yes |
 | minilm | 1 | Yes |
 | bge-m3 | 1 | Yes |
 
@@ -66,11 +66,11 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 1 | Yes |
-| flashrank | 2 | Yes |
-| flashrank:mini | 4 | Yes |
-| minilm | 4 | Yes |
-| bge-m3 | 4 | Yes |
+| baseline | 5 | Yes |
+| flashrank | - | No |
+| flashrank:mini | - | No |
+| minilm | 7 | Yes |
+| bge-m3 | 9 | Yes |
 
 ### Query 5: "database connection pool"
 
@@ -79,7 +79,7 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 2 | Yes |
+| baseline | 4 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
 | minilm | 1 | Yes |
@@ -92,11 +92,11 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | - | No |
-| flashrank | - | No |
-| flashrank:mini | - | No |
-| minilm | - | No |
-| bge-m3 | - | No |
+| baseline | 6 | Yes |
+| flashrank | 3 | Yes |
+| flashrank:mini | 3 | Yes |
+| minilm | 2 | Yes |
+| bge-m3 | 3 | Yes |
 
 ### Query 7: "payment status workflow"
 
@@ -109,7 +109,7 @@
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 1 | Yes |
+| bge-m3 | 2 | Yes |
 
 ### Query 8: "how are billing runs created"
 
@@ -122,7 +122,7 @@
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
 | minilm | 1 | Yes |
-| bge-m3 | 1 | Yes |
+| bge-m3 | 2 | Yes |
 
 ### Query 9: "API error response handling"
 
@@ -133,9 +133,9 @@
 |-------|------|-------|
 | baseline | 1 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 1 | Yes |
-| minilm | 1 | Yes |
-| bge-m3 | 1 | Yes |
+| flashrank:mini | 2 | Yes |
+| minilm | 2 | Yes |
+| bge-m3 | 2 | Yes |
 
 ### Query 10: "BillingApiException"
 
@@ -146,8 +146,8 @@
 |-------|------|-------|
 | baseline | - | No |
 | flashrank | - | No |
-| flashrank:mini | - | No |
-| minilm | 4 | Yes |
+| flashrank:mini | 8 | Yes |
+| minilm | 3 | Yes |
 | bge-m3 | 1 | Yes |
 
 ---
