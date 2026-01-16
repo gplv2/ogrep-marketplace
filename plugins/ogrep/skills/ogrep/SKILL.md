@@ -53,6 +53,22 @@ ogrep chunk "billing/processor.py:2" --context 1
 ogrep status --no-json
 ```
 
+### Efficiency Tips (v0.7.4+)
+
+```bash
+# Get file-level overview first (saves ~85% tokens)
+ogrep query "authentication" --summarize
+
+# Search only in specific file types
+ogrep query "validation" --glob "*.py"
+
+# Exclude test files from results
+ogrep query "database" --exclude "tests/*"
+
+# Combine for targeted exploration
+ogrep query "api endpoints" --glob "**/*.py" --exclude "tests/*" --summarize
+```
+
 ---
 
 ## Practical Patterns
@@ -123,6 +139,23 @@ When to use `--rerank`:
 - The right answer appears in results but not at #1
 - You need high precision for a complex query
 - You're doing a one-off important search (reranking is slower)
+
+### Pattern 5: Efficient Codebase Exploration
+
+For large codebases, use the **Explore → Narrow → Drill** workflow:
+
+```bash
+# 1. EXPLORE: Get file-level overview (which files matter?)
+ogrep query "payment processing" --summarize
+
+# 2. NARROW: Focus on relevant area
+ogrep query "payment processing" --glob "src/billing/*.py" --exclude "tests/*"
+
+# 3. DRILL: Expand specific chunks
+ogrep chunk "src/billing/processor.py:2" --context 1
+```
+
+This saves tokens and finds answers faster than dumping all chunks at once.
 
 ---
 
@@ -204,15 +237,19 @@ ogrep status
     "path": "/repo/src/auth.py",
     "start_line": 61,
     "end_line": 120,
-    "score": 0.032,
-    "confidence": "high",
+    "score": 0.37,
+    "confidence": {
+      "level": "high",
+      "relative_pct": 100.0,
+      "absolute_quality": "expected_range",
+      "signal": "top_result_in_typical_range"
+    },
     "language": "python",
     "text": "def authenticate_user(username, password):..."
   }],
   "stats": {
     "total_results": 10,
     "search_mode": "hybrid",
-    "fusion_method": "rrf",
     "reranked": false,
     "confidence_summary": {"high": 2, "medium": 5, "low": 3}
   }
@@ -221,9 +258,19 @@ ogrep status
 
 **Key fields:**
 - `chunk_ref` - Use with `ogrep chunk` to expand context
-- `confidence` - `high` (90%+ of top score), `medium`, `low`, `very_low`
-- `reranked` - Whether results were reranked with cross-encoder
+- `confidence.level` - `high`, `medium`, `low`, `very_low`
+- `confidence.signal` - Actionable guidance (see below)
 - `text` - Full chunk content for analysis
+
+**Interpreting confidence signals:**
+
+| Signal | Meaning | Action |
+|--------|---------|--------|
+| `top_result_strong_match` | Excellent match | Trust it, use directly |
+| `top_result_in_typical_range` | Good match | Use it confidently |
+| `top_result_weak_absolute` | Best available, but weak | May need verification |
+| `close_to_top` | Nearly as good as #1 | Consider as alternative |
+| `score_drop_from_top` | Significantly worse | Lower priority |
 
 ---
 
@@ -356,6 +403,22 @@ ogrep status
 ogrep health
 ```
 
+**"Too many results flooding context"**
+```bash
+ogrep query "..." --summarize   # File-level overview first
+```
+
+**"Results include irrelevant directories"**
+```bash
+ogrep query "..." --exclude "tests/*" --exclude "vendor/*"
+```
+
+**"Need to search only specific file types"**
+```bash
+ogrep query "..." --glob "*.py"           # Single type
+ogrep query "..." --glob "**/*.j2"        # Recursive pattern
+```
+
 ---
 
 ## Command Summary
@@ -370,6 +433,9 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 | Find exact name | `ogrep query "def function_name" --mode fulltext` |
 | Precision search | `ogrep query "..." --rerank` |
 | Fresh results | `ogrep query "..." --refresh` |
+| File overview | `ogrep query "..." --summarize` |
+| Filter by type | `ogrep query "..." --glob "*.py"` |
+| Exclude paths | `ogrep query "..." --exclude "tests/*"` |
 | Query other branch | `ogrep query "..." --branch main` |
 | More context | `ogrep chunk "file.py:N" --context 1` |
 | Rebuild index | `ogrep reindex .` |
