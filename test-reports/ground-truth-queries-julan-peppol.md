@@ -277,10 +277,57 @@ The full benchmark comparing reranking models is available in:
 
 ---
 
+## Nomic Embedding Benchmark (2026-01-16)
+
+Tested same 10 queries with Nomic embeddings (local, 768 dims).
+
+### Nomic Results
+
+| Model | MRR | Hit@1 | Notes |
+|-------|-----|-------|-------|
+| flashrank | **0.633** | 6/10 | **Best with Nomic** |
+| minilm | 0.568 | 4/10 | |
+| baseline (no rerank) | 0.545 | 4/10 | |
+| bge-m3 | 0.516 | 3/10 | Very slow (~30s/query) |
+| flashrank:mini | 0.512 | 4/10 | |
+
+### OpenAI vs Nomic Comparison
+
+| Embedding | Best Config | MRR | Quality Delta |
+|-----------|-------------|-----|---------------|
+| OpenAI | No reranking | 0.700 | baseline |
+| Nomic | + flashrank | 0.633 | -9.6% |
+
+### Key Insight: Reranking Behavior
+
+**With OpenAI (strong embeddings):** Reranking HURTS (-7% to -32% MRR)
+**With Nomic (weaker embeddings):** Reranking HELPS (+16% MRR with flashrank)
+
+This suggests rerankers complement weaker embeddings but conflict with
+well-optimized embeddings like OpenAI's.
+
+---
+
+## Recommendations
+
+### For Maximum Quality
+```bash
+# OpenAI, no reranking
+ogrep query "your search"
+```
+
+### For Local/Privacy
+```bash
+# Nomic + flashrank
+ogrep query "your search" --rerank --rerank-model flashrank
+```
+
+---
+
 ## Next Steps
 
 1. Use this data to calibrate hybrid confidence thresholds (Phase 2)
 2. Implement `absolute_quality` classification based on these ranges
 3. Add `signal` field explaining the scoring decision
-4. Test with Nomic backend after OpenAI implementation complete
+4. ~~Test with Nomic backend after OpenAI implementation complete~~ DONE
 5. Consider training or finding code-specific reranking models
