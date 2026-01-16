@@ -34,7 +34,6 @@ from ..search import FUSION_METHOD, Hit, PathFilter, filter_hits_by_path
 from ..search import query as query_db
 from ._common import detect_language, get_current_branch, require_embedding_config, resolve_db_path
 
-
 # Over-fetch multiplier when path filtering is active
 # We fetch more results to ensure we have enough after filtering
 PATH_FILTER_OVERFETCH = 3
@@ -130,6 +129,7 @@ def _aggregate_to_summary(hits: list[Hit], repo_root: Path) -> list[dict]:
         List of file summary dictionaries, sorted by best_score descending.
     """
     from collections import defaultdict
+
     from ..search import assign_confidence
 
     # Group hits by file path
@@ -381,9 +381,10 @@ def cmd_query(args: argparse.Namespace) -> int:
     # Check reranking options
     do_rerank = getattr(args, "rerank", False)
     rerank_top = getattr(args, "rerank_top", None)
+    rerank_model = getattr(args, "rerank_model", None)
 
-    # --rerank-top implies --rerank
-    if rerank_top is not None:
+    # --rerank-top and --rerank-model imply --rerank
+    if rerank_top is not None or rerank_model is not None:
         do_rerank = True
 
         # Validate: --rerank-top must be >= -n
@@ -459,13 +460,14 @@ def cmd_query(args: argparse.Namespace) -> int:
     if do_rerank and hits:
         try:
             from ..rerank import (
+                _is_flashrank_model,
                 clear_captured_warnings,
                 get_captured_warnings,
                 is_reranker_available,
                 rerank_results,
             )
 
-            if is_reranker_available():
+            if is_reranker_available(rerank_model):
                 rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
                 try:
                     # Get cache path for L3 caching (if caching enabled)
@@ -475,7 +477,13 @@ def cmd_query(args: argparse.Namespace) -> int:
                         from ..cache import get_cache_path
                         cache_path = get_cache_path(db)
 
-                    hits = rerank_results(query_text, hits, top_n=rerank_n, cache_path=cache_path)
+                    hits = rerank_results(
+                        query_text,
+                        hits,
+                        top_n=rerank_n,
+                        model_name=rerank_model,
+                        cache_path=cache_path,
+                    )
                     # Trim to requested number after reranking
                     hits = hits[: args.top]
                     reranked = True
@@ -493,16 +501,22 @@ def cmd_query(args: argparse.Namespace) -> int:
                         print(f"Warning: {rerank_skip_reason}", file=sys.stderr)
                         print("Returning results without reranking.", file=sys.stderr)
             else:
-                # sentence-transformers not installed
+                # Required backend not installed
                 rerank_skipped = True
-                rerank_skip_reason = "sentence-transformers not installed"
+                if rerank_model and _is_flashrank_model(rerank_model):
+                    rerank_skip_reason = "flashrank not installed"
+                    install_cmd = "pip install 'ogrep[rerank-light]'"
+                else:
+                    rerank_skip_reason = "sentence-transformers not installed"
+                    install_cmd = "pip install 'ogrep[rerank]'"
+
                 if not use_json:
                     print(
-                        "Warning: Reranking requested but sentence-transformers not installed.",
+                        f"Warning: Reranking requested but {rerank_skip_reason}.",
                         file=sys.stderr,
                     )
                     print(
-                        "Install with: pip install 'ogrep[rerank]'",
+                        f"Install with: {install_cmd}",
                         file=sys.stderr,
                     )
                     print("Returning results without reranking.", file=sys.stderr)
@@ -601,23 +615,33 @@ def cmd_query(args: argparse.Namespace) -> int:
                 },
             }
 
+            # Add rerank model info if reranking was performed
+            if reranked:
+                output["stats"]["rerank_model"] = rerank_model or "bge-m3"
+
             # Add rerank skip info if reranking was requested but couldn't be performed
             if rerank_skipped:
                 output["stats"]["rerank_skipped"] = True
                 output["stats"]["rerank_skip_reason"] = rerank_skip_reason
 
                 # Build suggestion based on skip reason
-                if "not installed" in (rerank_skip_reason or ""):
+                if "flashrank not installed" in (rerank_skip_reason or ""):
+                    output["suggestion"] = (
+                        "FlashRank reranking requires the flashrank package. "
+                        "Install with: pip install 'ogrep[rerank-light]' "
+                        "Or use --rerank-model bge-m3 for sentence-transformers backend."
+                    )
+                elif "sentence-transformers not installed" in (rerank_skip_reason or ""):
                     output["suggestion"] = (
                         "Reranking requires sentence-transformers. "
                         "Install with: pip install 'ogrep[rerank]' "
-                        "Or remove --rerank flag to avoid this warning."
+                        "Or use --rerank-model flashrank for lightweight ONNX backend."
                     )
                 else:
                     output["suggestion"] = (
                         "Reranking failed on this device. Results returned without reranking. "
                         "Run 'ogrep device' to check hardware support. "
-                        "Consider removing --rerank flag for this device."
+                        "Consider using --rerank-model flashrank for lightweight ONNX backend."
                     )
 
             # Add AST mode info if available

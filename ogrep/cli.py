@@ -61,7 +61,7 @@ from .commands import (
 from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
 
-__version__ = "0.7.4"
+__version__ = "0.8.0"
 
 
 def _add_index_command(sub: argparse._SubParsersAction) -> None:
@@ -172,6 +172,14 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         metavar="N",
         help="Number of candidates to rerank (default: 50, via OGREP_RERANK_TOPN). "
         "Implies --rerank.",
+    )
+    p.add_argument(
+        "--rerank-model",
+        metavar="MODEL",
+        default=None,
+        help="Reranking model: bge-m3 (default), minilm, flashrank, flashrank:mini. "
+        "FlashRank models are lightweight ONNX (~4-50MB) and parallel-safe. "
+        "Use OGREP_RERANK_MODEL env var for persistent setting. Implies --rerank.",
     )
     p.add_argument(
         "--no-cache",

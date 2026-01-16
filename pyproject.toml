@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ogrep"
-version = "0.7.4"
+version = "0.8.0"
 description = "Semantic grep for codebases - local-first, SQLite-backed, with local or cloud embeddings"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,7 +63,10 @@ dev = [
 ]
 speed = ["numpy>=1.24.0"]
 mcp = ["mcp>=1.0.0"]
-rerank = ["sentence-transformers>=2.2.0"]
+# Reranking backends (choose one or both)
+rerank = ["sentence-transformers>=2.2.0"]  # Full-featured, needs PyTorch (~500MB)
+rerank-light = ["flashrank>=0.2.0"]  # Lightweight ONNX (~50MB), parallel-safe
+rerank-all = ["sentence-transformers>=2.2.0", "flashrank>=0.2.0"]  # Both backends
 ast = [
     "tree-sitter>=0.23.0",
     "tree-sitter-python>=0.23.0",

@@ -989,8 +989,8 @@ class TestRerankGracefulDegradation:
         test_file.write_text("def hello(): pass")
         index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
 
-        # Mock is_reranker_available to return False
-        def mock_unavailable():
+        # Mock is_reranker_available to return False (accepts optional model_name arg)
+        def mock_unavailable(model_name=None):
             return False
 
         # Query with rerank but mock it as unavailable
@@ -1008,6 +1008,7 @@ class TestRerankGracefulDegradation:
             dimensions=1536,
             rerank=True,
             rerank_top=None,
+            rerank_model=None,
         )
 
         # Patch the reranker availability check
@@ -1047,8 +1048,8 @@ class TestRerankGracefulDegradation:
         test_file.write_text("def search_function(): return 'found'")
         index_path(root=temp_dir, db_path=db_path, chunk_lines=60)
 
-        # Mock is_reranker_available to return False
-        def mock_unavailable():
+        # Mock is_reranker_available to return False (accepts optional model_name arg)
+        def mock_unavailable(model_name=None):
             return False
 
         args = argparse.Namespace(
@@ -1065,6 +1066,7 @@ class TestRerankGracefulDegradation:
             dimensions=1536,
             rerank=True,
             rerank_top=None,
+            rerank_model=None,
         )
 
         import ogrep.rerank as rerank_module

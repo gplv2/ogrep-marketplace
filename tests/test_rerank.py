@@ -326,10 +326,10 @@ class TestRerankerEnvironmentConfig:
         assert DEFAULT_RERANK_TOPN == 50
 
     def test_default_model(self):
-        """Default model should be BAAI/bge-reranker-v2-m3."""
+        """Default model should be bge-m3 (alias for BAAI/bge-reranker-v2-m3)."""
         from ogrep.rerank import DEFAULT_RERANK_MODEL
 
-        assert DEFAULT_RERANK_MODEL == "BAAI/bge-reranker-v2-m3"
+        assert DEFAULT_RERANK_MODEL == "bge-m3"
 
 
 class TestWarningCapture:
@@ -631,3 +631,251 @@ class TestRerankLock:
         assert isinstance(rerank_module.RERANK_LOCK_PATH, Path)
         assert isinstance(rerank_module.RERANK_LOCK_TIMEOUT, float)
         assert rerank_module.RERANK_LOCK_TIMEOUT > 0
+
+
+class TestModelAliases:
+    """Test model alias resolution."""
+
+    def test_sentence_transformers_aliases_exist(self):
+        """Sentence-transformers aliases should be defined."""
+        from ogrep.rerank import SENTENCE_TRANSFORMERS_ALIASES
+
+        assert "bge-m3" in SENTENCE_TRANSFORMERS_ALIASES
+        assert "minilm" in SENTENCE_TRANSFORMERS_ALIASES
+        assert SENTENCE_TRANSFORMERS_ALIASES["bge-m3"] == "BAAI/bge-reranker-v2-m3"
+        assert SENTENCE_TRANSFORMERS_ALIASES["minilm"] == "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+    def test_flashrank_aliases_exist(self):
+        """FlashRank aliases should be defined."""
+        from ogrep.rerank import FLASHRANK_ALIASES
+
+        assert "flashrank" in FLASHRANK_ALIASES
+        assert "flashrank:tiny" in FLASHRANK_ALIASES
+        assert "flashrank:mini" in FLASHRANK_ALIASES
+        assert FLASHRANK_ALIASES["flashrank"] == "ms-marco-TinyBERT-L-2-v2"
+        assert FLASHRANK_ALIASES["flashrank:mini"] == "ms-marco-MiniLM-L-12-v2"
+
+    def test_resolve_model_name_with_alias(self):
+        """Model aliases should resolve to full names."""
+        from ogrep.rerank import _resolve_model_name
+
+        assert _resolve_model_name("bge-m3") == "BAAI/bge-reranker-v2-m3"
+        assert _resolve_model_name("minilm") == "cross-encoder/ms-marco-MiniLM-L6-v2"
+        assert _resolve_model_name("flashrank") == "ms-marco-TinyBERT-L-2-v2"
+        assert _resolve_model_name("flashrank:mini") == "ms-marco-MiniLM-L-12-v2"
+
+    def test_resolve_model_name_passthrough(self):
+        """Unknown model names should pass through unchanged."""
+        from ogrep.rerank import _resolve_model_name
+
+        assert _resolve_model_name("custom/model") == "custom/model"
+        assert _resolve_model_name("BAAI/bge-reranker-v2-m3") == "BAAI/bge-reranker-v2-m3"
+
+
+class TestBackendDetection:
+    """Test backend detection logic."""
+
+    def test_is_flashrank_model_with_aliases(self):
+        """FlashRank models should be detected correctly."""
+        from ogrep.rerank import _is_flashrank_model
+
+        assert _is_flashrank_model("flashrank") is True
+        assert _is_flashrank_model("flashrank:tiny") is True
+        assert _is_flashrank_model("flashrank:mini") is True
+        assert _is_flashrank_model("ms-marco-TinyBERT-L-2-v2") is True
+        assert _is_flashrank_model("ms-marco-MiniLM-L-12-v2") is True
+
+    def test_is_flashrank_model_negative(self):
+        """Non-FlashRank models should not be detected as FlashRank."""
+        from ogrep.rerank import _is_flashrank_model
+
+        assert _is_flashrank_model("bge-m3") is False
+        assert _is_flashrank_model("minilm") is False
+        assert _is_flashrank_model("BAAI/bge-reranker-v2-m3") is False
+        assert _is_flashrank_model("custom/model") is False
+
+    def test_is_sentence_transformers_model(self):
+        """Sentence-transformers models should be detected correctly."""
+        from ogrep.rerank import _is_sentence_transformers_model
+
+        assert _is_sentence_transformers_model("bge-m3") is True
+        assert _is_sentence_transformers_model("minilm") is True
+        assert _is_sentence_transformers_model("BAAI/bge-reranker-v2-m3") is True
+        assert _is_sentence_transformers_model("custom/model") is True
+
+    def test_is_sentence_transformers_model_negative(self):
+        """FlashRank models should not be detected as sentence-transformers."""
+        from ogrep.rerank import _is_sentence_transformers_model
+
+        assert _is_sentence_transformers_model("flashrank") is False
+        assert _is_sentence_transformers_model("flashrank:mini") is False
+
+
+class TestFlashRankBackend:
+    """Test FlashRank backend functionality."""
+
+    def test_flashrank_availability_check(self):
+        """is_flashrank_available should work without errors."""
+        from ogrep.rerank import is_flashrank_available
+
+        # Just check it runs without error and returns a bool
+        result = is_flashrank_available()
+        assert isinstance(result, bool)
+
+    def test_rerank_with_flashrank_model_routes_correctly(self):
+        """Using flashrank model should route to FlashRank backend."""
+        from ogrep.rerank import (
+            _clear_all_state,
+            is_flashrank_available,
+            rerank_results,
+        )
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        # Mock FlashRank if not available
+        if not is_flashrank_available():
+            # Skip test if FlashRank is not installed
+            pytest.skip("FlashRank not installed")
+
+        # If FlashRank is available, should work
+        with patch("ogrep.rerank._get_flashrank_reranker") as mock_get:
+            mock_ranker = MagicMock()
+            mock_get.return_value = mock_ranker
+
+            with patch("ogrep.rerank._flashrank_predict") as mock_predict:
+                mock_predict.return_value = [0.9]
+
+                result = rerank_results("test", hits, model_name="flashrank")
+
+                # Should have called FlashRank functions
+                mock_get.assert_called_once()
+                mock_predict.assert_called_once()
+
+        _clear_all_state()
+
+    def test_flashrank_does_not_use_lock(self):
+        """FlashRank backend should not use the rerank lock."""
+        from ogrep.rerank import (
+            _clear_all_state,
+            is_flashrank_available,
+            rerank_results,
+        )
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        if not is_flashrank_available():
+            pytest.skip("FlashRank not installed")
+
+        with patch("ogrep.rerank._rerank_lock") as mock_lock:
+            with patch("ogrep.rerank._get_flashrank_reranker") as mock_get:
+                mock_ranker = MagicMock()
+                mock_get.return_value = mock_ranker
+
+                with patch("ogrep.rerank._flashrank_predict") as mock_predict:
+                    mock_predict.return_value = [0.9]
+
+                    rerank_results("test", hits, model_name="flashrank")
+
+                    # Lock should NOT have been called for FlashRank
+                    mock_lock.assert_not_called()
+
+        _clear_all_state()
+
+
+class TestAvailableBackends:
+    """Test the get_available_backends function."""
+
+    def test_get_available_backends_structure(self):
+        """get_available_backends should return proper structure."""
+        from ogrep.rerank import get_available_backends
+
+        backends = get_available_backends()
+
+        assert "sentence_transformers" in backends
+        assert "flashrank" in backends
+        assert "default_model" in backends
+
+        # Check sentence_transformers structure
+        st = backends["sentence_transformers"]
+        assert "available" in st
+        assert "install" in st
+        assert "models" in st
+        assert isinstance(st["available"], bool)
+        assert isinstance(st["models"], list)
+
+        # Check flashrank structure
+        fr = backends["flashrank"]
+        assert "available" in fr
+        assert "install" in fr
+        assert "models" in fr
+        assert isinstance(fr["available"], bool)
+        assert isinstance(fr["models"], list)
+
+    def test_get_available_backends_model_info(self):
+        """Model info should include alias, name, and size."""
+        from ogrep.rerank import get_available_backends
+
+        backends = get_available_backends()
+
+        # Check a sentence_transformers model
+        st_models = backends["sentence_transformers"]["models"]
+        assert len(st_models) > 0
+        first_model = st_models[0]
+        assert "alias" in first_model
+        assert "name" in first_model
+        assert "size" in first_model
+
+        # Check a flashrank model
+        fr_models = backends["flashrank"]["models"]
+        assert len(fr_models) > 0
+        first_model = fr_models[0]
+        assert "alias" in first_model
+        assert "name" in first_model
+        assert "size" in first_model
+
+
+class TestRerankerAvailabilityWithModel:
+    """Test is_reranker_available with specific models."""
+
+    def test_reranker_available_with_none_checks_any_backend(self):
+        """is_reranker_available(None) should check if any backend is available."""
+        from ogrep.rerank import is_reranker_available
+
+        # Just verify it runs without error
+        result = is_reranker_available(None)
+        assert isinstance(result, bool)
+
+    def test_reranker_available_checks_correct_backend_for_flashrank(self):
+        """is_reranker_available should check FlashRank for flashrank models."""
+        from ogrep.rerank import is_flashrank_available, is_reranker_available
+
+        # The result should match is_flashrank_available for flashrank models
+        flashrank_available = is_flashrank_available()
+        assert is_reranker_available("flashrank") == flashrank_available
+        assert is_reranker_available("flashrank:mini") == flashrank_available

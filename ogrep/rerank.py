@@ -10,16 +10,29 @@ The two-stage retrieval pattern:
 1. Fast retrieval: Use embeddings + BM25 to get top 50-100 candidates
 2. Slow reranking: Use cross-encoder to precisely order top 10-20
 
-This is an optional feature requiring sentence-transformers:
+Two backend options are available:
+
+1. sentence-transformers (default, higher quality):
     pip install "ogrep[rerank]"
+    Models: bge-m3 (default, 300MB), minilm (90MB)
+    Note: Uses file-based locking to prevent OOM in parallel sessions.
+
+2. FlashRank (lightweight, parallel-safe):
+    pip install "ogrep[rerank-light]"
+    Models: flashrank (4MB), flashrank:mini (50MB)
+    Note: Uses ONNX runtime, no PyTorch overhead, safe for parallel use.
 
 Environment variables:
-    OGREP_RERANK_MODEL: Cross-encoder model to use (default: BAAI/bge-reranker-v2-m3)
+    OGREP_RERANK_MODEL: Reranker model or alias (default: bge-m3)
     OGREP_RERANK_TOPN: Number of candidates to rerank (default: 50)
+    OGREP_RERANK_LOCK: Lock file path for parallel safety (sentence-transformers only)
+    OGREP_RERANK_LOCK_TIMEOUT: Lock timeout in seconds (default: 120)
 
 Usage:
-    ogrep query "where is auth" --rerank           # Enable reranking
-    ogrep query "where is auth" --rerank-top 30   # Rerank top 30 candidates
+    ogrep query "where is auth" --rerank                       # Default (bge-m3)
+    ogrep query "where is auth" --rerank-model flashrank       # Lightweight ONNX
+    ogrep query "where is auth" --rerank-model flashrank:mini  # Medium ONNX
+    ogrep query "where is auth" --rerank-model minilm          # Smaller PyTorch
 """
 
 from __future__ import annotations
@@ -35,8 +48,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+# =============================================================================
+# Model Configuration
+# =============================================================================
+
+# Model aliases map user-friendly names to actual model identifiers
+# Sentence-transformers models (PyTorch backend)
+SENTENCE_TRANSFORMERS_ALIASES = {
+    "bge-m3": "BAAI/bge-reranker-v2-m3",
+    "minilm": "cross-encoder/ms-marco-MiniLM-L6-v2",
+}
+
+# FlashRank models (ONNX backend - lightweight, parallel-safe)
+FLASHRANK_ALIASES = {
+    "flashrank": "ms-marco-TinyBERT-L-2-v2",
+    "flashrank:tiny": "ms-marco-TinyBERT-L-2-v2",
+    "flashrank:mini": "ms-marco-MiniLM-L-12-v2",
+}
+
+# Combined aliases for model resolution
+RERANK_MODEL_ALIASES = {**SENTENCE_TRANSFORMERS_ALIASES, **FLASHRANK_ALIASES}
+
 # Default configuration
-DEFAULT_RERANK_MODEL = os.environ.get("OGREP_RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
+DEFAULT_RERANK_MODEL = "bge-m3"  # User-friendly default
 DEFAULT_RERANK_TOPN = int(os.environ.get("OGREP_RERANK_TOPN", "50"))
 
 # Lock configuration - prevents multiple processes from loading the ~300MB model simultaneously
@@ -46,13 +80,71 @@ RERANK_LOCK_PATH = Path(os.environ.get(
 ))
 RERANK_LOCK_TIMEOUT = float(os.environ.get("OGREP_RERANK_LOCK_TIMEOUT", "120"))  # seconds
 
+# =============================================================================
+# Backend Detection
+# =============================================================================
+
+
+def _is_flashrank_model(model_name: str) -> bool:
+    """Check if the model name indicates a FlashRank backend."""
+    return model_name.startswith("flashrank") or model_name in FLASHRANK_ALIASES.values()
+
+
+def _is_sentence_transformers_model(model_name: str) -> bool:
+    """Check if the model name indicates a sentence-transformers backend."""
+    # If it's a FlashRank model, it's not sentence-transformers
+    if _is_flashrank_model(model_name):
+        return False
+    # Otherwise assume sentence-transformers (includes full HuggingFace paths)
+    return True
+
+
+def _resolve_model_name(model_name: str) -> str:
+    """
+    Resolve a model alias to its actual model identifier.
+
+    Args:
+        model_name: User-provided model name or alias.
+
+    Returns:
+        Actual model identifier to use with the backend.
+    """
+    return RERANK_MODEL_ALIASES.get(model_name, model_name)
+
+
+def is_flashrank_available() -> bool:
+    """Check if FlashRank is installed and importable."""
+    try:
+        import flashrank  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def is_sentence_transformers_available() -> bool:
+    """Check if sentence-transformers is installed and importable."""
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+# =============================================================================
+# Lazy-loaded State
+# =============================================================================
+
 # Lazy-loaded CrossEncoder class (imported on first use to capture CUDA warnings)
 # Will be None if sentence-transformers not installed
 _CrossEncoder: Any = None
 _crossencoder_import_attempted: bool = False
 
-# Cached model instance
-_reranker_model: Any = None
+# Cached model instances (one per backend)
+_reranker_model: Any = None  # sentence-transformers CrossEncoder
+_flashrank_ranker: Any = None  # FlashRank Ranker
+_flashrank_model_name: str | None = None  # Track which FlashRank model is loaded
 
 # Captured warnings from model loading (CUDA, etc.)
 _captured_warnings: list[str] = []
@@ -268,21 +360,100 @@ def clear_captured_warnings() -> None:
     _captured_warnings = []
 
 
-def is_reranker_available() -> bool:
+def get_available_backends() -> dict[str, Any]:
     """
-    Check if the reranker is available (sentence-transformers installed).
+    Get information about available reranking backends.
 
     Returns:
-        True if sentence-transformers is installed and importable.
+        Dictionary with backend availability and model info:
+        {
+            "sentence_transformers": {
+                "available": bool,
+                "install": str,
+                "models": [{"alias": str, "name": str, "size": str}, ...],
+            },
+            "flashrank": {
+                "available": bool,
+                "install": str,
+                "models": [{"alias": str, "name": str, "size": str}, ...],
+            },
+            "default_model": str,
+        }
     """
-    CrossEncoder = _lazy_import_crossencoder()
-    return CrossEncoder is not None
+    return {
+        "sentence_transformers": {
+            "available": is_sentence_transformers_available(),
+            "install": "pip install 'ogrep[rerank]'",
+            "models": [
+                {
+                    "alias": "bge-m3",
+                    "name": "BAAI/bge-reranker-v2-m3",
+                    "size": "~300MB",
+                    "context": "8K tokens",
+                    "note": "Best quality, needs lock for parallel safety",
+                },
+                {
+                    "alias": "minilm",
+                    "name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+                    "size": "~90MB",
+                    "context": "512 tokens",
+                    "note": "Smaller, faster, needs lock for parallel safety",
+                },
+            ],
+        },
+        "flashrank": {
+            "available": is_flashrank_available(),
+            "install": "pip install 'ogrep[rerank-light]'",
+            "models": [
+                {
+                    "alias": "flashrank",
+                    "name": "ms-marco-TinyBERT-L-2-v2",
+                    "size": "~4MB",
+                    "context": "512 tokens",
+                    "note": "Lightweight ONNX, parallel-safe",
+                },
+                {
+                    "alias": "flashrank:mini",
+                    "name": "ms-marco-MiniLM-L-12-v2",
+                    "size": "~50MB",
+                    "context": "512 tokens",
+                    "note": "Better quality ONNX, parallel-safe",
+                },
+            ],
+        },
+        "default_model": DEFAULT_RERANK_MODEL,
+    }
+
+
+def is_reranker_available(model_name: str | None = None) -> bool:
+    """
+    Check if reranking is available for the specified model.
+
+    Args:
+        model_name: Model name or alias. If None, checks if any backend is available.
+
+    Returns:
+        True if the required backend is installed and importable.
+    """
+    if model_name is None:
+        # Check if any backend is available
+        return is_flashrank_available() or is_sentence_transformers_available()
+
+    # Check specific backend based on model
+    if _is_flashrank_model(model_name):
+        return is_flashrank_available()
+    else:
+        CrossEncoder = _lazy_import_crossencoder()
+        return CrossEncoder is not None
 
 
 def _clear_reranker_cache() -> None:
     """Clear the cached reranker model. Used for testing."""
-    global _reranker_model, _captured_warnings, _CrossEncoder, _crossencoder_import_attempted
+    global _reranker_model, _flashrank_ranker, _flashrank_model_name
+    global _captured_warnings, _CrossEncoder, _crossencoder_import_attempted
     _reranker_model = None
+    _flashrank_ranker = None
+    _flashrank_model_name = None
     _captured_warnings = []
     # Note: Don't reset _CrossEncoder/_crossencoder_import_attempted in production
     # as re-importing won't trigger new warnings. Only reset in tests.
@@ -290,8 +461,11 @@ def _clear_reranker_cache() -> None:
 
 def _clear_all_state() -> None:
     """Clear all state including import cache. For testing only."""
-    global _reranker_model, _captured_warnings, _CrossEncoder, _crossencoder_import_attempted
+    global _reranker_model, _flashrank_ranker, _flashrank_model_name
+    global _captured_warnings, _CrossEncoder, _crossencoder_import_attempted
     _reranker_model = None
+    _flashrank_ranker = None
+    _flashrank_model_name = None
     _captured_warnings = []
     _CrossEncoder = None
     _crossencoder_import_attempted = False
@@ -299,7 +473,7 @@ def _clear_all_state() -> None:
 
 def _get_reranker(model_name: str | None = None) -> Any:
     """
-    Get or create the cached reranker model.
+    Get or create the cached sentence-transformers reranker model.
 
     The model is loaded lazily on first use and cached for subsequent calls.
     First load will download the model (~300MB for bge-reranker-v2-m3).
@@ -308,8 +482,8 @@ def _get_reranker(model_name: str | None = None) -> Any:
     via get_captured_warnings() for structured output.
 
     Args:
-        model_name: Model identifier. If None, uses OGREP_RERANK_MODEL env var
-                   or default (BAAI/bge-reranker-v2-m3).
+        model_name: Model name or alias. If None, uses OGREP_RERANK_MODEL env var
+                   or default (bge-m3).
 
     Returns:
         CrossEncoder model instance.
@@ -331,15 +505,95 @@ def _get_reranker(model_name: str | None = None) -> Any:
 
     model = model_name or os.environ.get("OGREP_RERANK_MODEL", DEFAULT_RERANK_MODEL)
 
+    # Resolve alias to actual model identifier
+    actual_model = _resolve_model_name(model)
+
     # Capture any stderr output (CUDA warnings, etc.) during model instantiation
     with _suppress_stderr_warnings() as captured:
-        _reranker_model = CrossEncoder(model)
+        _reranker_model = CrossEncoder(actual_model)
 
     # Parse any additional warnings from model instantiation
     captured_text = captured.getvalue().strip()
     _captured_warnings.extend(_parse_captured_output(captured_text))
 
     return _reranker_model
+
+
+def _get_flashrank_reranker(model_name: str) -> Any:
+    """
+    Get or create the cached FlashRank reranker model.
+
+    FlashRank uses ONNX runtime, which is much lighter than PyTorch
+    (~50MB vs ~500MB overhead) and is safe for parallel use without locking.
+
+    Args:
+        model_name: Model name or alias (e.g., "flashrank", "flashrank:mini").
+
+    Returns:
+        FlashRank Ranker instance.
+
+    Raises:
+        ImportError: If flashrank is not installed.
+    """
+    global _flashrank_ranker, _flashrank_model_name, _captured_warnings
+
+    # Resolve alias to actual model name
+    actual_model = _resolve_model_name(model_name)
+
+    # Check if we need to load a different model
+    if _flashrank_ranker is not None and _flashrank_model_name == actual_model:
+        return _flashrank_ranker
+
+    # Import FlashRank
+    try:
+        from flashrank import Ranker
+    except ImportError as e:
+        raise ImportError(
+            "FlashRank reranking requires the flashrank package. "
+            "Install with: pip install 'ogrep[rerank-light]'"
+        ) from e
+
+    # Capture any stderr output during model load
+    with _suppress_stderr_warnings() as captured:
+        _flashrank_ranker = Ranker(model_name=actual_model)
+        _flashrank_model_name = actual_model
+
+    # Parse any warnings from model instantiation
+    captured_text = captured.getvalue().strip()
+    _captured_warnings.extend(_parse_captured_output(captured_text))
+
+    return _flashrank_ranker
+
+
+def _flashrank_predict(ranker: Any, query: str, texts: list[str]) -> list[float]:
+    """
+    Get reranking scores from FlashRank.
+
+    Args:
+        ranker: FlashRank Ranker instance.
+        query: The search query.
+        texts: List of document texts to score.
+
+    Returns:
+        List of scores in the SAME ORDER as input texts.
+    """
+    from flashrank import RerankRequest
+
+    # Create passages with IDs to track original order
+    passages = [{"id": i, "text": t} for i, t in enumerate(texts)]
+
+    # Rerank
+    request = RerankRequest(query=query, passages=passages)
+    results = ranker.rerank(request)
+
+    # FlashRank returns results sorted by score descending
+    # We need to map back to original order using the id field
+    scores = [0.0] * len(texts)
+    for r in results:
+        idx = r["id"]
+        scores[idx] = r["score"]
+
+    return scores
 
 
 def _compute_confidence(score: float, top_score: float) -> str:
@@ -435,8 +689,11 @@ def rerank_results(
     if len(candidates) == 0:
         return []
 
-    # Determine model name for cache key
+    # Determine model: CLI flag > env var > default
     model = model_name or os.environ.get("OGREP_RERANK_MODEL", DEFAULT_RERANK_MODEL)
+
+    # Detect which backend to use based on model name
+    use_flashrank = _is_flashrank_model(model)
 
     # L3 Cache setup
     cache_con = None
@@ -494,40 +751,51 @@ def rerank_results(
             log_cache_event(cache_con, "L3", "hit", time_saved_ms=l3_result.time_saved_ms)
             return reranked_hits
 
-    # Acquire exclusive lock for reranking (prevents OOM from parallel model loads)
-    # The ~300MB cross-encoder model can cause OOM if multiple processes load simultaneously
-    try:
-        with _rerank_lock():
-            # Get reranker model (cache miss path)
-            reranker = _get_reranker(model_name)
-
-            # Create (query, document) pairs for cross-encoder
-            pairs = [(query, hit.text) for hit in candidates]
-
-            # Get cross-encoder scores
-            scores = reranker.predict(pairs)
-
-    except RerankLockTimeout as e:
-        # Graceful degradation: return unreranked results with warning
-        _captured_warnings.append(str(e) + " Returning unreranked results.")
-
-        # Return candidates as-is (maintain original embedding/BM25 ranking)
-        top_score = candidates[0].score if candidates else 0.0
-        unreranked_hits = []
-        for hit in candidates:
-            confidence = _compute_confidence(hit.score, top_score)
-            unreranked = RerankedHit(
-                score=float(hit.score),
-                path=hit.path,
-                start_line=hit.start_line,
-                end_line=hit.end_line,
-                text=hit.text,
-                chunk_id=hit.chunk_id,
-                chunk_index=hit.chunk_index,
-                confidence=confidence,
+    # Route to appropriate backend
+    if use_flashrank:
+        # FlashRank path - no lock needed (ONNX is parallel-safe)
+        if not is_flashrank_available():
+            raise ImportError(
+                "FlashRank not installed. Install with: pip install 'ogrep[rerank-light]'"
             )
-            unreranked_hits.append(unreranked)
-        return unreranked_hits
+        ranker = _get_flashrank_reranker(model)
+        texts = [hit.text for hit in candidates]
+        scores = _flashrank_predict(ranker, query, texts)
+    else:
+        # Sentence-transformers path - needs lock to prevent OOM
+        # The ~300MB cross-encoder model can cause OOM if multiple processes load simultaneously
+        try:
+            with _rerank_lock():
+                # Get reranker model (cache miss path)
+                reranker = _get_reranker(model)
+
+                # Create (query, document) pairs for cross-encoder
+                pairs = [(query, hit.text) for hit in candidates]
+
+                # Get cross-encoder scores
+                scores = reranker.predict(pairs)
+
+        except RerankLockTimeout as e:
+            # Graceful degradation: return unreranked results with warning
+            _captured_warnings.append(str(e) + " Returning unreranked results.")
+
+            # Return candidates as-is (maintain original embedding/BM25 ranking)
+            top_score = candidates[0].score if candidates else 0.0
+            unreranked_hits = []
+            for hit in candidates:
+                confidence = _compute_confidence(hit.score, top_score)
+                unreranked = RerankedHit(
+                    score=float(hit.score),
+                    path=hit.path,
+                    start_line=hit.start_line,
+                    end_line=hit.end_line,
+                    text=hit.text,
+                    chunk_id=hit.chunk_id,
+                    chunk_index=hit.chunk_index,
+                    confidence=confidence,
+                )
+                unreranked_hits.append(unreranked)
+            return unreranked_hits
 
     # Convert to list if numpy array
     if hasattr(scores, "tolist"):

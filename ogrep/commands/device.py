@@ -42,7 +42,8 @@ def _get_device_info() -> dict[str, Any]:
 
     Returns:
         Dictionary with device information including:
-        - rerank_available: Whether sentence-transformers is installed
+        - rerank_available: Whether any reranking backend is installed
+        - backends: Available reranking backends and their models
         - pytorch_available: Whether PyTorch is installed
         - device: Best available device (cuda, mps, cpu)
         - cuda_available: CUDA GPU detection
@@ -53,6 +54,7 @@ def _get_device_info() -> dict[str, Any]:
     """
     info: dict[str, Any] = {
         "rerank_available": False,
+        "backends": {},
         "pytorch_available": False,
         "device": "cpu",
         "cuda_available": False,
@@ -71,17 +73,48 @@ def _get_device_info() -> dict[str, Any]:
         "recommendation": "",
     }
 
-    # Check if sentence-transformers is available
+    # Get backend availability from rerank module
+    try:
+        from ..rerank import get_available_backends
+
+        backends = get_available_backends()
+        info["backends"] = backends
+
+        # Check if any backend is available
+        st_available = backends["sentence_transformers"]["available"]
+        fr_available = backends["flashrank"]["available"]
+        info["rerank_available"] = st_available or fr_available
+    except ImportError:
+        # Fallback if rerank module has issues
+        info["backends"] = {
+            "sentence_transformers": {"available": False, "install": "pip install 'ogrep[rerank]'"},
+            "flashrank": {"available": False, "install": "pip install 'ogrep[rerank-light]'"},
+        }
+
+    # Check if sentence-transformers is available (for PyTorch device detection)
     try:
         import sentence_transformers  # noqa: F401
 
-        info["rerank_available"] = True
         info["sentence_transformers_version"] = getattr(
             sentence_transformers, "__version__", "unknown"
         )
     except ImportError:
+        pass
+
+    # Check FlashRank availability
+    try:
+        import flashrank  # noqa: F401
+
+        info["flashrank_version"] = getattr(flashrank, "__version__", "unknown")
+    except ImportError:
+        pass
+
+    # If no reranking backends available, provide helpful message and return early
+    if not info["rerank_available"]:
         info["recommendation"] = (
-            "Reranking not available. Install with: pip install 'ogrep[rerank]'"
+            "No reranking backends installed. Options:\n"
+            "  • pip install 'ogrep[rerank]' - Full-featured (sentence-transformers + PyTorch)\n"
+            "  • pip install 'ogrep[rerank-light]' - Lightweight (FlashRank + ONNX, parallel-safe)"
         )
         return info
 
@@ -177,21 +210,41 @@ def _format_text_output(info: dict[str, Any]) -> str:
     """Format device info as human-readable text."""
     lines = []
 
-    lines.append("── Reranking Support ──")
-    if info["rerank_available"]:
-        lines.append(
-            f"  sentence-transformers: {info.get('sentence_transformers_version', 'installed')}"
-        )
+    lines.append("── Reranking Backends ──")
+
+    backends = info.get("backends", {})
+
+    # sentence-transformers backend
+    st_info = backends.get("sentence_transformers", {})
+    if st_info.get("available"):
+        st_version = info.get("sentence_transformers_version", "installed")
+        lines.append(f"  sentence-transformers: {st_version}")
+        lines.append("    Models: bge-m3 (default, 300MB), minilm (90MB)")
+        lines.append("    Note: Needs file lock for parallel safety")
     else:
         lines.append("  sentence-transformers: NOT INSTALLED")
+        lines.append(f"    Install: {st_info.get('install', 'pip install ogrep[rerank]')}")
+
+    # FlashRank backend
+    fr_info = backends.get("flashrank", {})
+    if fr_info.get("available"):
+        fr_version = info.get("flashrank_version", "installed")
+        lines.append(f"  flashrank: {fr_version}")
+        lines.append("    Models: flashrank (4MB), flashrank:mini (50MB)")
+        lines.append("    Note: Lightweight ONNX, parallel-safe")
+    else:
+        lines.append("  flashrank: NOT INSTALLED")
+        lines.append(f"    Install: {fr_info.get('install', 'pip install ogrep[rerank-light]')}")
+
+    if not info["rerank_available"]:
         lines.append("")
         lines.append(info["recommendation"])
         return "\n".join(lines)
 
     if info["pytorch_available"]:
-        lines.append(f"  PyTorch: {info.get('pytorch_version', 'installed')}")
-    else:
-        lines.append("  PyTorch: NOT INSTALLED")
+        lines.append(f"\n  PyTorch: {info.get('pytorch_version', 'installed')}")
+    elif st_info.get("available"):
+        lines.append("\n  PyTorch: installed (via sentence-transformers)")
 
     lines.append("")
     lines.append("── Device Detection ──")
