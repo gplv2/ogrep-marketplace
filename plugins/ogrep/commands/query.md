@@ -12,6 +12,9 @@ Run:
 - JSON output is the default (use `--no-json` for human-readable text)
 - `--mode MODE` (optional) selects search mode: `semantic`, `fulltext`, or `hybrid` (default)
 - `--branch BRANCH` (optional) query a specific branch instead of current branch
+- `--summarize` (optional) return file-level overview instead of full chunks (~85% token savings)
+- `--glob PATTERN` (optional) filter results to matching files (e.g., `--glob "*.py"`)
+- `--exclude PATTERN` (optional) exclude matching files (e.g., `--exclude "tests/*"`)
 
 **Search modes:**
 - `semantic`: Embedding similarity only (conceptual questions)
@@ -35,30 +38,28 @@ ogrep query "authentication" --branch main
     {
       "rank": 1,
       "chunk_ref": "src/file.py:2",
-      "chunk_id": 42,
       "path": "/absolute/path/to/file.py",
       "relative_path": "src/file.py",
       "start_line": 10,
       "end_line": 70,
-      "score": 0.85,
-      "confidence": "high",
+      "score": 0.42,
+      "confidence": {
+        "level": "high",
+        "signal": "top_result_in_typical_range"
+      },
       "language": "python",
       "text": "full chunk content..."
     }
   ],
   "stats": {
     "total_results": 15,
-    "total_chunks": 1234,
-    "search_time_ms": 45,
     "search_mode": "hybrid",
-    "fts_available": true,
-    "index_model": "text-embedding-3-small",
-    "index_dimensions": 1536,
-    "refreshed_files": 0,
-    "confidence_summary": {"high": 3, "medium": 5, "low": 2, "very_low": 0}
+    "confidence_summary": {"high": 3, "medium": 5, "low": 2}
   }
 }
 ```
+
+**Confidence signals:** `top_result_strong_match` (trust it), `top_result_in_typical_range` (good), `top_result_weak_absolute` (verify), `close_to_top` (alternative), `score_drop_from_top` (lower priority)
 
 **Using chunk_ref:** After finding a result, use `ogrep chunk "src/file.py:2"` to get more context.
 
