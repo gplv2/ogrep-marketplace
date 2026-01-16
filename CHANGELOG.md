@@ -5,6 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-01-16
+
+### ✨ New Features
+
+#### Hybrid Confidence Scoring
+
+Results now include detailed confidence information combining relative position and absolute quality signals:
+
+```json
+"confidence": {
+  "level": "medium",
+  "relative_pct": 95.2,
+  "absolute_quality": "weak",
+  "signal": "top_result_weak_absolute"
+}
+```
+
+**Why this matters:**
+- AI tools now know when to trust results vs. when to look elsewhere
+- Low absolute scores (e.g., 0.03) can still be "medium" confidence if best available
+- The `signal` field provides human-readable explanation
+
+| Field | Values |
+|-------|--------|
+| `level` | high, medium, low, very_low |
+| `absolute_quality` | strong (>=0.50), expected_range (>=0.35), weak (>=0.25), very_weak (<0.25) |
+| `signal` | E.g., `top_result_strong_match`, `close_to_top_but_weak_absolute` |
+
+#### Path Filtering (`--glob`, `--exclude`)
+
+Filter search results by file patterns:
+
+```bash
+ogrep query "auth" --glob "*.py"           # Only Python files
+ogrep query "auth" -g "*.py" -g "*.php"    # Multiple patterns
+ogrep query "auth" --exclude "tests/*"     # Exclude tests
+ogrep query "auth" -g "**/*.py" -x "vendor/*"  # Recursive + exclude
+```
+
+Features:
+- Supports `**` for recursive matching
+- JSON output includes filter stats (candidates before/after, removal %)
+- Warning if >50% results filtered (suggests increasing `-n`)
+
+#### Summary Mode (`--summarize`)
+
+Get file-level aggregation without full chunk text (~85% token savings):
+
+```bash
+ogrep query "authentication" --summarize
+```
+
+Output:
+```json
+{
+  "summary": true,
+  "total_chunks_matched": 23,
+  "files": [
+    {
+      "path": "src/auth/login.py",
+      "chunks_matched": 4,
+      "best_score": 0.47,
+      "confidence": "high",
+      "lines_covered": [[12, 45], [78, 120]]
+    }
+  ],
+  "recommendation": "Use 'ogrep chunk <path>:<N>' to expand specific files"
+}
+```
+
+Ideal for AI scanning to identify relevant files before deep-diving.
+
+#### Rerank Validation
+
+`--rerank-top` must now be >= `-n`. Invalid combinations produce clear errors:
+
+```bash
+# INVALID: Can't return 20 results from 15 reranked candidates
+ogrep query "test" -n 20 --rerank-top 15
+
+# Error:
+{"error": "--rerank-top (15) must be >= -n (20)", "error_code": "INVALID_RERANK_ARGS"}
+```
+
+### 🧪 Testing
+
+- Added 28 new unit tests for path filtering, confidence scoring, summarize mode
+- All 430 tests pass
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with new features
+- Added confidence scoring reference table
+- Documented path filtering patterns
+- Added summary mode usage examples
+
 ## [0.7.3] - 2026-01-15
 
 ### ✨ New Features

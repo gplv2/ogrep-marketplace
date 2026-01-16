@@ -178,6 +178,32 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Disable query result caching (L1/L2/L3). Useful for debugging or benchmarking.",
     )
+    # Path filtering (Phase 3 of adoption improvements)
+    p.add_argument(
+        "--glob",
+        "-g",
+        action="append",
+        metavar="PATTERN",
+        help="Filter results to files matching glob pattern (e.g., '*.py', 'src/*.php'). "
+        "Can be specified multiple times. Supports ** for recursive matching.",
+    )
+    p.add_argument(
+        "--exclude",
+        "-x",
+        action="append",
+        metavar="PATTERN",
+        help="Exclude files matching glob pattern from results (e.g., 'tests/*'). "
+        "Can be specified multiple times. Supports ** for recursive matching.",
+    )
+    # Summary mode (Phase 4 of adoption improvements)
+    p.add_argument(
+        "--summarize",
+        "-S",
+        action="store_true",
+        help="Return file-level summary instead of full chunk text. "
+        "Shows which files match, how many chunks per file, and line ranges. "
+        "Token-efficient for AI scanning. Use 'ogrep chunk' to expand specific files.",
+    )
     add_model_args(p, for_query=True)
     p.set_defaults(func=cmd_query)
 

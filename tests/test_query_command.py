@@ -527,7 +527,15 @@ export function handleRequest(req: Request): Response {
         assert isinstance(first_result["end_line"], int)
         assert isinstance(first_result["score"], float)
         assert isinstance(first_result["text"], str)
-        assert first_result["confidence"] in ("high", "medium", "low", "very_low")
+
+        # Confidence is now a structured object with hybrid scoring
+        confidence = first_result["confidence"]
+        assert isinstance(confidence, dict), "confidence should be a dict with hybrid scoring"
+        assert confidence["level"] in ("high", "medium", "low", "very_low")
+        assert "relative_pct" in confidence
+        assert "absolute_quality" in confidence
+        assert "signal" in confidence
+        assert confidence["absolute_quality"] in ("strong", "expected_range", "weak", "very_weak")
 
     def test_json_language_detection(self, indexed_repo, capsys) -> None:
         """Test that language is correctly detected from file extension."""
@@ -1075,3 +1083,291 @@ class TestRerankGracefulDegradation:
         # Should have results despite rerank failure
         assert len(output["results"]) > 0
         assert output["stats"]["total_results"] > 0
+
+
+class TestRerankValidation:
+    """Tests for -n vs --rerank-top validation."""
+
+    def test_rerank_top_less_than_n_json_error(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-top < -n produces a JSON error."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=20,  # Request 20 results
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=True,
+            rerank_top=15,  # But only rerank 15 (invalid!)
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should return error code
+        assert result == 1
+
+        # Check error output
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        assert "error" in output
+        assert output["error_code"] == "INVALID_RERANK_ARGS"
+        assert "--rerank-top (15) must be >= -n (20)" in output["error"]
+        assert "suggestion" in output
+
+    def test_rerank_top_equals_n_valid(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-top == -n is valid."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=True,
+            rerank_top=10,  # Equal to -n (valid)
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should succeed (or gracefully degrade if reranker unavailable)
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # No error should be present
+        assert "error" not in output or "INVALID_RERANK_ARGS" not in output.get(
+            "error_code", ""
+        )
+
+    def test_rerank_top_greater_than_n_valid(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --rerank-top > -n is valid (normal case)."""
+        # Create minimal database for testing
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="hello",
+            top=5,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=True,
+            rerank_top=20,  # Greater than -n (valid)
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+        )
+
+        result = cmd_query(args)
+
+        # Should succeed (or gracefully degrade if reranker unavailable)
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # No invalid args error should be present
+        assert "error_code" not in output or output.get("error_code") != "INVALID_RERANK_ARGS"
+
+
+class TestSummarizeMode:
+    """Tests for --summarize mode."""
+
+    def test_summarize_json_output_structure(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --summarize produces correct JSON structure."""
+        # Create database with multiple chunks per file
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "auth.py"
+        test_file.write_text(
+            "def login(): pass\n" * 20 +  # Multiple chunks
+            "def logout(): pass\n" * 10
+        )
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="login",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,
+            rerank_top=None,
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+            summarize=True,  # Enable summary mode
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Verify summary-specific fields
+        assert output["summary"] is True
+        assert "total_chunks_matched" in output
+        assert "files" in output
+        assert "recommendation" in output
+        assert "ogrep chunk" in output["recommendation"]
+
+        # Verify files array structure
+        assert len(output["files"]) > 0
+        for f in output["files"]:
+            assert "path" in f
+            assert "relative_path" in f
+            assert "chunks_matched" in f
+            assert "best_score" in f
+            assert "score_range" in f
+            assert "confidence" in f
+            assert "lines_covered" in f
+
+    def test_summarize_no_results_field(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --summarize doesn't include full results field."""
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "test.py"
+        test_file.write_text("def test(): pass")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="test",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=True,
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,
+            rerank_top=None,
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+            summarize=True,
+        )
+
+        cmd_query(args)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+
+        # Summary mode should have "files" not "results"
+        assert "files" in output
+        assert "results" not in output
+
+    def test_summarize_without_json_flag(
+        self, temp_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Test that --summarize works with text output."""
+        db_path = temp_dir / ".ogrep" / "index.sqlite"
+        (temp_dir / ".ogrep").mkdir()
+
+        test_file = temp_dir / "app.py"
+        test_file.write_text("def main(): print('hello')")
+
+        index_path(temp_dir, db_path)
+
+        args = argparse.Namespace(
+            query="main",
+            top=10,
+            mode=None,
+            refresh=False,
+            json=False,  # Text output
+            db=None,
+            profile=None,
+            global_cache=False,
+            repo_root=temp_dir,
+            model="text-embedding-3-small",
+            dimensions=1536,
+            rerank=False,
+            rerank_top=None,
+            branch=None,
+            no_cache=True,
+            glob=None,
+            exclude=None,
+            summarize=True,
+        )
+
+        result = cmd_query(args)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        stdout = captured.out
+
+        # Should show file-level summary with chunks count
+        assert "app.py" in stdout
+        assert "chunks" in stdout
+        assert "lines:" in stdout

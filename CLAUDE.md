@@ -13,6 +13,8 @@
 | `ogrep query "text"` | Search (auto-refreshes stale files) |
 | `ogrep query "text" -M hybrid` | Hybrid search (default) |
 | `ogrep query "text" --rerank` | Cross-encoder reranking |
+| `ogrep query "text" -g "*.py"` | Filter to Python files |
+| `ogrep query "text" --summarize` | File-level summary (token-efficient) |
 | `ogrep query "text" --branch main` | Query specific branch |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Index stats |
@@ -59,6 +61,60 @@ ogrep query "auth" --rerank              # Rerank top 50
 ogrep query "auth" --rerank-top 30       # Rerank top 30
 ```
 Requires `pip install "ogrep[rerank]"`. Check hardware: `ogrep device`.
+
+**Note:** `--rerank-top` must be >= `-n`. Example: `-n 20 --rerank-top 15` is invalid.
+
+### Path Filtering (`--glob` / `--exclude`)
+
+Filter results to specific file patterns:
+
+```bash
+ogrep query "auth" --glob "*.py"            # Only Python files
+ogrep query "auth" -g "*.py" -g "*.php"     # Multiple patterns
+ogrep query "auth" --exclude "tests/*"      # Exclude tests
+ogrep query "auth" -g "**/*.py" -x "vendor/*"  # Combine include/exclude
+```
+
+Supports `**` for recursive matching. JSON output includes filter stats.
+
+### Summary Mode (`--summarize`)
+
+Get file-level aggregation without full chunk text (token-efficient):
+
+```bash
+ogrep query "authentication" --summarize
+ogrep query "auth" --summarize --glob "*.py"
+```
+
+Output shows:
+- Files matched with chunk counts
+- Best score and score range per file
+- Line ranges covered
+- Recommendation to use `ogrep chunk` for expansion
+
+~85% token savings vs full output.
+
+### Confidence Scoring
+
+Results include hybrid confidence combining relative position and absolute quality:
+
+```json
+"confidence": {
+  "level": "medium",
+  "relative_pct": 95.2,
+  "absolute_quality": "weak",
+  "signal": "top_result_weak_absolute"
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `level` | Overall: high/medium/low/very_low |
+| `relative_pct` | Score as % of top result |
+| `absolute_quality` | strong/expected_range/weak/very_weak |
+| `signal` | Human-readable explanation |
+
+**Key insight:** Low absolute scores (e.g., 0.03) can still be "medium" confidence if they're the best available match. The `signal` field explains why.
 
 ## Branch-Aware Indexing
 

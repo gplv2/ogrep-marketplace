@@ -10,12 +10,20 @@ import pytest
 from ogrep.db import connect
 from ogrep.embed import embed_texts
 from ogrep.search import (
+    FilterStats,
     Hit,
+    HybridConfidence,
+    PathFilter,
     _dot_py,
     _rrf_score,
     assign_confidence,
+    compute_hybrid_confidence,
+    filter_hits_by_path,
+    get_absolute_quality,
     get_confidence_level,
     get_relative_confidence,
+    is_simple_pattern,
+    matches_any_pattern,
     query,
 )
 
@@ -267,19 +275,134 @@ class TestConfidenceScoring:
         assert get_relative_confidence(0.5, 0.0) == "very_low"
 
     def test_assign_confidence_with_top_score(self) -> None:
-        """Test assign_confidence uses relative mode with top_score."""
-        # When top_score is provided, should use relative mode
-        # (assuming OGREP_CONFIDENCE_MODE defaults to "relative")
-        result = assign_confidence(0.42, top_score=0.45)
+        """Test assign_confidence returns hybrid confidence with top_score."""
+        # When top_score is provided, returns (level, HybridConfidence)
+        level, details = assign_confidence(0.42, top_score=0.45)
         # 0.42/0.45 = 93% >= 90% threshold = "high"
-        assert result == "high"
+        assert level == "high"
+        assert details is not None
+        assert details.level == "high"
+        assert details.relative_pct > 90  # 93.3%
+        assert details.absolute_quality == "expected_range"  # 0.42 >= 0.35
 
     def test_assign_confidence_no_top_score(self) -> None:
         """Test assign_confidence without top_score falls back to absolute."""
         # Without top_score, should use absolute thresholds
-        result = assign_confidence(0.45)
+        level, details = assign_confidence(0.45)
         # 0.45 >= 0.40 (medium threshold) but < 0.50 (high threshold) = "medium"
-        assert result == "medium"
+        assert level == "medium"
+        # No details in absolute mode (legacy)
+        assert details is None
+
+
+class TestHybridConfidence:
+    """Tests for hybrid confidence scoring.
+
+    Hybrid confidence combines relative position (vs top score) with
+    absolute quality bands to give AI tools actionable guidance.
+    """
+
+    def test_strong_top_result(self) -> None:
+        """Test strong match at top position."""
+        c = compute_hybrid_confidence(0.65, top_score=0.65, rank=1)
+        assert c.level == "high"
+        assert c.absolute_quality == "strong"
+        assert c.signal == "top_result_strong_match"
+        assert c.relative_pct == 100.0
+
+    def test_expected_range_top_result(self) -> None:
+        """Test typical good match at top position."""
+        c = compute_hybrid_confidence(0.40, top_score=0.40, rank=1)
+        assert c.level == "high"
+        assert c.absolute_quality == "expected_range"
+        assert c.signal == "top_result_in_typical_range"
+
+    def test_weak_top_result(self) -> None:
+        """Test weak match at top position."""
+        c = compute_hybrid_confidence(0.28, top_score=0.28, rank=1)
+        assert c.level == "medium"  # Still usable but cautious
+        assert c.absolute_quality == "weak"
+        assert c.signal == "top_result_weak_absolute"
+
+    def test_very_weak_top_result(self) -> None:
+        """Test very weak match at top - the key scenario.
+
+        This is the case where correct results have low absolute scores.
+        AI should know this is the best available, not distrust it.
+        """
+        c = compute_hybrid_confidence(0.03, top_score=0.03, rank=1)
+        assert c.level == "medium"  # Not very_low!
+        assert c.absolute_quality == "very_weak"
+        assert c.signal == "top_result_very_weak_but_best_available"
+        assert c.relative_pct == 100.0
+
+    def test_close_to_top(self) -> None:
+        """Test result that's close to top score."""
+        c = compute_hybrid_confidence(0.60, top_score=0.65, rank=2)
+        # 60/65 = 92% - close to top
+        assert c.level == "high"
+        assert c.signal == "close_to_top"
+        assert c.relative_pct > 90
+
+    def test_moderate_relevance(self) -> None:
+        """Test result with moderate relevance."""
+        c = compute_hybrid_confidence(0.35, top_score=0.65, rank=5)
+        # 35/65 = 54% - moderate relative, but 0.35 is in "expected_range"
+        # So it gets bumped to "medium" due to absolute quality
+        assert c.level == "medium"
+        assert c.absolute_quality == "expected_range"
+        assert 50 < c.relative_pct < 75
+
+    def test_score_drop_from_top(self) -> None:
+        """Test result far below top score."""
+        c = compute_hybrid_confidence(0.15, top_score=0.65, rank=10)
+        # 15/65 = 23% - significant drop
+        assert c.level == "very_low"
+        assert c.signal == "score_drop_from_top"
+        assert c.relative_pct < 50
+
+    def test_to_dict(self) -> None:
+        """Test HybridConfidence.to_dict() for JSON serialization."""
+        c = compute_hybrid_confidence(0.50, top_score=0.55, rank=2)
+        d = c.to_dict()
+        assert "level" in d
+        assert "relative_pct" in d
+        assert "absolute_quality" in d
+        assert "signal" in d
+        assert isinstance(d["relative_pct"], float)
+
+    def test_zero_top_score_edge_case(self) -> None:
+        """Test handling of zero top score."""
+        c = compute_hybrid_confidence(0.5, top_score=0.0, rank=1)
+        assert c.level == "very_low"
+        assert c.signal == "no_valid_top_score"
+
+
+class TestAbsoluteQuality:
+    """Tests for get_absolute_quality function."""
+
+    def test_strong_threshold(self) -> None:
+        """Test strong quality (>= 0.50)."""
+        assert get_absolute_quality(0.50) == "strong"
+        assert get_absolute_quality(0.65) == "strong"
+
+    def test_expected_range_threshold(self) -> None:
+        """Test expected_range quality (>= 0.35, < 0.50)."""
+        assert get_absolute_quality(0.35) == "expected_range"
+        assert get_absolute_quality(0.45) == "expected_range"
+        assert get_absolute_quality(0.49) == "expected_range"
+
+    def test_weak_threshold(self) -> None:
+        """Test weak quality (>= 0.25, < 0.35)."""
+        assert get_absolute_quality(0.25) == "weak"
+        assert get_absolute_quality(0.30) == "weak"
+        assert get_absolute_quality(0.34) == "weak"
+
+    def test_very_weak_threshold(self) -> None:
+        """Test very_weak quality (< 0.25)."""
+        assert get_absolute_quality(0.24) == "very_weak"
+        assert get_absolute_quality(0.10) == "very_weak"
+        assert get_absolute_quality(0.03) == "very_weak"
 
 
 class TestQuery:
@@ -691,3 +814,234 @@ class TestMixedDimensionsDetection:
         except ValueError as e:
             # Should NOT be a "mixed dimensions" error
             assert "mixed dimensions" not in str(e).lower()
+
+
+# =============================================================================
+# Path Filtering Tests
+# =============================================================================
+
+
+class TestPathFilter:
+    """Tests for PathFilter dataclass."""
+
+    def test_empty_filter(self) -> None:
+        """Test that empty filter is detected."""
+        pf = PathFilter()
+        assert pf.is_empty()
+
+    def test_filter_with_glob(self) -> None:
+        """Test filter with glob patterns is not empty."""
+        pf = PathFilter(glob_patterns=["*.py"])
+        assert not pf.is_empty()
+
+    def test_filter_with_exclude(self) -> None:
+        """Test filter with exclude patterns is not empty."""
+        pf = PathFilter(exclude_patterns=["tests/*"])
+        assert not pf.is_empty()
+
+    def test_filter_with_both(self) -> None:
+        """Test filter with both glob and exclude is not empty."""
+        pf = PathFilter(glob_patterns=["*.py"], exclude_patterns=["tests/*"])
+        assert not pf.is_empty()
+
+
+class TestIsSimplePattern:
+    """Tests for is_simple_pattern function."""
+
+    def test_simple_extension_pattern(self) -> None:
+        """Test *.py is simple."""
+        assert is_simple_pattern("*.py")
+
+    def test_simple_directory_pattern(self) -> None:
+        """Test src/* is simple."""
+        assert is_simple_pattern("src/*")
+
+    def test_simple_mixed_pattern(self) -> None:
+        """Test templates/*.j2 is simple."""
+        assert is_simple_pattern("templates/*.j2")
+
+    def test_recursive_pattern_not_simple(self) -> None:
+        """Test **/*.py is not simple (recursive)."""
+        assert not is_simple_pattern("**/*.py")
+
+    def test_deeply_recursive_pattern_not_simple(self) -> None:
+        """Test src/**/*.j2 is not simple."""
+        assert not is_simple_pattern("src/**/*.j2")
+
+    def test_brace_expansion_not_simple(self) -> None:
+        """Test brace expansion is not simple."""
+        assert not is_simple_pattern("*.{py,php}")
+
+
+class TestMatchesAnyPattern:
+    """Tests for matches_any_pattern function."""
+
+    def test_simple_extension_match(self) -> None:
+        """Test matching extension pattern."""
+        assert matches_any_pattern("file.py", ["*.py"])
+        assert not matches_any_pattern("file.js", ["*.py"])
+
+    def test_multiple_patterns(self) -> None:
+        """Test matching against multiple patterns."""
+        patterns = ["*.py", "*.js"]
+        assert matches_any_pattern("app.py", patterns)
+        assert matches_any_pattern("app.js", patterns)
+        assert not matches_any_pattern("app.go", patterns)
+
+    def test_directory_pattern(self) -> None:
+        """Test matching directory patterns."""
+        assert matches_any_pattern("src/file.py", ["src/*"])
+        assert not matches_any_pattern("tests/file.py", ["src/*"])
+
+    def test_recursive_pattern(self) -> None:
+        """Test matching recursive ** patterns."""
+        assert matches_any_pattern("src/deep/nested/file.py", ["**/*.py"])
+        assert matches_any_pattern("file.py", ["**/*.py"])
+
+    def test_recursive_in_directory(self) -> None:
+        """Test matching ** in subdirectory."""
+        assert matches_any_pattern("src/a/b/c.py", ["src/**/*.py"])
+        assert not matches_any_pattern("other/a/b/c.py", ["src/**/*.py"])
+
+    def test_no_patterns_returns_false(self) -> None:
+        """Test empty patterns returns False."""
+        assert not matches_any_pattern("file.py", [])
+
+
+class TestFilterStats:
+    """Tests for FilterStats dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test converting FilterStats to dictionary."""
+        stats = FilterStats(
+            candidates_before=100,
+            candidates_after=30,
+            removal_pct=70.0,
+            method="fnmatch_postfilter",
+            warning="Filter removed too many results.",
+        )
+        d = stats.to_dict()
+        assert d["candidates_before"] == 100
+        assert d["candidates_after"] == 30
+        assert d["removal_pct"] == 70.0
+        assert d["method"] == "fnmatch_postfilter"
+        assert d["warning"] == "Filter removed too many results."
+
+    def test_to_dict_no_warning(self) -> None:
+        """Test converting FilterStats without warning."""
+        stats = FilterStats(
+            candidates_before=10,
+            candidates_after=8,
+            removal_pct=20.0,
+            method="none",
+        )
+        d = stats.to_dict()
+        assert d["warning"] is None
+
+
+class TestFilterHitsByPath:
+    """Tests for filter_hits_by_path function."""
+
+    def _make_hit(self, path: str, score: float = 0.5) -> Hit:
+        """Helper to create a Hit with given path."""
+        return Hit(
+            score=score,
+            path=path,
+            start_line=1,
+            end_line=10,
+            text="test content",
+            chunk_id=1,
+            chunk_index=0,
+            confidence="medium",
+        )
+
+    def test_empty_filter_passes_all(self) -> None:
+        """Test empty filter passes all hits through."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/tests/test_app.py"),
+        ]
+        pf = PathFilter()
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 2
+        assert stats.method == "none"
+        assert stats.removal_pct == 0.0
+
+    def test_glob_filters_by_extension(self) -> None:
+        """Test glob pattern filters by file extension."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/src/styles.css"),
+            self._make_hit("/src/utils.py"),
+        ]
+        pf = PathFilter(glob_patterns=["*.py"])
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 2
+        assert all("py" in h.path for h in filtered)
+        assert stats.method == "fnmatch_postfilter"
+
+    def test_exclude_removes_matching_files(self) -> None:
+        """Test exclude patterns remove matching files."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/tests/test_app.py"),
+            self._make_hit("/tests/test_utils.py"),
+        ]
+        pf = PathFilter(exclude_patterns=["tests/*"])
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 1
+        assert filtered[0].path == "/src/app.py"
+
+    def test_combined_glob_and_exclude(self) -> None:
+        """Test combining glob and exclude patterns."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/src/config.py"),
+            self._make_hit("/tests/test_app.py"),
+            self._make_hit("/src/styles.css"),
+        ]
+        pf = PathFilter(glob_patterns=["*.py"], exclude_patterns=["tests/*"])
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 2
+        assert all("src" in h.path and h.path.endswith(".py") for h in filtered)
+
+    def test_warning_when_many_removed(self) -> None:
+        """Test warning is generated when >50% results removed."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/src/style1.css"),
+            self._make_hit("/src/style2.css"),
+            self._make_hit("/src/style3.css"),
+        ]
+        pf = PathFilter(glob_patterns=["*.py"])
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 1
+        assert stats.warning is not None
+        assert "75" in str(stats.removal_pct) or stats.removal_pct == 75.0
+
+    def test_no_warning_when_few_removed(self) -> None:
+        """Test no warning when <50% results removed."""
+        hits = [
+            self._make_hit("/src/app.py"),
+            self._make_hit("/src/utils.py"),
+            self._make_hit("/src/models.py"),
+            self._make_hit("/src/style.css"),
+        ]
+        pf = PathFilter(glob_patterns=["*.py"])
+        filtered, stats = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 3
+        assert stats.warning is None
+
+    def test_preserves_order(self) -> None:
+        """Test filtering preserves hit order."""
+        hits = [
+            self._make_hit("/src/a.py", score=0.9),
+            self._make_hit("/src/b.css", score=0.8),
+            self._make_hit("/src/c.py", score=0.7),
+        ]
+        pf = PathFilter(glob_patterns=["*.py"])
+        filtered, _ = filter_hits_by_path(hits, pf, requested_n=10)
+        assert len(filtered) == 2
+        assert filtered[0].path == "/src/a.py"
+        assert filtered[1].path == "/src/c.py"
+        assert filtered[0].score > filtered[1].score
