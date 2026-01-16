@@ -33,9 +33,12 @@ class MockHit:
 class TestRerankerAvailability:
     """Test reranker availability detection."""
 
-    def test_reranker_not_available_without_sentence_transformers(self):
-        """Reranker should report unavailable if sentence-transformers not installed."""
-        with patch.dict("sys.modules", {"sentence_transformers": None}):
+    def test_reranker_not_available_without_any_backend(self):
+        """Reranker should report unavailable if no backend is installed."""
+        # Mock away both backends
+        with patch.dict(
+            "sys.modules", {"sentence_transformers": None, "flashrank": None}
+        ):
             # Force reimport
             import importlib
 
@@ -43,6 +46,7 @@ class TestRerankerAvailability:
                 from ogrep import rerank
 
                 importlib.reload(rerank)
+                # Without any backend, is_reranker_available() should return False
                 assert not rerank.is_reranker_available()
             except ImportError:
                 # Expected if module checks at import time
@@ -326,10 +330,10 @@ class TestRerankerEnvironmentConfig:
         assert DEFAULT_RERANK_TOPN == 50
 
     def test_default_model(self):
-        """Default model should be bge-m3 (alias for BAAI/bge-reranker-v2-m3)."""
+        """Default model should be flashrank (lightweight, parallel-safe)."""
         from ogrep.rerank import DEFAULT_RERANK_MODEL
 
-        assert DEFAULT_RERANK_MODEL == "bge-m3"
+        assert DEFAULT_RERANK_MODEL == "flashrank"
 
 
 class TestWarningCapture:

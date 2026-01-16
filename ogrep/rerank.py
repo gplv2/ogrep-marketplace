@@ -12,25 +12,27 @@ The two-stage retrieval pattern:
 
 Two backend options are available:
 
-1. sentence-transformers (default, higher quality):
-    pip install "ogrep[rerank]"
-    Models: bge-m3 (default, 300MB), minilm (90MB)
-    Note: Uses file-based locking to prevent OOM in parallel sessions.
-
-2. FlashRank (lightweight, parallel-safe):
+1. FlashRank (default, lightweight, parallel-safe):
     pip install "ogrep[rerank-light]"
-    Models: flashrank (4MB), flashrank:mini (50MB)
+    Models: flashrank (default, 4MB), flashrank:mini (50MB)
     Note: Uses ONNX runtime, no PyTorch overhead, safe for parallel use.
+    Recommended for local embeddings (Nomic) - improves MRR by ~16%.
+
+2. sentence-transformers (higher quality, heavier):
+    pip install "ogrep[rerank]"
+    Models: bge-m3 (300MB), minilm (90MB)
+    Note: Uses file-based locking to prevent OOM in parallel sessions.
+    Warning: bge-m3 is slow on CPU (~30s/query). Not recommended without GPU.
 
 Environment variables:
-    OGREP_RERANK_MODEL: Reranker model or alias (default: bge-m3)
+    OGREP_RERANK_MODEL: Reranker model or alias (default: flashrank)
     OGREP_RERANK_TOPN: Number of candidates to rerank (default: 50)
     OGREP_RERANK_LOCK: Lock file path for parallel safety (sentence-transformers only)
     OGREP_RERANK_LOCK_TIMEOUT: Lock timeout in seconds (default: 120)
 
 Usage:
-    ogrep query "where is auth" --rerank                       # Default (bge-m3)
-    ogrep query "where is auth" --rerank-model flashrank       # Lightweight ONNX
+    ogrep query "where is auth" --rerank                       # Default (flashrank)
+    ogrep query "where is auth" --rerank-model bge-m3          # Heavy PyTorch (GPU only)
     ogrep query "where is auth" --rerank-model flashrank:mini  # Medium ONNX
     ogrep query "where is auth" --rerank-model minilm          # Smaller PyTorch
 """
@@ -70,7 +72,7 @@ FLASHRANK_ALIASES = {
 RERANK_MODEL_ALIASES = {**SENTENCE_TRANSFORMERS_ALIASES, **FLASHRANK_ALIASES}
 
 # Default configuration
-DEFAULT_RERANK_MODEL = "bge-m3"  # User-friendly default
+DEFAULT_RERANK_MODEL = "flashrank"  # Lightweight, parallel-safe, best for local embeddings
 DEFAULT_RERANK_TOPN = int(os.environ.get("OGREP_RERANK_TOPN", "50"))
 
 # Lock configuration - prevents multiple processes from loading the ~300MB model simultaneously
@@ -229,7 +231,7 @@ def _rerank_lock(timeout: float | None = None):
                     raise RerankLockTimeout(
                         f"Rerank lock timeout after {timeout:.1f}s. "
                         "Another process may be loading the cross-encoder model."
-                    )
+                    ) from None  # Intentional - not chaining from the BlockingIOError
                 # Wait and retry
                 time.sleep(0.5)
 
@@ -588,10 +590,11 @@ def _flashrank_predict(ranker: Any, query: str, texts: list[str]) -> list[float]
 
     # FlashRank returns results sorted by score descending
     # We need to map back to original order using the id field
+    # Convert to Python float (FlashRank returns numpy float32 which isn't JSON serializable)
     scores = [0.0] * len(texts)
     for r in results:
         idx = r["id"]
-        scores[idx] = r["score"]
+        scores[idx] = float(r["score"])
 
     return scores
 
@@ -641,6 +644,7 @@ class RerankedHit:
     chunk_id: int
     chunk_index: int
     confidence: str
+    confidence_details: Any = None  # Preserved from original hit for compatibility
 
 
 def rerank_results(
@@ -699,7 +703,6 @@ def rerank_results(
     cache_con = None
     cache_enabled = cache_path is not None and not os.environ.get("OGREP_CACHE_DISABLED")
     chunk_hashes: list[str] = []
-    l3_hit = False
 
     if cache_enabled:
         import hashlib
@@ -745,6 +748,7 @@ def rerank_results(
                         chunk_id=hit.chunk_id,
                         chunk_index=hit.chunk_index,
                         confidence=confidence,
+                        confidence_details=getattr(hit, "confidence_details", None),
                     )
                     reranked_hits.append(reranked)
 
@@ -793,6 +797,7 @@ def rerank_results(
                     chunk_id=hit.chunk_id,
                     chunk_index=hit.chunk_index,
                     confidence=confidence,
+                    confidence_details=getattr(hit, "confidence_details", None),
                 )
                 unreranked_hits.append(unreranked)
             return unreranked_hits
@@ -819,6 +824,7 @@ def rerank_results(
             chunk_id=hit.chunk_id,
             chunk_index=hit.chunk_index,
             confidence=confidence,
+            confidence_details=getattr(hit, "confidence_details", None),
         )
         scored_hits.append((score, reranked))
 

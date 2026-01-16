@@ -60,25 +60,25 @@ Two backend options with multiple models:
 
 | Model | Backend | Size | Context | Install |
 |-------|---------|------|---------|---------|
-| `bge-m3` (default) | sentence-transformers | ~300MB | 8K | `[rerank]` |
-| `minilm` | sentence-transformers | ~90MB | 512 | `[rerank]` |
-| `flashrank` | ONNX | ~4MB | 512 | `[rerank-light]` |
+| `flashrank` (default) | ONNX | ~4MB | 512 | `[rerank-light]` |
 | `flashrank:mini` | ONNX | ~50MB | 512 | `[rerank-light]` |
+| `minilm` | sentence-transformers | ~90MB | 512 | `[rerank]` |
+| `bge-m3` | sentence-transformers | ~300MB | 8K | `[rerank]` |
 
 **FlashRank models are parallel-safe** (no locking needed). Sentence-transformers models use file-based locking to prevent OOM.
 
 ```bash
-ogrep query "auth" --rerank                       # Default (bge-m3)
-ogrep query "auth" --rerank-model flashrank       # Lightweight ONNX (4MB)
+ogrep query "auth" --rerank                       # Default (flashrank)
 ogrep query "auth" --rerank-model flashrank:mini  # Better quality ONNX (50MB)
 ogrep query "auth" --rerank-model minilm          # Smaller PyTorch (90MB)
+ogrep query "auth" --rerank-model bge-m3          # Heavy PyTorch (GPU only)
 ogrep query "auth" --rerank-top 30                # Rerank top 30 candidates
 ```
 
 Install backends:
 ```bash
+pip install "ogrep[rerank-light]"  # Lightweight (FlashRank + ONNX, parallel-safe) - RECOMMENDED
 pip install "ogrep[rerank]"        # Full-featured (sentence-transformers + PyTorch)
-pip install "ogrep[rerank-light]"  # Lightweight (FlashRank + ONNX, parallel-safe)
 pip install "ogrep[rerank-all]"    # Both backends
 ```
 
@@ -87,6 +87,38 @@ Check hardware and available backends: `ogrep device`.
 **Note:** `--rerank-top` must be >= `-n`. Example: `-n 20 --rerank-top 15` is invalid.
 
 **Parallel Safety:** Sentence-transformers models use file-based locking. On lock timeout (default: 120s), returns unreranked results with a warning. Configure via `OGREP_RERANK_LOCK` (path) and `OGREP_RERANK_LOCK_TIMEOUT` (seconds). **FlashRank models don't need locking** - they're safe for parallel use.
+
+### When to Use Reranking (Benchmark Results)
+
+**Key finding from quality benchmarks (MRR = Mean Reciprocal Rank):**
+
+| Embedding | Without Rerank | With flashrank | Recommendation |
+|-----------|----------------|----------------|----------------|
+| OpenAI | **0.700** | 0.550 (-21%) | ❌ Don't rerank |
+| Nomic (local) | 0.545 | **0.633** (+16%) | ✅ Use reranking |
+
+**The rule:** Reranking **helps weak embeddings** but **hurts strong embeddings**.
+
+- **OpenAI embeddings:** Already well-calibrated. Reranking adds noise → disable it.
+- **Local embeddings (Nomic):** Less precise. Reranking compensates → use flashrank.
+
+```bash
+# OpenAI (best quality) - NO reranking
+ogrep query "where is auth"
+
+# Nomic (local/free) - WITH reranking
+ogrep query "where is auth" --rerank
+```
+
+**Reranker comparison:**
+
+| Model | MRR (Nomic) | Speed | Verdict |
+|-------|-------------|-------|---------|
+| flashrank | **0.633** | ~200ms | ✅ Default - best balance |
+| minilm | 0.568 | ~2s | ⚠️ Optional |
+| bge-m3 | 0.516 | ~30s | ❌ Too slow on CPU |
+
+Full benchmark: `test-reports/BENCHMARK-REPORT-2026-01-16.md`
 
 ### Path Filtering (`--glob` / `--exclude`)
 
@@ -174,6 +206,42 @@ Excluded categories: binaries, secrets (`.env`), docs (`*.md`), config (`*.json`
 
 **Smart default:** If `OGREP_BASE_URL` set → `nomic`, else → `small`.
 
+## Recommended Configurations
+
+Based on quality benchmarks (10 ground-truth queries, MRR metric):
+
+### Maximum Quality (Cloud)
+```bash
+export OPENAI_API_KEY=...
+ogrep index .
+ogrep query "your search"  # NO --rerank flag
+```
+- **MRR: 0.700** (best achievable)
+- Fast indexing: ~30s for 285 files
+- Cost: ~$0.02 per index
+
+### Privacy/Offline (Local)
+```bash
+export OGREP_BASE_URL=http://localhost:1234/v1
+export OGREP_MODEL=nomic
+ogrep index .
+ogrep query "your search" --rerank  # flashrank default
+```
+- **MRR: 0.633** (-9.5% vs OpenAI)
+- Zero cost, fully offline
+- Slower indexing: ~17 min for 285 files
+
+### Decision Matrix
+
+| Requirement | Configuration |
+|-------------|---------------|
+| Maximum accuracy | OpenAI, no reranking |
+| Privacy/compliance | Nomic + flashrank |
+| Offline capability | Nomic + flashrank |
+| Minimum cost | Nomic + flashrank |
+| Fastest indexing | OpenAI |
+| Fastest queries | Any, no reranking |
+
 ## Environment Variables
 
 | Variable | Description |
@@ -183,7 +251,7 @@ Excluded categories: binaries, secrets (`.env`), docs (`*.md`), config (`*.json`
 | `OGREP_BASE_URL` | Local server URL |
 | `OGREP_SEARCH_MODE` | Default mode (semantic/fulltext/hybrid) |
 | `OGREP_CHUNK_LINES` | Override chunk size |
-| `OGREP_RERANK_MODEL` | Default rerank model (bge-m3/minilm/flashrank/flashrank:mini) |
+| `OGREP_RERANK_MODEL` | Default rerank model (flashrank/flashrank:mini/minilm/bge-m3) |
 | `OGREP_RERANK_TOPN` | Candidates to rerank (default: 50) |
 | `OGREP_RERANK_LOCK` | Lock file path for parallel safety (sentence-transformers only) |
 | `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds (default: 120) |
