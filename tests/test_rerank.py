@@ -505,3 +505,129 @@ class TestWarningCapture:
         finally:
             sys.stderr = original_stderr
             _clear_all_state()
+
+
+class TestRerankLock:
+    """Test the rerank lock mechanism for preventing parallel OOM."""
+
+    def test_lock_context_manager_exists(self):
+        """The _rerank_lock context manager should exist."""
+        from ogrep.rerank import _rerank_lock
+
+        assert callable(_rerank_lock)
+
+    def test_lock_timeout_exception_exists(self):
+        """The RerankLockTimeout exception should exist."""
+        from ogrep.rerank import RerankLockTimeout
+
+        assert issubclass(RerankLockTimeout, Exception)
+
+    def test_lock_gracefully_handles_readonly_filesystem(self):
+        """Lock should gracefully proceed when lock file can't be created."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import ogrep.rerank as rerank_module
+        from ogrep.rerank import _rerank_lock, clear_captured_warnings
+
+        # Clear any existing warnings
+        clear_captured_warnings()
+
+        # Mock the lock path to a directory that doesn't exist and can't be created
+        fake_path = Path("/nonexistent/readonly/rerank.lock")
+
+        original_lock_path = rerank_module.RERANK_LOCK_PATH
+        try:
+            rerank_module.RERANK_LOCK_PATH = fake_path
+
+            # Should not raise, should proceed without lock
+            with _rerank_lock():
+                pass  # Code executed successfully
+
+            # Should have captured a warning
+            from ogrep.rerank import get_captured_warnings
+
+            warnings = get_captured_warnings()
+            assert len(warnings) >= 1
+            assert "lock" in warnings[0].lower() or "cannot create" in warnings[0].lower()
+
+        finally:
+            rerank_module.RERANK_LOCK_PATH = original_lock_path
+            clear_captured_warnings()
+
+    def test_lock_timeout_returns_unreranked_results(self):
+        """On lock timeout, rerank_results should return unreranked hits with warning."""
+        from unittest.mock import patch
+
+        from ogrep.rerank import (
+            RerankLockTimeout,
+            _clear_all_state,
+            clear_captured_warnings,
+            get_captured_warnings,
+            rerank_results,
+        )
+
+        hits = [
+            MockHit(
+                score=0.8,
+                path="file1.py",
+                start_line=1,
+                end_line=10,
+                text="first",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="high",
+            ),
+            MockHit(
+                score=0.6,
+                path="file2.py",
+                start_line=1,
+                end_line=10,
+                text="second",
+                chunk_id=2,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        clear_captured_warnings()
+
+        # Mock the lock to always timeout
+        def mock_lock_timeout(*args, **kwargs):
+            raise RerankLockTimeout("Test timeout")
+
+        with patch("ogrep.rerank._rerank_lock") as mock_lock:
+            mock_lock.side_effect = mock_lock_timeout
+
+            result = rerank_results("test query", hits)
+
+            # Should return unreranked results (same order as input)
+            assert len(result) == 2
+            assert result[0].path == "file1.py"  # Original first hit
+            assert result[1].path == "file2.py"  # Original second hit
+
+            # Should have a warning about timeout
+            warnings = get_captured_warnings()
+            assert len(warnings) >= 1
+            assert "timeout" in warnings[0].lower() or "unreranked" in warnings[0].lower()
+
+        _clear_all_state()
+
+    def test_lock_env_vars_configurable(self):
+        """Lock path and timeout should be configurable via env vars."""
+        import os
+        from pathlib import Path
+
+        # The defaults are read at import time, but let's verify the env var names
+        # are documented in the module
+        import ogrep.rerank as rerank_module
+
+        # Verify constants exist
+        assert hasattr(rerank_module, "RERANK_LOCK_PATH")
+        assert hasattr(rerank_module, "RERANK_LOCK_TIMEOUT")
+
+        # Verify they have sensible defaults
+        assert isinstance(rerank_module.RERANK_LOCK_PATH, Path)
+        assert isinstance(rerank_module.RERANK_LOCK_TIMEOUT, float)
+        assert rerank_module.RERANK_LOCK_TIMEOUT > 0

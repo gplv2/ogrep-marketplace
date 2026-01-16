@@ -24,17 +24,27 @@ Usage:
 
 from __future__ import annotations
 
+import fcntl
 import io
 import os
 import sys
+import time
 import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # Default configuration
 DEFAULT_RERANK_MODEL = os.environ.get("OGREP_RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
 DEFAULT_RERANK_TOPN = int(os.environ.get("OGREP_RERANK_TOPN", "50"))
+
+# Lock configuration - prevents multiple processes from loading the ~300MB model simultaneously
+RERANK_LOCK_PATH = Path(os.environ.get(
+    "OGREP_RERANK_LOCK",
+    Path.home() / ".cache" / "ogrep" / "rerank.lock"
+))
+RERANK_LOCK_TIMEOUT = float(os.environ.get("OGREP_RERANK_LOCK_TIMEOUT", "120"))  # seconds
 
 # Lazy-loaded CrossEncoder class (imported on first use to capture CUDA warnings)
 # Will be None if sentence-transformers not installed
@@ -49,6 +59,101 @@ _captured_warnings: list[str] = []
 
 if TYPE_CHECKING:
     pass
+
+
+class RerankLockTimeout(Exception):
+    """Raised when unable to acquire rerank lock within timeout."""
+
+    pass
+
+
+@contextmanager
+def _rerank_lock(timeout: float | None = None):
+    """
+    Context manager for exclusive access to reranking resources.
+
+    Prevents multiple processes from loading the ~300MB cross-encoder model
+    simultaneously, which can cause OOM errors. Uses file-based locking
+    with fcntl (Unix/macOS).
+
+    If the lock file cannot be created (e.g., read-only filesystem, permissions),
+    the context manager proceeds without locking (with a warning).
+
+    Args:
+        timeout: Maximum seconds to wait for lock. None uses RERANK_LOCK_TIMEOUT.
+
+    Raises:
+        RerankLockTimeout: If lock cannot be acquired within timeout.
+
+    Example:
+        >>> with _rerank_lock(timeout=60):
+        ...     # Only one process can be here at a time
+        ...     results = reranker.predict(pairs)
+    """
+    global _captured_warnings
+
+    if timeout is None:
+        timeout = RERANK_LOCK_TIMEOUT
+
+    # Try to ensure lock directory exists
+    lock_file = None
+    acquired = False
+
+    try:
+        RERANK_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Read-only filesystem or permission denied - proceed without lock
+        _captured_warnings.append(
+            f"Cannot create lock directory {RERANK_LOCK_PATH.parent}. "
+            "Proceeding without parallel protection."
+        )
+        yield
+        return
+
+    try:
+        lock_file = open(RERANK_LOCK_PATH, "w")
+    except OSError as e:
+        # Cannot create lock file - proceed without lock
+        _captured_warnings.append(
+            f"Cannot create lock file {RERANK_LOCK_PATH}: {e}. "
+            "Proceeding without parallel protection."
+        )
+        yield
+        return
+
+    try:
+        start_time = time.monotonic()
+
+        while True:
+            try:
+                # Try to acquire exclusive lock (non-blocking)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except (OSError, BlockingIOError):
+                # Lock is held by another process
+                elapsed = time.monotonic() - start_time
+                if elapsed >= timeout:
+                    raise RerankLockTimeout(
+                        f"Rerank lock timeout after {timeout:.1f}s. "
+                        "Another process may be loading the cross-encoder model."
+                    )
+                # Wait and retry
+                time.sleep(0.5)
+
+        yield
+
+    finally:
+        if acquired and lock_file is not None:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass  # Best effort unlock
+        if lock_file is not None:
+            try:
+                lock_file.close()
+            except OSError:
+                pass
 
 
 @contextmanager
@@ -389,14 +494,40 @@ def rerank_results(
             log_cache_event(cache_con, "L3", "hit", time_saved_ms=l3_result.time_saved_ms)
             return reranked_hits
 
-    # Get reranker model (cache miss path)
-    reranker = _get_reranker(model_name)
+    # Acquire exclusive lock for reranking (prevents OOM from parallel model loads)
+    # The ~300MB cross-encoder model can cause OOM if multiple processes load simultaneously
+    try:
+        with _rerank_lock():
+            # Get reranker model (cache miss path)
+            reranker = _get_reranker(model_name)
 
-    # Create (query, document) pairs for cross-encoder
-    pairs = [(query, hit.text) for hit in candidates]
+            # Create (query, document) pairs for cross-encoder
+            pairs = [(query, hit.text) for hit in candidates]
 
-    # Get cross-encoder scores
-    scores = reranker.predict(pairs)
+            # Get cross-encoder scores
+            scores = reranker.predict(pairs)
+
+    except RerankLockTimeout as e:
+        # Graceful degradation: return unreranked results with warning
+        _captured_warnings.append(str(e) + " Returning unreranked results.")
+
+        # Return candidates as-is (maintain original embedding/BM25 ranking)
+        top_score = candidates[0].score if candidates else 0.0
+        unreranked_hits = []
+        for hit in candidates:
+            confidence = _compute_confidence(hit.score, top_score)
+            unreranked = RerankedHit(
+                score=float(hit.score),
+                path=hit.path,
+                start_line=hit.start_line,
+                end_line=hit.end_line,
+                text=hit.text,
+                chunk_id=hit.chunk_id,
+                chunk_index=hit.chunk_index,
+                confidence=confidence,
+            )
+            unreranked_hits.append(unreranked)
+        return unreranked_hits
 
     # Convert to list if numpy array
     if hasattr(scores, "tolist"):

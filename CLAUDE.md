@@ -64,6 +64,8 @@ Requires `pip install "ogrep[rerank]"`. Check hardware: `ogrep device`.
 
 **Note:** `--rerank-top` must be >= `-n`. Example: `-n 20 --rerank-top 15` is invalid.
 
+**Parallel Safety:** The ~300MB cross-encoder model uses file-based locking to prevent OOM when multiple processes run `--rerank` simultaneously. On lock timeout (default: 120s), returns unreranked results with a warning. Configure via `OGREP_RERANK_LOCK` (path) and `OGREP_RERANK_LOCK_TIMEOUT` (seconds).
+
 ### Path Filtering (`--glob` / `--exclude`)
 
 Filter results to specific file patterns:
@@ -159,6 +161,8 @@ Excluded categories: binaries, secrets (`.env`), docs (`*.md`), config (`*.json`
 | `OGREP_BASE_URL` | Local server URL |
 | `OGREP_SEARCH_MODE` | Default mode (semantic/fulltext/hybrid) |
 | `OGREP_CHUNK_LINES` | Override chunk size |
+| `OGREP_RERANK_LOCK` | Lock file path for parallel safety |
+| `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds (default: 120) |
 
 Full list: grep for `OGREP_` in codebase or check `ogrep --help`.
 

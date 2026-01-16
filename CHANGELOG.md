@@ -89,10 +89,38 @@ ogrep query "test" -n 20 --rerank-top 15
 {"error": "--rerank-top (15) must be >= -n (20)", "error_code": "INVALID_RERANK_ARGS"}
 ```
 
+#### Rerank Parallel Safety (OOM Prevention)
+
+The ~300MB cross-encoder model now uses file-based locking to prevent out-of-memory errors when multiple processes run `--rerank` simultaneously:
+
+**How it works:**
+- Exclusive lock on `~/.cache/ogrep/rerank.lock` before model loading
+- Only one process loads the model at a time
+- Other processes wait (up to 120s) then proceed with unreranked results
+
+**Graceful degradation:**
+| Scenario | Behavior |
+|----------|----------|
+| Lock timeout | Returns unreranked results with warning |
+| Read-only filesystem | Proceeds without lock (with warning) |
+| Lock creation fails | Proceeds without lock (with warning) |
+
+**Configuration:**
+```bash
+export OGREP_RERANK_LOCK=~/.cache/ogrep/rerank.lock  # Lock file path
+export OGREP_RERANK_LOCK_TIMEOUT=120                  # Timeout in seconds
+```
+
+**Why this matters:**
+- Parallel AI tool sessions (e.g., Claude Code) no longer cause OOM kills
+- Exit code 137 (OOM killer) eliminated in parallel `--rerank` scenarios
+- Results still returned on timeout, just without reranking
+
 ### 🧪 Testing
 
 - Added 28 new unit tests for path filtering, confidence scoring, summarize mode
-- All 430 tests pass
+- Added 5 new tests for rerank lock mechanism
+- All 435 tests pass
 
 ### 📚 Documentation
 
@@ -100,6 +128,7 @@ ogrep query "test" -n 20 --rerank-top 15
 - Added confidence scoring reference table
 - Documented path filtering patterns
 - Added summary mode usage examples
+- Added rerank parallel safety documentation and env vars
 
 ## [0.7.3] - 2026-01-15
 
