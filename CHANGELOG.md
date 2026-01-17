@@ -5,6 +5,96 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-01-17
+
+### ✨ New Features
+
+#### Voyage AI Integration (Recommended for Code Search)
+
+Voyage AI's code-optimized models now available for both embeddings and reranking. Benchmarks show Voyage achieves the best search quality for code:
+
+| Configuration | Hit@1 | MRR |
+|---------------|-------|-----|
+| **Voyage voyage-code-3** | **7/10** | **0.717** |
+| OpenAI text-embedding-3-small | 6/10 | 0.700 |
+
+**Embeddings:**
+```bash
+export VOYAGE_API_KEY="pa-..."
+ogrep index . -m voyage-code-3   # Best quality
+ogrep index . -m voyage          # Alias
+```
+
+**Reranking (when needed):**
+```bash
+ogrep query "auth" --rerank --rerank-model voyage
+```
+
+**Available models:**
+
+| Model | Alias | Dimensions | Use Case |
+|-------|-------|------------|----------|
+| voyage-code-3 | `voyage` | 1024 | Code search (recommended) |
+| voyage-3 | `voyage-3` | 1024 | General purpose |
+| voyage-3-lite | `voyage-lite` | 512 | Budget option |
+| rerank-2.5 | `voyage` (rerank) | - | API-based reranking |
+
+Install: `pip install "ogrep[voyage]"`
+
+#### FlashRank as Default Reranker
+
+FlashRank is now the default reranking model, replacing bge-m3:
+- **Lightweight**: ~4MB vs ~300MB
+- **Parallel-safe**: No file locking needed (ONNX runtime)
+- **Fast**: Optimized for quick inference
+
+```bash
+pip install "ogrep[rerank-light]"  # FlashRank only
+ogrep query "auth" --rerank        # Uses flashrank by default
+```
+
+Available FlashRank variants:
+- `flashrank` (default): ~4MB, fast
+- `flashrank:mini`: ~50MB, better quality
+
+### 🔬 Research & Benchmarks
+
+#### Reranking Effectiveness Analysis
+
+Comprehensive benchmarks reveal that **reranking degrades results** when using high-quality embeddings:
+
+| Model | Hit@1 | MRR | vs Baseline |
+|-------|-------|-----|-------------|
+| Voyage (no rerank) | 7/10 | 0.717 | **Best** |
+| OpenAI (no rerank) | 6/10 | 0.700 | -0.017 |
+| OpenAI + minilm | 5/10 | 0.617 | -0.100 |
+| OpenAI + voyage | 5/10 | 0.599 | -0.118 |
+| OpenAI + flashrank | 5/10 | 0.550 | -0.167 |
+
+**Key finding:** Skip `--rerank` when using Voyage or OpenAI embeddings. Only use reranking with weak local embeddings (nomic, minilm).
+
+**Why reranking hurts with good embeddings:**
+1. Code embeddings already rank correctly
+2. Rerankers trained on general text, not code
+3. Rerankers "second-guess" correct results
+
+See `test-reports/reranking-effectiveness-analysis.md` for full analysis.
+
+### 📚 Documentation
+
+- Added Voyage AI as recommended embedding provider
+- Updated reranking guidance: skip for quality embeddings
+- Added benchmark comparison tables
+- Updated SKILL.md with embedding quality guidance
+
+### 🧪 Testing
+
+- Added Voyage AI embedding tests (mocked)
+- Added Voyage AI reranking tests (mocked)
+- Added FlashRank backend tests
+- Fixed 4 tests affected by default model change
+- All 86 tests pass
+
 ## [0.7.4] - 2026-01-16
 
 ### ✨ New Features
