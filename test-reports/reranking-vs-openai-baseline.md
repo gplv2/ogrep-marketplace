@@ -1,6 +1,6 @@
 # Reranking vs OpenAI Baseline Comparison
 
-**Date:** 2026-01-17 11:57
+**Date:** 2026-01-17 13:04
 **Best Reranking Model:** minilm
 **Baseline:** OpenAI semantic search (no reranking)
 

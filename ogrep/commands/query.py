@@ -619,6 +619,20 @@ def cmd_query(args: argparse.Namespace) -> int:
             if reranked:
                 output["stats"]["rerank_model"] = rerank_model or "bge-m3"
 
+                # Hint: reranking may not help with high-quality embeddings
+                high_quality_models = (
+                    "voyage-code-3",
+                    "voyage-3",
+                    "voyage-code",
+                    "voyage",
+                )
+                if index_model and index_model.lower() in high_quality_models:
+                    output["rerank_hint"] = (
+                        "Note: Reranking typically does not improve results with high-quality "
+                        f"embeddings like {index_model}. Benchmarks show it can degrade MRR by "
+                        "5-12%. Consider querying without --rerank for optimal results."
+                    )
+
             # Add rerank skip info if reranking was requested but couldn't be performed
             if rerank_skipped:
                 output["stats"]["rerank_skipped"] = True
@@ -670,6 +684,21 @@ def cmd_query(args: argparse.Namespace) -> int:
         # Print warnings first for text output (to stderr)
         for warning in all_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
+
+        # Print rerank hint for high-quality embeddings
+        if reranked and index_model:
+            high_quality_models = (
+                "voyage-code-3",
+                "voyage-3",
+                "voyage-code",
+                "voyage",
+            )
+            if index_model.lower() in high_quality_models:
+                print(
+                    f"Hint: Reranking may not improve results with {index_model}. "
+                    "Try without --rerank for potentially better results.",
+                    file=sys.stderr,
+                )
 
         if use_summarize:
             # Summary mode: aggregate to file-level
