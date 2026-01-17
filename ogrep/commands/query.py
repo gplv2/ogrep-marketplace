@@ -619,33 +619,23 @@ def cmd_query(args: argparse.Namespace) -> int:
             if reranked:
                 output["stats"]["rerank_model"] = rerank_model or "bge-m3"
 
-                # Hint: reranking effectiveness depends on embedding quality
-                voyage_models = (
+                # Hint: reranking typically doesn't help with high-quality embeddings
+                high_quality_models = (
                     "voyage-code-3",
                     "voyage-3",
                     "voyage-code",
                     "voyage",
-                )
-                openai_models = (
                     "text-embedding-3-small",
                     "text-embedding-3-large",
                     "small",
                     "large",
                 )
-                if index_model:
-                    model_lower = index_model.lower()
-                    if model_lower in voyage_models:
-                        output["rerank_hint"] = (
-                            "Note: Reranking typically does not improve results with high-quality "
-                            f"embeddings like {index_model}. Benchmarks show it can degrade MRR by "
-                            "5-12%. Consider querying without --rerank for optimal results."
-                        )
-                    elif model_lower in openai_models:
-                        output["rerank_hint"] = (
-                            f"Tip: With {index_model}, reranking provides modest improvement "
-                            "(+5-8% MRR). For best results, use --rerank-model minilm. "
-                            "Without reranking, results are already good quality."
-                        )
+                if index_model and index_model.lower() in high_quality_models:
+                    output["rerank_hint"] = (
+                        f"Note: Reranking typically does not improve results with {index_model}. "
+                        "Benchmarks show it can degrade quality. Consider querying without "
+                        "--rerank for optimal results."
+                    )
 
             # Add rerank skip info if reranking was requested but couldn't be performed
             if rerank_skipped:
@@ -699,30 +689,22 @@ def cmd_query(args: argparse.Namespace) -> int:
         for warning in all_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
 
-        # Print rerank hint based on embedding quality
+        # Print rerank hint for high-quality embeddings
         if reranked and index_model:
-            voyage_models = (
+            high_quality_models = (
                 "voyage-code-3",
                 "voyage-3",
                 "voyage-code",
                 "voyage",
-            )
-            openai_models = (
                 "text-embedding-3-small",
                 "text-embedding-3-large",
                 "small",
                 "large",
             )
-            model_lower = index_model.lower()
-            if model_lower in voyage_models:
+            if index_model.lower() in high_quality_models:
                 print(
                     f"Hint: Reranking may not improve results with {index_model}. "
                     "Try without --rerank for potentially better results.",
-                    file=sys.stderr,
-                )
-            elif model_lower in openai_models:
-                print(
-                    f"Tip: With {index_model}, consider --rerank-model minilm for best results.",
                     file=sys.stderr,
                 )
 
