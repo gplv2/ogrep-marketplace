@@ -197,38 +197,65 @@ Files in unsupported languages fall back to line-based chunking automatically.
 
 ## Cross-Encoder Reranking
 
-**Solves the "right file in top 30 but not #1" problem.** Cross-encoders process (query, document) pairs together, providing much higher precision than bi-encoder embeddings.
+Cross-encoders process (query, document) pairs together, providing higher precision than bi-encoder embeddings alone.
 
-### How It Works
+### When Reranking Helps (and When It Doesn't)
 
-```
-Query → Stage 1: Fast Retrieval (embeddings + BM25) → Top 50 candidates
-                              ↓
-      Stage 2: Slow Reranking (cross-encoder) → Top 10 results
-```
+**Important finding:** With high-quality code embeddings (Voyage, OpenAI), reranking often **degrades** results rather than improving them.
 
-The cross-encoder sees both query AND document together, so it can model fine-grained relationships that embeddings miss.
+| Configuration | Hit@1 | MRR | Verdict |
+|---------------|-------|-----|---------|
+| Voyage embed (no rerank) | 7/10 | 0.717 | **Best** |
+| OpenAI embed (no rerank) | 6/10 | 0.700 | Great |
+| OpenAI + minilm rerank | 5/10 | 0.617 | Worse |
+| OpenAI + voyage rerank | 5/10 | 0.599 | Worse |
+| OpenAI + flashrank | 5/10 | 0.550 | Worse |
+
+**Why?** High-quality code embeddings already do excellent ranking. Rerankers (trained on general text, not code) second-guess correct results and push them down.
+
+### When to Use Reranking
+
+Use `--rerank` only when:
+- Using **weak local embeddings** (minilm, nomic, bge)
+- Searching **massive codebases** (>10K files) with noisy first-stage retrieval
+- **Consistently poor top results** despite good embeddings
+- The right answer appears in results but **not in top 3**
+
+### When to Skip Reranking
+
+Skip `--rerank` when:
+- Using **Voyage or OpenAI embeddings** (already optimized for code)
+- Searching **focused codebases** (<10K files)
+- **Clear semantic queries** (natural language descriptions)
 
 ### Usage
 
 ```bash
 # Install reranking support
-pip install "ogrep[rerank]"
+pip install "ogrep[rerank]"        # sentence-transformers (heavy)
+pip install "ogrep[rerank-light]"  # FlashRank (lightweight, parallel-safe)
 
-# Enable reranking (fetches 50, reranks, returns top -n)
+# Enable reranking (only if needed)
 ogrep query "where is authentication?" -n 10 --rerank
 
-# Custom rerank pool size
-ogrep query "where is authentication?" -n 10 --rerank-top 100
+# Choose reranking model
+ogrep query "..." --rerank --rerank-model flashrank      # Fast, lightweight
+ogrep query "..." --rerank --rerank-model voyage         # Voyage AI API
+ogrep query "..." --rerank --rerank-model minilm         # Local PyTorch
 ```
 
-### Reranking Model
+### Reranking Models
 
-ogrep uses `BAAI/bge-reranker-v2-m3` by default (~300MB, auto-downloaded on first use). This model works well with code and is multilingual.
+| Model | Backend | Size | Best For |
+|-------|---------|------|----------|
+| `flashrank` (default) | ONNX | ~4MB | Fast, parallel-safe |
+| `flashrank:mini` | ONNX | ~50MB | Better quality ONNX |
+| `voyage` | API | - | When using weak embeddings |
+| `minilm` | PyTorch | ~90MB | Local, no API needed |
 
 Configure via environment:
 ```bash
-export OGREP_RERANK_MODEL=BAAI/bge-reranker-v2-m3
+export OGREP_RERANK_MODEL=flashrank
 export OGREP_RERANK_TOPN=50
 ```
 
@@ -449,19 +476,37 @@ ogrep flips that:
 
 **Choose your embedding source:**
 
-| Provider | Cost | Privacy | Setup |
-|----------|------|---------|-------|
-| **OpenAI API** | $0.02/M tokens | Cloud | Just add `OPENAI_API_KEY` |
-| **LM Studio** (local) | Free | 100% local | Run `lms server start` |
+| Provider | Cost | Quality (MRR) | Setup |
+|----------|------|---------------|-------|
+| **Voyage AI** (recommended) | $0.06/M tokens | **0.717** | Add `VOYAGE_API_KEY` |
+| **OpenAI API** | $0.02/M tokens | 0.700 | Add `OPENAI_API_KEY` |
+| **LM Studio** (local) | Free | ~0.52-0.72 | Run `lms server start` |
 
-### Setting up environment
+### Voyage AI (Recommended for Code Search)
+
+Voyage AI's `voyage-code-3` model is specifically optimized for code and outperforms OpenAI on semantic code search benchmarks.
 
 ```bash
-# OpenAI (cloud)
+# Get API key from https://dash.voyageai.com/
+export VOYAGE_API_KEY="pa-..."
+
+# Index with Voyage (best quality)
+ogrep index . -m voyage-code-3
+
+# Or use the alias
+ogrep index . -m voyage
+```
+
+### OpenAI (Good Quality, Lower Cost)
+
+```bash
 export OPENAI_API_KEY="sk-..."
 ogrep index . -m small
+```
 
-# LM Studio (local, free, offline)
+### LM Studio (Local, Free, Offline)
+
+```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
 ```
@@ -541,22 +586,32 @@ ogrep chunk "src/auth.py:2" --context 1   # 1 before AND after
 
 ## Embedding Models
 
+### Voyage AI Models (Recommended for Code)
+
+| Model | Alias | Dimensions | Price | Best For |
+|-------|-------|------------|-------|----------|
+| voyage-code-3 | `voyage` | 1024 | $0.06/M | **Code search (best quality)** |
+| voyage-3 | `voyage-3` | 1024 | $0.06/M | General purpose |
+| voyage-3-lite | `voyage-lite` | 512 | $0.02/M | Budget option |
+
+Voyage AI models are specifically optimized for code and achieve the highest accuracy in our benchmarks (MRR 0.717).
+
 ### OpenAI Models (Cloud)
 
 | Model | Alias | Dimensions | Price | Best For |
 |-------|-------|------------|-------|----------|
-| text-embedding-3-small | `small` | 1536 | $0.02/M | Most use cases (default) |
+| text-embedding-3-small | `small` | 1536 | $0.02/M | Good quality, low cost |
 | text-embedding-3-large | `large` | 3072 | $0.13/M | High-accuracy, multi-language |
 | text-embedding-ada-002 | `ada` | 1536 | $0.10/M | Legacy compatibility |
 
 ### Local Models (via LM Studio)
 
-| Model | Alias | Dimensions | Accuracy | Notes |
-|-------|-------|------------|----------|-------|
-| all-MiniLM-L6-v2 | `minilm` | 384 | **96%** | Best accuracy, smallest (~25MB) |
-| nomic-embed-text-v1.5 | `nomic` | 768 | 72% | Large context window (8192 tokens) |
-| bge-base-en-v1.5 | `bge` | 768 | 52% | Fallback option |
-| bge-m3 | `bge-m3` | 1024 | TBD | Multi-lingual (100+ languages) |
+| Model | Alias | Dimensions | Notes |
+|-------|-------|------------|-------|
+| nomic-embed-text-v1.5 | `nomic` | 768 | Large context (8192 tokens) |
+| all-MiniLM-L6-v2 | `minilm` | 384 | Smallest (~25MB) |
+| bge-base-en-v1.5 | `bge` | 768 | Fallback option |
+| bge-m3 | `bge-m3` | 1024 | Multi-lingual (100+ languages) |
 
 > **Important:** Query model must match index model. Use `ogrep status` to check.
 

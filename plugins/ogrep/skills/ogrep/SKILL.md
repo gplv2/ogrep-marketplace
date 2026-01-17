@@ -118,27 +118,30 @@ ogrep query "payment error handling"
 ogrep query "payment refund logic"
 ```
 
-### Pattern 4: Precision Mode with Reranking
+### Pattern 4: When to Use Reranking
 
-Standard search gets you to the neighborhood. Reranking gets you to the exact house.
+**Important:** With high-quality embeddings (Voyage, OpenAI), reranking often **degrades** results. Only use it when first-stage retrieval is poor.
 
-The problem: semantic search retrieves good candidates, but the #1 result isn't always the best match. Reranking uses a cross-encoder model to re-score the top candidates with much higher precision.
+| Embedding Quality | Reranking Effect |
+|-------------------|------------------|
+| Voyage voyage-code-3 | Skip reranking (already optimal) |
+| OpenAI text-embedding-3-small | Skip reranking (already good) |
+| Local models (nomic, minilm) | Try reranking if results are poor |
+
+**When to try `--rerank`:**
+- Using **weak local embeddings** and results seem off
+- Right answer appears in results but **not in top 3**
+- **Very large codebase** (>10K files) with noisy retrieval
 
 ```bash
-# Install reranking support (one-time, ~300MB model download)
-pip install "ogrep[rerank]"
+# Only if you're getting poor results with local embeddings
+pip install "ogrep[rerank-light]"  # FlashRank (lightweight, parallel-safe)
 
-# Basic reranking - reorders top 50 candidates
 ogrep query "database connection pooling" --rerank
-
-# Control how many candidates to rerank
-ogrep query "complex auth flow" --rerank --rerank-top 30
+ogrep query "complex auth flow" --rerank --rerank-model flashrank
 ```
 
-When to use `--rerank`:
-- The right answer appears in results but not at #1
-- You need high precision for a complex query
-- You're doing a one-off important search (reranking is slower)
+**Best practice:** Start without `--rerank`. Only add it if you consistently see the right answer buried in results.
 
 ### Pattern 5: Efficient Codebase Exploration
 
@@ -387,8 +390,14 @@ ogrep query "..." --refresh      # Reindexes changed files first
 
 **"Right answer is in results but not #1"**
 ```bash
-pip install "ogrep[rerank]"      # If not installed
+# First, check if you're using quality embeddings
+ogrep status  # Check "model" field
+
+# If using local/weak embeddings, try reranking
+pip install "ogrep[rerank-light]"
 ogrep query "..." --rerank
+
+# If using Voyage/OpenAI, reranking won't help - try refining your query instead
 ```
 
 **"Functions are being split awkwardly"**
@@ -453,16 +462,29 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OPENAI_API_KEY` | - | Required for embeddings |
+| `VOYAGE_API_KEY` | - | Voyage AI embeddings (recommended) |
+| `OPENAI_API_KEY` | - | OpenAI embeddings (alternative) |
 | `OGREP_BASE_URL` | - | Local embeddings server (e.g., LM Studio) |
 | `OGREP_SEARCH_MODE` | `hybrid` | Default search mode |
 | `OGREP_FUSION_METHOD` | `rrf` | Hybrid fusion (`rrf` or `alpha`) |
 | `OGREP_RRF_K` | `60` | RRF smoothing constant |
-| `OGREP_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
+| `OGREP_RERANK_MODEL` | `flashrank` | Reranking model (usually not needed) |
 | `OGREP_RERANK_TOPN` | `50` | Default candidates to rerank |
 | `OGREP_AST_CHUNKING` | - | Enable AST chunking globally (`1` or `true`) |
 
-**Local embeddings (optional):**
+**Recommended: Voyage AI (best code search quality):**
+```bash
+export VOYAGE_API_KEY="pa-..."
+ogrep index . -m voyage-code-3
+```
+
+**Alternative: OpenAI (good quality, lower cost):**
+```bash
+export OPENAI_API_KEY="sk-..."
+ogrep index . -m small
+```
+
+**Local embeddings (free, offline):**
 ```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
