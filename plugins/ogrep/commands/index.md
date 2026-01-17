@@ -29,6 +29,8 @@ ogrep index ${1:-.} --no-json
 | `--list`, `-l` | Preview files with detection results (dry run) |
 | `--no-detect` | Disable MIME type detection (faster, null-byte only) |
 | `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
+| `--no-ast` | Disable AST chunking (use line-based instead) |
+| `-m MODEL` | Embedding model: `voyage-code-3` (best), `small` (OpenAI), `nomic` (local) |
 | `-e PATTERN` | Add exclude patterns |
 | `-i PATTERN` | Include patterns (override excludes) |
 
@@ -53,9 +55,12 @@ JSON is the default output format:
 
 ## Notes
 
+- **AST chunking is default** when tree-sitter is available (`pip install "ogrep[ast]"`)
 - Use `--list` first to see what will be indexed
 - Create `.ogrepignore` for permanent exclusions
 - Binary files are auto-detected and excluded
 - YAML files (*.yaml, *.yml) are now indexed by default
+
+See CLAUDE.md for embedding provider recommendations.
 
 If `ogrep` is not installed, run: `pip install ogrep`

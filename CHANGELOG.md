@@ -43,6 +43,12 @@ ogrep index . --no-ast
 - Updated CLAUDE.md with AST default behavior
 - Updated SKILL.md with new `--no-ast` flag
 - Added AST status to JSON output documentation
+- Comprehensive README update with v0.8.x features and benchmark findings
+- Updated plugin commands (query.md, index.md, reindex.md) with:
+  - Reranking flags and guidance: "Only use with local embeddings"
+  - AST chunking flags (`--no-ast`)
+  - Embedding model recommendations (Voyage > OpenAI > Nomic)
+- Updated marketplace descriptions to mention Voyage AI
 
 ## [0.8.0] - 2026-01-17
 

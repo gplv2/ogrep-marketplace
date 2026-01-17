@@ -15,6 +15,8 @@ Run:
 - `--summarize` (optional) return file-level overview instead of full chunks (~85% token savings)
 - `--glob PATTERN` (optional) filter results to matching files (e.g., `--glob "*.py"`)
 - `--exclude PATTERN` (optional) exclude matching files (e.g., `--exclude "tests/*"`)
+- `--rerank` (optional) apply cross-encoder reranking. **Only use with local embeddings (nomic)**; skip with Voyage/OpenAI.
+- `--rerank-model MODEL` (optional) reranker: `flashrank` (default), `voyage`, `minilm`
 
 **Search modes:**
 - `semantic`: Embedding similarity only (conceptual questions)

@@ -21,7 +21,8 @@ ogrep reindex ${1:-.} --no-json
 | Flag | Description |
 |------|-------------|
 | `--no-json` | Output as human-readable text instead of JSON (default is JSON) |
-| `-m MODEL` | Use specific embedding model |
+| `--no-ast` | Disable AST chunking (use line-based instead) |
+| `-m MODEL` | Embedding model: `voyage-code-3` (best), `small` (OpenAI), `nomic` (local) |
 | `--chunk-lines N` | Lines per chunk (default: 60) |
 | `--overlap N` | Overlap lines between chunks (default: 10) |
 

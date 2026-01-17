@@ -1,7 +1,7 @@
 {
   "name": "ogrep-marketplace",
   "version": "0.8.1",
-  "description": "Claude Code marketplace for ogrep - semantic code search with multiple modes: semantic (conceptual), fulltext (FTS5), and hybrid. Supports local models via LM Studio (offline, free) or OpenAI embeddings.",
+  "description": "Claude Code marketplace for ogrep - semantic code search with multiple modes: semantic (conceptual), fulltext (FTS5), and hybrid. Supports Voyage AI (code-optimized), OpenAI, or local models via LM Studio.",
   "owner": {
     "name": "gplv2",
     "email": "glenn@bitless.be",
