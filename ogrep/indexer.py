@@ -872,7 +872,7 @@ def index_path(
     # Store AST mode in metadata (tracks how index was built)
     from .db import set_metadata
 
-    ast_mode_effective = "true" if (ast and ast_chunker is not None) else "false"
+    ast_mode_effective = "true" if (ast is not False and ast_chunker is not None) else "false"
     set_metadata(con, "ast_mode", ast_mode_effective)
 
     # Get expected dimensions
