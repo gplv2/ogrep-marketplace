@@ -223,3 +223,68 @@ All three configurations use AST chunking because it consistently improves resul
 - Use Voyage AI for best quality, OpenAI for best value
 - **Skip reranking** with Voyage/OpenAI - it hurts results
 - Only use reranking with local/weaker embeddings like Nomic
+
+---
+
+## Appendix: ogrep Self-Test Results
+
+**Date:** 2026-01-17
+**Codebase:** ogrep (64 files, 761 AST chunks)
+**Configuration:** `voyage-code-3` embeddings + AST chunking, no reranking
+
+### Index Statistics
+
+| Metric | Value |
+|--------|-------|
+| Files Indexed | 64 |
+| Total Chunks | 761 |
+| Chunks Embedded | 759 |
+| AST Mode | Enabled |
+| Embedding Model | voyage-code-3 (1024D) |
+| Index Time | ~90 seconds |
+
+### Semantic Query Results
+
+| Query | Top Score | Confidence | Target Found? |
+|-------|-----------|------------|---------------|
+| "how does AST chunking work" | **0.74** | High (5/5) | ✅ `ogrep/ast_chunking.py` |
+| "embedding model configuration" | **0.69** | High (5/5) | ✅ `ogrep/models.py` |
+| "where is authentication handled" | 0.61 | High (1/5) | N/A (no auth in codebase) |
+
+**Observation:** Semantic queries correctly identify conceptual matches. High scores (0.69-0.74) indicate strong embedding quality from Voyage.
+
+### Hybrid Query Results (RRF Fusion)
+
+| Query | Top Score | Confidence | Target Found? |
+|-------|-----------|------------|---------------|
+| "rerank cross-encoder scoring" | **0.73** | High (5/5) | ✅ `tests/test_rerank.py`, `ogrep/rerank.py` |
+| "database schema migrations" | 0.02 | Medium (2/5) | ✅ `ogrep/db.py` |
+| "def embed_texts" | 0.03 | Medium (1/5) | ✅ `tests/test_embed.py`, `ogrep/embed.py` |
+
+**Observation:** Hybrid mode combines semantic understanding with keyword matching. RRF fusion effectively surfaces relevant code.
+
+### Fulltext Query Results
+
+| Query | Top Score | Time | Target Found? |
+|-------|-----------|------|---------------|
+| "class EmbeddingModel" | **1.0** | 5ms | ✅ `tests/test_models.py`, `ogrep/models.py` |
+| "VOYAGE_API_KEY" | **1.0** | 4ms | ✅ `ogrep/rerank.py`, `ogrep/embed.py` |
+| "def _embed_voyage_batched" | 0.0* | 4ms | ✅ `ogrep/embed.py` (exact match) |
+
+**Observation:** Fulltext mode is extremely fast (4-5ms) and precise for exact token matches. Score of 0.0 for exact function match is a BM25 scoring artifact (single unique result).
+
+### Performance Summary
+
+| Mode | Avg. Latency | Best For |
+|------|--------------|----------|
+| Semantic | ~3.8s | Conceptual queries ("how does X work") |
+| Hybrid | ~3.8s | Mixed queries (concepts + keywords) |
+| Fulltext | ~5ms | Exact matches (function names, variables) |
+
+### Key Findings
+
+1. **Voyage embeddings deliver high-quality semantic search** - Top scores of 0.69-0.74 for conceptual queries
+2. **AST chunking preserves code structure** - Functions and classes kept intact (761 semantic chunks)
+3. **No reranking needed** - Voyage embeddings are already well-calibrated
+4. **Fulltext mode complements semantic search** - Use for exact symbol lookup (sub-10ms)
+5. **Hybrid mode provides best coverage** - Combines semantic understanding with keyword precision
