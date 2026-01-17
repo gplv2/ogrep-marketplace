@@ -10,6 +10,8 @@
 
 After extensive benchmarking, **Voyage AI with AST chunking** delivers the best search quality for semantic code search. Below are the top 3 recommended configurations balancing quality, cost, and performance.
 
+**Key finding:** Reranking degrades results for both Voyage and OpenAI embeddings. Skip `--rerank` with high-quality embeddings.
+
 ---
 
 ## Top 3 Recommended Configurations
@@ -28,7 +30,7 @@ ogrep query "your query"  # No reranking needed
 | **Hit@1** | 7/10 (70%) |
 | **Index Cost** | ~$0.01-0.02 (285 files) |
 | **Query Latency** | ~200-300ms |
-| **Reranking** | Not needed |
+| **Reranking** | Not recommended (degrades quality) |
 
 **Best for:** Production systems where search quality matters most.
 
@@ -36,7 +38,7 @@ ogrep query "your query"  # No reranking needed
 - `voyage-code-3` is specifically trained on code
 - 32K token context captures entire modules
 - AST chunking preserves function/class boundaries
-- No reranking overhead (embeddings are already optimal)
+- Embeddings are already optimal - reranking only hurts
 
 ---
 
@@ -45,7 +47,7 @@ ogrep query "your query"  # No reranking needed
 ```bash
 pip install "ogrep[ast]"
 ogrep index . -m small  # text-embedding-3-small
-ogrep query "your query"
+ogrep query "your query"  # No reranking needed
 ```
 
 | Metric | Value |
@@ -54,7 +56,7 @@ ogrep query "your query"
 | **Hit@1** | 6/10 (60%) |
 | **Index Cost** | ~$0.003-0.007 (285 files) |
 | **Query Latency** | ~150-200ms |
-| **Reranking** | Optional (minilm can help) |
+| **Reranking** | Not recommended (degrades quality) |
 
 **Best for:** Cost-conscious teams, general-purpose codebases.
 
@@ -62,14 +64,14 @@ ogrep query "your query"
 - 3x cheaper than Voyage ($0.02 vs $0.06 per M tokens)
 - Only 2.4% quality drop vs Voyage
 - Faster API responses
-- Can add minilm reranking (+0.056 MRR) if needed
+- High-quality embeddings - skip reranking
 
 ---
 
 ### 🥉 #3: Nomic + AST (Best Offline/Free)
 
 ```bash
-pip install "ogrep[ast,local]"
+pip install "ogrep[ast,rerank-light]"
 # Start LM Studio with nomic-embed-text-v1.5
 export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
@@ -82,7 +84,7 @@ ogrep query "your query" --rerank --rerank-model flashrank
 | **Hit@1** | ~5/10 (50%) |
 | **Index Cost** | Free |
 | **Query Latency** | ~50-100ms |
-| **Reranking** | Recommended (flashrank) |
+| **Reranking** | Recommended (flashrank helps) |
 
 **Best for:** Air-gapped environments, local development, unlimited queries.
 
@@ -90,23 +92,24 @@ ogrep query "your query" --rerank --rerank-model flashrank
 - Zero API costs
 - Works offline
 - Fast local inference
-- FlashRank reranking is parallel-safe (no locking)
+- FlashRank reranking helps compensate for weaker embeddings
+- FlashRank is parallel-safe (no locking)
 
 ---
 
 ## Comparison Matrix
 
-| Config | Quality | Cost | Speed | Offline | Recommendation |
-|--------|---------|------|-------|---------|----------------|
-| **Voyage + AST** | ⭐⭐⭐⭐⭐ | $$ | ⚡⚡⚡ | ❌ | Production |
-| **OpenAI + AST** | ⭐⭐⭐⭐ | $ | ⚡⚡⚡⚡ | ❌ | Budget-conscious |
-| **Nomic + AST** | ⭐⭐⭐ | Free | ⚡⚡⚡⚡⚡ | ✅ | Offline/Dev |
+| Config | Quality | Cost | Speed | Offline | Rerank? | Recommendation |
+|--------|---------|------|-------|---------|---------|----------------|
+| **Voyage + AST** | ⭐⭐⭐⭐⭐ | $$ | ⚡⚡⚡ | ❌ | No | Production |
+| **OpenAI + AST** | ⭐⭐⭐⭐ | $ | ⚡⚡⚡⚡ | ❌ | No | Budget-conscious |
+| **Nomic + AST** | ⭐⭐⭐ | Free | ⚡⚡⚡⚡⚡ | ✅ | Yes | Offline/Dev |
 
 ---
 
 ## Detailed Benchmark Results
 
-### Embedding Model Comparison (Line-based chunking)
+### Embedding Model Comparison (without reranking)
 
 | Model | Hit@1 | Hit@3 | Hit@5 | MRR | Cost/M |
 |-------|-------|-------|-------|-----|--------|
@@ -123,13 +126,20 @@ ogrep query "your query" --rerank --rerank-model flashrank
 
 ### Reranking Impact
 
-| Base Embedding | + Reranker | MRR Change |
-|----------------|------------|------------|
-| Voyage (0.717) | + any | -0.05 to -0.12 ❌ |
-| OpenAI (0.700) | + minilm | +0.056 ✅ |
-| Nomic (~0.62) | + flashrank | +0.05-0.08 ✅ |
+| Base Embedding | + Reranker | MRR Change | Recommendation |
+|----------------|------------|------------|----------------|
+| Voyage (0.717) | + any | -0.05 to -0.12 | ❌ Skip reranking |
+| OpenAI (0.700) | + minilm | -0.083 (-12%) | ❌ Skip reranking |
+| Nomic (~0.62) | + flashrank | +0.05-0.08 | ✅ Use reranking |
 
-**Key insight:** High-quality embeddings (Voyage) don't benefit from reranking. Lower-quality embeddings (OpenAI, Nomic) can be improved with reranking.
+**Key insight:** High-quality embeddings (Voyage, OpenAI) don't benefit from reranking - it consistently degrades results. Only lower-quality local embeddings (Nomic) benefit from reranking.
+
+### Why Reranking Hurts High-Quality Embeddings
+
+1. **Embeddings already optimal:** Voyage and OpenAI are trained on massive code/text corpora
+2. **Rerankers are web-trained:** Models like minilm, flashrank learned from MS MARCO (web search), not code
+3. **Different relevance signals:** What rerankers consider "relevant" differs from code search patterns
+4. **Second-guessing:** Rerankers override correct embedding rankings with their own (often wrong) intuition
 
 ---
 
@@ -180,7 +190,7 @@ export OPENAI_API_KEY=sk-...
 
 # Index & Query
 ogrep index . -m small
-ogrep query "database connection pool" --rerank --rerank-model minilm
+ogrep query "database connection pool"
 ```
 
 ### For Local/Offline (Free)
@@ -201,12 +211,15 @@ ogrep query "API error handling" --rerank --rerank-model flashrank
 
 ## Conclusion
 
-| Priority | Choose |
-|----------|--------|
-| **Quality first** | Voyage + AST |
-| **Budget first** | OpenAI + AST |
-| **Offline/free** | Nomic + AST + flashrank |
+| Priority | Choose | Rerank? |
+|----------|--------|---------|
+| **Quality first** | Voyage + AST | No |
+| **Budget first** | OpenAI + AST | No |
+| **Offline/free** | Nomic + AST + flashrank | Yes |
 
-All three configurations use AST chunking because it consistently improves results by preserving semantic code boundaries. The choice between them depends on your constraints around cost, latency, and offline requirements.
+All three configurations use AST chunking because it consistently improves results by preserving semantic code boundaries.
 
-**Bottom line:** If you can use Voyage AI, do it. The quality improvement is measurable and meaningful for code search use cases.
+**Bottom line:**
+- Use Voyage AI for best quality, OpenAI for best value
+- **Skip reranking** with Voyage/OpenAI - it hurts results
+- Only use reranking with local/weaker embeddings like Nomic
