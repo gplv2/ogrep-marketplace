@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-01-17
+
+### ✨ New Features
+
+#### AST Chunking Now Default
+
+AST-aware chunking is now **enabled by default** when tree-sitter is available. This produces semantically coherent chunks (complete functions, classes) instead of arbitrary line breaks.
+
+**What changed:**
+- `--ast` flag removed
+- `--no-ast` flag added to explicitly disable AST chunking
+- Auto-detection: uses AST when tree-sitter is installed, otherwise falls back silently
+
+**JSON output now includes:**
+```json
+{
+  "ast_mode": "enabled",  // or "disabled", "unavailable"
+  "ast_hint": "Install AST support: pip install 'ogrep[ast]'"  // when unavailable
+}
+```
+
+**Migration:**
+```bash
+# Install AST support (recommended)
+pip install "ogrep[ast]"
+
+# Index (AST enabled automatically)
+ogrep index .
+
+# Explicitly disable (for line-based chunking)
+ogrep index . --no-ast
+```
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with AST default behavior
+- Updated SKILL.md with new `--no-ast` flag
+- Added AST status to JSON output documentation
+
 ## [0.8.0] - 2026-01-17
 
 ### ✨ New Features

@@ -178,20 +178,18 @@ ogrep query "error handling logic"  # hybrid (default)
 
 ---
 
-## AST-Aware Chunking
+## AST-Aware Chunking (Default)
 
-By default, ogrep splits files into ~60-line chunks with overlap. This can split functions or classes awkwardly:
+**AST chunking is now the default** when tree-sitter is available. This produces semantically coherent chunks:
 
 ```
-# Line-based chunking (default):
+# Line-based chunking (--no-ast):
 Chunk 1: lines 1-60 (end of ClassA, start of ClassB)
 Chunk 2: lines 50-110 (middle of ClassB)
 ```
 
-AST-aware chunking uses tree-sitter to split by semantic boundaries:
-
 ```
-# AST chunking (--ast):
+# AST chunking (default):
 Chunk 1: class UserAuth (complete, lines 1-45)
 Chunk 2: def validate_token (complete, lines 47-82)
 Chunk 3: class SessionManager (complete, lines 84-150)
@@ -201,29 +199,25 @@ Chunk 3: class SessionManager (complete, lines 84-150)
 
 **Extended languages (with `[ast-all]`):** Ruby, Java, C, C++, C#, Bash
 
-### Using AST Chunking
+### Install AST Support
 
 ```bash
-# Install AST support
+# Install AST support (recommended)
 pip install "ogrep[ast]"        # Core languages
 pip install "ogrep[ast-all]"    # All languages
 
-# Index with AST chunking
-ogrep index . --ast
+# Index (AST used automatically when available)
+ogrep index .
 
-# Rebuild existing index with AST
-ogrep reindex . --ast
+# Explicitly disable AST chunking
+ogrep index . --no-ast
 
-# Check if AST is being used
+# Check AST status
 ogrep status
 ```
 
-**When to use AST chunking:**
-- Codebases with large functions/classes that shouldn't be split
-- When search results show awkward partial matches
-- Languages with clear semantic boundaries (functions, classes, methods)
-
 **Fallback behavior:**
+- tree-sitter not installed → line-based chunking (with JSON hint)
 - Unsupported file types → line-based chunking
 - Parse errors → line-based chunking
 - Very large functions (>150 lines) → split with overlap

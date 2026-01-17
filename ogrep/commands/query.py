@@ -649,8 +649,9 @@ def cmd_query(args: argparse.Namespace) -> int:
                 output["stats"]["ast_mode"] = index_ast_mode
                 if not index_ast_mode:
                     output["hint"] = (
-                        "Index was built without AST chunking. For better semantic boundaries, "
-                        "run: ogrep reindex . --ast"
+                        "Index was built without AST chunking. For semantic boundaries, "
+                        "install tree-sitter support and reindex: "
+                        "pip install 'ogrep[ast]' && ogrep reindex ."
                     )
 
         # Add path filter stats if filtering was applied (both modes)

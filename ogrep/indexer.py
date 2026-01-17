@@ -381,6 +381,8 @@ class IndexStats:
     chunks_embedded: int = 0
     indexed_files: list[str] | None = None  # Paths of files that were indexed (verbose mode)
     branch: str | None = None  # Git branch that was indexed
+    ast_mode: str | None = None  # "enabled", "disabled", or "unavailable"
+    ast_hint: str | None = None  # Hint message when AST is not available
 
     @property
     def tokens_saved_estimate(self) -> int:
@@ -828,11 +830,21 @@ def index_path(
 
         branch = get_current_branch(root)
 
-    # Initialize AST chunker if requested
+    # Initialize AST chunker
+    # ast=None: auto-detect (use AST when available, silent fallback)
+    # ast=False: explicitly disabled via --no-ast
+    # ast=True: explicitly requested (legacy, warn if unavailable)
     ast_chunker = None
-    if ast:
+    if ast is False:
+        # Explicitly disabled
+        stats.ast_mode = "disabled"
+    else:
+        # Auto-detect (ast=None) or explicitly requested (ast=True)
         ast_chunker = _get_ast_chunker()
-        if ast_chunker is None:
+        if ast_chunker is not None:
+            stats.ast_mode = "enabled"
+        elif ast is True:
+            # Explicitly requested but unavailable - warn
             import sys
 
             print(
@@ -841,6 +853,12 @@ def index_path(
                 "Falling back to line-based chunking.",
                 file=sys.stderr,
             )
+            stats.ast_mode = "unavailable"
+            stats.ast_hint = "Install AST support: pip install 'ogrep[ast]'"
+        else:
+            # Auto-detect but unavailable - silent fallback with hint
+            stats.ast_mode = "unavailable"
+            stats.ast_hint = "AST chunking not available. Install: pip install 'ogrep[ast]'"
 
     # Load .ogrepignore patterns and combine with CLI excludes
     ignore_patterns = load_ogrepignore(root)

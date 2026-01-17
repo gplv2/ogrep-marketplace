@@ -8,7 +8,8 @@
 
 | Command | Description |
 |---------|-------------|
-| `ogrep index .` | Index directory (source files only) |
+| `ogrep index .` | Index directory (AST chunking when available) |
+| `ogrep index . --no-ast` | Index with line-based chunking |
 | `ogrep index . --list` | Preview files to be indexed |
 | `ogrep query "text"` | Search (auto-refreshes stale files) |
 | `ogrep query "text" -M hybrid` | Hybrid search (default) |
@@ -197,6 +198,37 @@ Excluded categories: binaries, secrets (`.env`), docs (`*.md`), config (`*.json`
 **YAML files are indexed** (CI/CD, K8s manifests).
 
 **Chunk size:** 60 lines, 10-line overlap. Run `ogrep tune .` to optimize.
+
+### AST-Aware Chunking (Default)
+
+**AST chunking is now the default** when tree-sitter is available. This splits code by semantic boundaries (functions, classes) instead of arbitrary line counts, improving search quality.
+
+```bash
+# Install AST support (if not already installed)
+pip install "ogrep[ast]"        # Core languages (Python, JS, TS, Go, Rust)
+pip install "ogrep[ast-all]"    # All languages (+ Ruby, Java, C, C++, C#, Bash)
+
+# Index with AST chunking (default behavior)
+ogrep index .
+
+# Disable AST chunking (use line-based)
+ogrep index . --no-ast
+```
+
+**Supported languages:** Python, JavaScript, TypeScript, TSX, Go, Rust (core); Ruby, Java, C, C++, C#, Bash (with `[ast-all]`)
+
+**Fallback behavior:**
+- Unsupported file types → line-based chunking
+- Parse errors → line-based chunking
+- tree-sitter not installed → line-based chunking (with JSON hint)
+
+**JSON output includes AST status:**
+```json
+{
+  "ast_mode": "enabled",  // or "disabled", "unavailable"
+  "ast_hint": "Install AST support: pip install 'ogrep[ast]'"  // when unavailable
+}
+```
 
 ## Embedding Models
 

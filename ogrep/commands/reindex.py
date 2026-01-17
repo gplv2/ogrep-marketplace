@@ -125,22 +125,22 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         con.close()
 
     if use_json:
-        print(
-            json.dumps(
-                {
-                    "database": str(db),
-                    "removed_existing": removed_existing,
-                    "cache_removed": cache_removed,
-                    "files_indexed": stats.files_indexed,
-                    "files_skipped": stats.files_skipped,
-                    "files_scanned": stats.files_scanned,
-                    "chunks_total": stats.chunks_total,
-                    "chunks_embedded": stats.chunks_embedded,
-                    "chunks_reused": stats.chunks_reused,
-                    "tokens_saved_estimate": stats.tokens_saved_estimate,
-                }
-            )
-        )
+        result = {
+            "database": str(db),
+            "removed_existing": removed_existing,
+            "cache_removed": cache_removed,
+            "files_indexed": stats.files_indexed,
+            "files_skipped": stats.files_skipped,
+            "files_scanned": stats.files_scanned,
+            "chunks_total": stats.chunks_total,
+            "chunks_embedded": stats.chunks_embedded,
+            "chunks_reused": stats.chunks_reused,
+            "tokens_saved_estimate": stats.tokens_saved_estimate,
+            "ast_mode": stats.ast_mode,
+        }
+        if stats.ast_hint:
+            result["ast_hint"] = stats.ast_hint
+        print(json.dumps(result))
     else:
         print(f"Reindexed into {db}")
         print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
