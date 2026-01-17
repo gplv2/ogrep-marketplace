@@ -33,8 +33,14 @@ from .models import get_context_tokens, get_max_batch_size, resolve_dimensions, 
 # Environment variable for batch size override
 ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
 
-# Voyage AI environment variable
+# Voyage AI environment variables
 ENV_VOYAGE_API_KEY = "VOYAGE_API_KEY"
+ENV_VOYAGE_TIMEOUT = "OGREP_VOYAGE_TIMEOUT"  # Timeout in seconds (default: 120)
+ENV_VOYAGE_RETRIES = "OGREP_VOYAGE_RETRIES"  # Max retries (default: 2)
+
+# Voyage defaults
+DEFAULT_VOYAGE_TIMEOUT = 120.0  # 2 minutes
+DEFAULT_VOYAGE_RETRIES = 2
 
 
 def _is_voyage_model(model: str) -> bool:
@@ -85,14 +91,34 @@ def _embed_voyage(
             "Get an API key from https://www.voyageai.com/"
         )
 
-    client = voyageai.Client(api_key=api_key)
+    # Get timeout and retry settings
+    timeout_str = os.environ.get(ENV_VOYAGE_TIMEOUT)
+    timeout = float(timeout_str) if timeout_str else DEFAULT_VOYAGE_TIMEOUT
+    retries_str = os.environ.get(ENV_VOYAGE_RETRIES)
+    max_retries = int(retries_str) if retries_str else DEFAULT_VOYAGE_RETRIES
 
-    # Voyage API call
+    client = voyageai.Client(
+        api_key=api_key,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+
+    # Voyage API call with timing for slow request detection
+    start_time = time.time()
     result = client.embed(
         texts=texts,
         model=model,
         input_type=input_type,
     )
+    elapsed = time.time() - start_time
+
+    # Warn on slow requests (>30s per batch is unusual)
+    if elapsed > 30:
+        import sys
+        print(
+            f"Warning: Voyage API request took {elapsed:.1f}s for {len(texts)} texts",
+            file=sys.stderr,
+        )
 
     # Convert to normalized float32 blobs
     blobs = []

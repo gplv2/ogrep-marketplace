@@ -1,22 +1,21 @@
 # Reranking Quality Benchmark
 
-**Date:** 2026-01-16
+**Date:** 2026-01-17 11:57
 **Codebase:** julan_peppol
 **Queries:** 10
-**Embedding Model:** text-embedding-3-small (OpenAI)
 
 ## Summary
 
 | Model | Hit@1 | Hit@3 | Hit@5 | MRR |
 |-------|-------|-------|-------|-----|
-| baseline | 6/10 | 8/10 | 8/10 | 0.700 |
-| flashrank | 5/10 | 6/10 | 6/10 | 0.550 |
-| flashrank:mini | 4/10 | 5/10 | 7/10 | 0.478 |
-| voyage | 5/10 | 6/10 | 7/10 | 0.599 |
-| voyage:lite | 3/10 | 5/10 | 8/10 | 0.458 |
-| minilm | 5/10 | 6/10 | 8/10 | 0.617 |
+| baseline | 5/10 | 6/10 | 8/10 | 0.617 |
+| flashrank | 6/10 | 7/10 | 8/10 | 0.670 |
+| flashrank:mini | 3/10 | 7/10 | 9/10 | 0.500 |
+| voyage | 5/10 | 6/10 | 7/10 | 0.593 |
+| voyage:lite | 5/10 | 5/10 | 5/10 | 0.564 |
+| minilm | 5/10 | 8/10 | 9/10 | 0.673 |
 
-**Winner:** baseline (MRR 0.700)
+**Winner:** minilm (MRR 0.673)
 
 ---
 
@@ -31,9 +30,9 @@
 |-------|------|-------|
 | baseline | 1 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 5 | Yes |
+| flashrank:mini | 4 | Yes |
 | voyage | 2 | Yes |
-| voyage:lite | 5 | Yes |
+| voyage:lite | 6 | Yes |
 | minilm | 2 | Yes |
 
 ### Query 2: "how does frontend authenticate to backend"
@@ -45,10 +44,10 @@
 |-------|------|-------|
 | baseline | 1 | Yes |
 | flashrank | - | No |
-| flashrank:mini | - | No |
-| voyage | 4 | Yes |
-| voyage:lite | 5 | Yes |
-| minilm | 6 | Yes |
+| flashrank:mini | 4 | Yes |
+| voyage | 5 | Yes |
+| voyage:lite | 7 | Yes |
+| minilm | 7 | Yes |
 
 ### Query 3: "export to CSV JSON"
 
@@ -58,7 +57,7 @@
 | Model | Rank | Found |
 |-------|------|-------|
 | baseline | 1 | Yes |
-| flashrank | - | No |
+| flashrank | 1 | Yes |
 | flashrank:mini | 3 | Yes |
 | voyage | 1 | Yes |
 | voyage:lite | 1 | Yes |
@@ -71,12 +70,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 1 | Yes |
+| baseline | 4 | Yes |
 | flashrank | 2 | Yes |
-| flashrank:mini | 4 | Yes |
-| voyage | 8 | Yes |
-| voyage:lite | 5 | Yes |
-| minilm | 4 | Yes |
+| flashrank:mini | 3 | Yes |
+| voyage | 10 | Yes |
+| voyage:lite | 6 | Yes |
+| minilm | 2 | Yes |
 
 ### Query 5: "database connection pool"
 
@@ -85,11 +84,11 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | 2 | Yes |
+| baseline | 4 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
 | voyage | 1 | Yes |
-| voyage:lite | 3 | Yes |
+| voyage:lite | 1 | Yes |
 | minilm | 1 | Yes |
 
 ### Query 6: "invoice list API endpoint"
@@ -99,12 +98,12 @@
 
 | Model | Rank | Found |
 |-------|------|-------|
-| baseline | - | No |
-| flashrank | - | No |
-| flashrank:mini | - | No |
+| baseline | 6 | Yes |
+| flashrank | 5 | Yes |
+| flashrank:mini | 3 | Yes |
 | voyage | 1 | Yes |
-| voyage:lite | 3 | Yes |
-| minilm | - | No |
+| voyage:lite | 1 | Yes |
+| minilm | 4 | Yes |
 
 ### Query 7: "payment status workflow"
 
@@ -117,7 +116,7 @@
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
 | voyage | - | No |
-| voyage:lite | 7 | Yes |
+| voyage:lite | - | No |
 | minilm | 1 | Yes |
 
 ### Query 8: "how are billing runs created"
@@ -129,7 +128,7 @@
 |-------|------|-------|
 | baseline | 2 | Yes |
 | flashrank | 1 | Yes |
-| flashrank:mini | 1 | Yes |
+| flashrank:mini | 2 | Yes |
 | voyage | 1 | Yes |
 | voyage:lite | 1 | Yes |
 | minilm | 1 | Yes |
@@ -144,7 +143,7 @@
 | baseline | 1 | Yes |
 | flashrank | 1 | Yes |
 | flashrank:mini | 1 | Yes |
-| voyage | 9 | Yes |
+| voyage | 8 | Yes |
 | voyage:lite | 6 | Yes |
 | minilm | 1 | Yes |
 
@@ -160,7 +159,7 @@
 | flashrank:mini | - | No |
 | voyage | 1 | Yes |
 | voyage:lite | 1 | Yes |
-| minilm | 4 | Yes |
+| minilm | 3 | Yes |
 
 ---
 
@@ -170,10 +169,3 @@
 - **MRR**: Mean Reciprocal Rank = average of 1/rank for each query
   - MRR 1.0 = all queries have correct file at rank 1
   - MRR 0.5 = average rank is 2
-
-## Key Insights
-
-1. **Baseline wins**: OpenAI text-embedding-3-small without reranking achieves the best MRR (0.700)
-2. **Voyage finds unique matches**: Query 6 ("invoice list API endpoint") and Query 10 ("BillingApiException") are only found by Voyage models
-3. **Reranking can hurt**: flashrank loses Query 2 and Query 3 that baseline found
-4. **Trade-offs exist**: Different models excel at different query types

@@ -672,6 +672,11 @@ def _get_voyage_reranker() -> Any:
     Voyage AI provides code-optimized reranking via REST API.
     Unlike local models, this calls the Voyage AI API.
 
+    Environment variables:
+        VOYAGE_API_KEY: Required API key.
+        OGREP_VOYAGE_TIMEOUT: Request timeout in seconds (default: 120).
+        OGREP_VOYAGE_RETRIES: Max retries on failure (default: 2).
+
     Returns:
         Voyage AI Client instance.
 
@@ -699,7 +704,17 @@ def _get_voyage_reranker() -> Any:
             "Get your API key from https://dash.voyageai.com/"
         )
 
-    _voyage_rerank_client = voyageai.Client(api_key=api_key)
+    # Get timeout and retry settings (same as embed.py)
+    timeout_str = os.environ.get("OGREP_VOYAGE_TIMEOUT")
+    timeout = float(timeout_str) if timeout_str else 120.0
+    retries_str = os.environ.get("OGREP_VOYAGE_RETRIES")
+    max_retries = int(retries_str) if retries_str else 2
+
+    _voyage_rerank_client = voyageai.Client(
+        api_key=api_key,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
     return _voyage_rerank_client
 
 
@@ -720,12 +735,21 @@ def _voyage_rerank_predict(query: str, texts: list[str], model: str) -> list[flo
     # Resolve alias to actual model name
     actual_model = VOYAGE_RERANK_ALIASES.get(model, model)
 
-    # Call Voyage rerank API
+    # Call Voyage rerank API with timing
+    start_time = time.time()
     result = client.rerank(
         query=query,
         documents=texts,
         model=actual_model,
     )
+    elapsed = time.time() - start_time
+
+    # Warn on slow requests (>10s for reranking is unusual)
+    if elapsed > 10:
+        print(
+            f"Warning: Voyage rerank API took {elapsed:.1f}s for {len(texts)} documents",
+            file=sys.stderr,
+        )
 
     # Voyage returns results with index and relevance_score
     # Map scores back to original order

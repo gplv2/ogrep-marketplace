@@ -331,6 +331,8 @@ ogrep query "your search" --rerank  # flashrank default
 | `OGREP_RERANK_TOPN` | Candidates to rerank (default: 50) |
 | `OGREP_RERANK_LOCK` | Lock file path for parallel safety (sentence-transformers only) |
 | `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds (default: 120) |
+| `OGREP_VOYAGE_TIMEOUT` | Voyage API request timeout in seconds (default: 120) |
+| `OGREP_VOYAGE_RETRIES` | Voyage API max retries (default: 2) |
 
 Full list: grep for `OGREP_` in codebase or check `ogrep --help`.
 
