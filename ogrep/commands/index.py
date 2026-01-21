@@ -538,7 +538,13 @@ def cmd_index(args: argparse.Namespace) -> int:
 
     if not require_embedding_config():
         if use_json:
-            print(json.dumps({"error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"}))
+            print(
+                json.dumps(
+                    {
+                        "error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"
+                    }
+                )
+            )
         return 1
 
     root, db = _resolve_paths(args)

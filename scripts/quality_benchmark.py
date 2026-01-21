@@ -174,9 +174,9 @@ def run_benchmark(repo_path: str, verbose: bool = False) -> dict:
 
     for model_config in MODELS:
         model_name = model_config["name"]
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Testing model: {model_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         model_results = []
         ranks = []
@@ -206,7 +206,9 @@ def run_benchmark(repo_path: str, verbose: bool = False) -> dict:
                 else:
                     print("NOT FOUND")
                     if verbose and search_results:
-                        top_file = search_results[0].get('relative_path', search_results[0].get('file', 'N/A'))
+                        top_file = search_results[0].get(
+                            "relative_path", search_results[0].get("file", "N/A")
+                        )
                         print(f"    Top result: {top_file}")
 
             ranks.append(rank)
@@ -285,7 +287,7 @@ def generate_quality_report(results: dict, output_path: str) -> None:
     for gt in GROUND_TRUTH:
         lines.extend(
             [
-                f"### Query {gt['id']}: \"{gt['query']}\"",
+                f'### Query {gt["id"]}: "{gt["query"]}"',
                 "",
                 f"**Expected:** `{gt['expected']}`",
                 f"**Category:** {gt['category']}",
@@ -296,9 +298,7 @@ def generate_quality_report(results: dict, output_path: str) -> None:
         )
 
         for model_name, data in results.items():
-            query_result = next(
-                (q for q in data["queries"] if q["query_id"] == gt["id"]), None
-            )
+            query_result = next((q for q in data["queries"] if q["query_id"] == gt["id"]), None)
             if query_result:
                 rank = query_result["rank"]
                 found = "Yes" if query_result["found"] else "No"
@@ -457,7 +457,7 @@ def generate_comparison_report(results: dict, output_path: str) -> None:
     if mrr_improvement > 0.05:
         lines.append(
             f"**Strong recommendation to use {best_model} reranking.** "
-            f"MRR improved by {mrr_improvement:.3f} ({mrr_improvement*100:.1f}%)."
+            f"MRR improved by {mrr_improvement:.3f} ({mrr_improvement * 100:.1f}%)."
         )
     elif mrr_improvement > 0:
         lines.append(
@@ -519,12 +519,8 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    generate_quality_report(
-        results, str(output_dir / "reranking-quality-benchmark.md")
-    )
-    generate_comparison_report(
-        results, str(output_dir / "reranking-vs-openai-baseline.md")
-    )
+    generate_quality_report(results, str(output_dir / "reranking-quality-benchmark.md"))
+    generate_comparison_report(results, str(output_dir / "reranking-vs-openai-baseline.md"))
 
     print("\n" + "=" * 60)
     print("BENCHMARK COMPLETE")

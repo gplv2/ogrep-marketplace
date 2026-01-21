@@ -45,7 +45,13 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
     if not require_embedding_config():
         if use_json:
-            print(json.dumps({"error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"}))
+            print(
+                json.dumps(
+                    {
+                        "error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"
+                    }
+                )
+            )
         return 1
 
     root = Path(args.path).resolve()
@@ -161,7 +167,9 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         if stats.chunks_total > 0:
             msg = f"  Chunks: {stats.chunks_total} total"
             if stats.chunks_reused > 0:
-                msg += f" ({stats.chunks_reused} reused, ~{stats.tokens_saved_estimate} tokens saved)"
+                msg += (
+                    f" ({stats.chunks_reused} reused, ~{stats.tokens_saved_estimate} tokens saved)"
+                )
             else:
                 msg += f" ({stats.chunks_embedded} embedded)"
             print(msg)

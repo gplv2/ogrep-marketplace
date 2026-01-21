@@ -142,12 +142,16 @@ def _test_chunk_size(
     total_score = 0.0
 
     for file_path, line_num, _original, query in samples:
-        results = search_query(db_path=db_path, q=query, top_k=5, model=model)
+        results, _ = search_query(db_path=db_path, q=query, top_k=5, model=model)
 
         # Check if correct file is in top results
-        file_str = str(file_path.resolve())
+        # Convert to relative path for comparison (db stores relative paths)
+        try:
+            rel_path = str(file_path.relative_to(root))
+        except ValueError:
+            rel_path = str(file_path)
         for i, hit in enumerate(results):
-            if hit.path == file_str:
+            if hit.path == rel_path:
                 # Check if line number is within the chunk
                 if hit.start_line <= line_num <= hit.end_line:
                     hits += 1
