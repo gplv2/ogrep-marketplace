@@ -95,7 +95,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.8, 0.6]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
             assert len(result) <= len(hits)
 
     def test_rerank_reorders_by_cross_encoder_score(self):
@@ -226,7 +227,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.8]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
             assert len(result) == 1
 
 
@@ -315,7 +317,8 @@ class TestRerankerConfidence:
             mock_model.predict.return_value = [0.95]  # High reranker score
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
 
             # Confidence should be updated based on new score
             assert result[0].confidence == "high"
