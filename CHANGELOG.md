@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-01-21
+
+### ✨ New Features
+
+#### Smart API Key Detection
+
+ogrep now intelligently selects the default embedding model based on available API keys:
+
+| Environment | Default Model |
+|-------------|---------------|
+| `OGREP_BASE_URL` set | `nomic` (local) |
+| Only `VOYAGE_API_KEY` set | `voyage-code-3` |
+| Only `OPENAI_API_KEY` set | `text-embedding-3-small` |
+| Both keys set | `text-embedding-3-small` (OpenAI preferred) |
+
+**Before:** Setting only `VOYAGE_API_KEY` would fail because the default model was OpenAI's `text-embedding-3-small`.
+
+**After:** ogrep automatically uses `voyage-code-3` when only Voyage credentials are available.
+
+```bash
+# Now works without OPENAI_API_KEY
+export VOYAGE_API_KEY=pa-...
+ogrep index .  # Uses voyage-code-3 automatically
+```
+
+#### Model Reporting in Output
+
+The `index` and `reindex` commands now include the embedding model in their output:
+
+```json
+{
+  "model": "voyage-code-3",
+  "files_indexed": 42,
+  ...
+}
+```
+
+Text output also shows the model used:
+```
+Model: voyage-code-3
+Files: 42 indexed, 0 skipped
+```
+
+### 🔧 Improvements
+
+#### Git Repository Root Detection
+
+The `.ogrep/` directory is now always created in the git repository root, not the current working directory:
+
+**Before:** Running `ogrep index .` from `repo/src/` would create `repo/src/.ogrep/`
+
+**After:** Running `ogrep index .` from `repo/src/` correctly creates `repo/.ogrep/`
+
+This prevents duplicate indexes when indexing from different subdirectories of the same repository.
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with smart default model selection table
+- Reorganized environment variables section with API keys grouping
+- Documented git repo root detection behavior
+- Updated scope fencing documentation
+
 ## [0.8.1] - 2026-01-17
 
 ### ✨ New Features
