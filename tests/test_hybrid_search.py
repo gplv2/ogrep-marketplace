@@ -180,7 +180,9 @@ class TestSearchModes:
     def test_semantic_mode(self, indexed_db: Path) -> None:
         """Test semantic-only search mode."""
         # Use branch='default' since test fixtures insert with default branch
-        hits, fts_available = query(indexed_db, "user login authentication", mode="semantic", branch="default")
+        hits, fts_available = query(
+            indexed_db, "user login authentication", mode="semantic", branch="default"
+        )
 
         assert len(hits) > 0
         assert fts_available  # FTS is available but not used
@@ -196,7 +198,9 @@ class TestSearchModes:
 
     def test_hybrid_mode(self, indexed_db: Path) -> None:
         """Test hybrid search mode."""
-        hits, fts_available = query(indexed_db, "user authentication", mode="hybrid", branch="default")
+        hits, fts_available = query(
+            indexed_db, "user authentication", mode="hybrid", branch="default"
+        )
 
         assert fts_available
         assert len(hits) > 0

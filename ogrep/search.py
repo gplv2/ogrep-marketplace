@@ -225,9 +225,7 @@ def compute_hybrid_confidence(score: float, top_score: float, rank: int = 1) -> 
         level = "very_low"
 
     # Step 4: Generate signal
-    signal = _generate_confidence_signal(
-        level, relative_pct, absolute_quality, rank, top_score
-    )
+    signal = _generate_confidence_signal(level, relative_pct, absolute_quality, rank, top_score)
 
     return HybridConfidence(
         level=level,
@@ -519,7 +517,7 @@ def filter_hits_by_path(
 
         # Compute relative path from cwd
         if path.startswith(cwd_prefix):
-            rel_path = path[len(cwd_prefix):]
+            rel_path = path[len(cwd_prefix) :]
         elif path.startswith("/"):
             # Fallback: use everything after first component for absolute paths
             # e.g., /home/user/repo/tests/foo.py -> tests/foo.py (try last 2+ components)
@@ -1025,9 +1023,7 @@ def query(
 
         # Check L2 cache (db_version validated inside get_search_results)
         # Branch is included in cache key to prevent cross-branch cache pollution
-        l2_result = get_search_results(
-            cache_con, con, embedding_key, effective_mode, top_k, branch
-        )
+        l2_result = get_search_results(cache_con, con, embedding_key, effective_mode, top_k, branch)
         if l2_result.hit:
             # Cache hit - reconstruct Hits from cached chunk_ids and scores
             cached_results = l2_result.data  # List of (chunk_id, score)
@@ -1068,11 +1064,13 @@ def query(
                             )
                         )
 
-                log_cache_event(
-                    cache_con, "L2", "hit",
-                    time_saved_ms=l2_result.time_saved_ms
+                log_cache_event(cache_con, "L2", "hit", time_saved_ms=l2_result.time_saved_ms)
+                return (
+                    hits,
+                    l2_result.fts_available
+                    if l2_result.fts_available is not None
+                    else fts_available,
                 )
-                return hits, l2_result.fts_available if l2_result.fts_available is not None else fts_available
 
             # Empty cached results
             log_cache_event(cache_con, "L2", "hit", time_saved_ms=l2_result.time_saved_ms)
@@ -1199,8 +1197,14 @@ def query(
         # Store (chunk_id, score) pairs (branch-scoped cache key)
         results_to_cache = [(h.chunk_id, h.score) for h in hits]
         set_search_results(
-            cache_con, con, embedding_key, effective_mode, top_k,
-            results_to_cache, fts_available, branch
+            cache_con,
+            con,
+            embedding_key,
+            effective_mode,
+            top_k,
+            results_to_cache,
+            fts_available,
+            branch,
         )
         log_cache_event(cache_con, "L2", "miss")
 

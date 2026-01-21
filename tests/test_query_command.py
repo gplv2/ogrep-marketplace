@@ -1137,9 +1137,7 @@ class TestRerankValidation:
         assert "--rerank-top (15) must be >= -n (20)" in output["error"]
         assert "suggestion" in output
 
-    def test_rerank_top_equals_n_valid(
-        self, temp_dir: Path, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_rerank_top_equals_n_valid(self, temp_dir: Path, capsys: pytest.CaptureFixture) -> None:
         """Test that --rerank-top == -n is valid."""
         # Create minimal database for testing
         db_path = temp_dir / ".ogrep" / "index.sqlite"
@@ -1177,9 +1175,7 @@ class TestRerankValidation:
         output = json.loads(captured.out)
 
         # No error should be present
-        assert "error" not in output or "INVALID_RERANK_ARGS" not in output.get(
-            "error_code", ""
-        )
+        assert "error" not in output or "INVALID_RERANK_ARGS" not in output.get("error_code", "")
 
     def test_rerank_top_greater_than_n_valid(
         self, temp_dir: Path, capsys: pytest.CaptureFixture
@@ -1371,8 +1367,8 @@ class TestSummarizeMode:
 
         test_file = temp_dir / "auth.py"
         test_file.write_text(
-            "def login(): pass\n" * 20 +  # Multiple chunks
-            "def logout(): pass\n" * 10
+            "def login(): pass\n" * 20  # Multiple chunks
+            + "def logout(): pass\n" * 10
         )
 
         index_path(temp_dir, db_path)

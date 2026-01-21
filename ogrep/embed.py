@@ -115,6 +115,7 @@ def _embed_voyage(
     # Warn on slow requests (>30s per batch is unusual)
     if elapsed > 30:
         import sys
+
         print(
             f"Warning: Voyage API request took {elapsed:.1f}s for {len(texts)} texts",
             file=sys.stderr,
@@ -166,6 +167,7 @@ def _embed_voyage_batched(
             dim = batch_dim
 
     return all_blobs, dim
+
 
 # Default batch sizes for local models (small context windows)
 LOCAL_BATCH_SIZES = [8, 16, 32, 64, 96]

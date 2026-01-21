@@ -123,7 +123,9 @@ def cmd_clean(args: argparse.Namespace) -> int:
         else:
             print(f"Removed {removed} stale file entries")
             if pruned_branches:
-                print(f"Pruned {pruned_files} files from deleted branches: {', '.join(pruned_branches)}")
+                print(
+                    f"Pruned {pruned_files} files from deleted branches: {', '.join(pruned_branches)}"
+                )
 
     except KeyboardInterrupt:
         con.close()

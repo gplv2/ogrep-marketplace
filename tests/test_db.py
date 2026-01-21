@@ -124,7 +124,11 @@ class TestDatabaseErrorHandling:
 
         error_msg = str(exc_info.value)
         # Should suggest removing and reindexing
-        assert "corrupted" in error_msg.lower() or "malformed" in error_msg.lower() or "not a database" in error_msg.lower()
+        assert (
+            "corrupted" in error_msg.lower()
+            or "malformed" in error_msg.lower()
+            or "not a database" in error_msg.lower()
+        )
 
     def test_database_error_exception_exists(self) -> None:
         """DatabaseError should be a proper exception class."""

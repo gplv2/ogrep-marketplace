@@ -114,7 +114,9 @@ def _print_human_report(report: dict, hours: int) -> None:
             hit_rate = "N/A"
 
         level_name = {"L1": "Embed", "L2": "Search", "L3": "Rerank"}.get(level, level)
-        time_saved_str = f"{time_saved_ms / 1000:.1f}s" if time_saved_ms > 1000 else f"{time_saved_ms}ms"
+        time_saved_str = (
+            f"{time_saved_ms / 1000:.1f}s" if time_saved_ms > 1000 else f"{time_saved_ms}ms"
+        )
 
         print(f"{level_name:<10} {hits:>8} {misses:>8} {hit_rate:>10} {time_saved_str:>12}")
 
@@ -125,8 +127,12 @@ def _print_human_report(report: dict, hours: int) -> None:
         total_hit_rate = f"{total_hits / (total_hits + total_misses) * 100:.1f}%"
     else:
         total_hit_rate = "N/A"
-    total_time_str = f"{total_time_saved / 1000:.1f}s" if total_time_saved > 1000 else f"{total_time_saved}ms"
-    print(f"{'Total':<10} {total_hits:>8} {total_misses:>8} {total_hit_rate:>10} {total_time_str:>12}")
+    total_time_str = (
+        f"{total_time_saved / 1000:.1f}s" if total_time_saved > 1000 else f"{total_time_saved}ms"
+    )
+    print(
+        f"{'Total':<10} {total_hits:>8} {total_misses:>8} {total_hit_rate:>10} {total_time_str:>12}"
+    )
 
     # Entry counts
     print(f"\n{'─' * 50}")
@@ -151,7 +157,9 @@ def _print_human_report(report: dict, hours: int) -> None:
             hit_rate = hits / (hits + misses)
             if hit_rate < 0.5:
                 level_name = {"L1": "embedding", "L2": "search", "L3": "rerank"}.get(level, level)
-                recommendations.append(f"  - {level} hit rate is low ({hit_rate:.0%}). Queries may be too varied.")
+                recommendations.append(
+                    f"  - {level} hit rate is low ({hit_rate:.0%}). Queries may be too varied."
+                )
 
     if recommendations:
         print(f"\n{'─' * 50}")

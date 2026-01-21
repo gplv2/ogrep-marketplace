@@ -36,9 +36,7 @@ class TestRerankerAvailability:
     def test_reranker_not_available_without_any_backend(self):
         """Reranker should report unavailable if no backend is installed."""
         # Mock away both backends
-        with patch.dict(
-            "sys.modules", {"sentence_transformers": None, "flashrank": None}
-        ):
+        with patch.dict("sys.modules", {"sentence_transformers": None, "flashrank": None}):
             # Force reimport
             import importlib
 
@@ -1080,11 +1078,7 @@ class TestVoyageAIBackend:
         mock_client.rerank.return_value = mock_result
 
         with patch("ogrep.rerank._get_voyage_reranker", return_value=mock_client):
-            scores = _voyage_rerank_predict(
-                "test query",
-                ["doc1", "doc2", "doc3"],
-                "voyage"
-            )
+            scores = _voyage_rerank_predict("test query", ["doc1", "doc2", "doc3"], "voyage")
 
             # Verify scores are in correct order
             assert scores == [0.95, 0.85, 0.75]
