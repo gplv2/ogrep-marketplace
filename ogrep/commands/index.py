@@ -14,7 +14,7 @@ from pathlib import Path
 from ..filetype import FileTypeResult, detect_file_types_batch, has_file_command
 from ..indexer import IndexStats, index_path, iter_files, load_ogrepignore
 from ..models import get_optimal_chunk_lines, get_optimal_overlap
-from ._common import require_embedding_config, resolve_db_path
+from ._common import find_git_root, require_embedding_config, resolve_db_path
 
 
 def _format_size(size: int) -> str:
@@ -428,6 +428,14 @@ def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     """
     Resolve root directory and database path from arguments.
 
+    The repo_root (where .ogrep is created) is determined by:
+    1. Explicit --repo-root argument
+    2. Git repository root (if in a git repo)
+    3. The indexed path itself (fallback for non-git directories)
+
+    This ensures .ogrep is always created in the repo root, not in
+    subdirectories when indexing from within a subdirectory.
+
     Args:
         args: Parsed command-line arguments.
 
@@ -435,13 +443,22 @@ def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
         Tuple of (root_path, db_path).
     """
     root = Path(args.path).resolve()
-    # If root is a file, use its parent directory for repo_root
+    # If root is a file, use its parent directory for searching
+    search_path = root.parent if root.is_file() else root
+
+    # Determine repo_root for .ogrep location
     if args.repo_root:
+        # Explicit --repo-root takes priority
         repo_root = args.repo_root.resolve()
-    elif root.is_file():
-        repo_root = root.parent
     else:
-        repo_root = root
+        # Try to find git repository root
+        git_root = find_git_root(search_path)
+        if git_root:
+            repo_root = git_root
+        else:
+            # Not in a git repo - use the indexed path
+            repo_root = search_path
+
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
     return root, db
 
@@ -455,6 +472,7 @@ def _print_stats(db: Path, stats: IndexStats) -> None:
         stats: IndexStats dataclass with indexing results.
     """
     print(f"Indexed into {db}")
+    print(f"  Model: {stats.model}")
     print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
 
     if stats.chunks_total > 0:
@@ -520,7 +538,7 @@ def cmd_index(args: argparse.Namespace) -> int:
 
     if not require_embedding_config():
         if use_json:
-            print(json.dumps({"error": "Missing OPENAI_API_KEY environment variable"}))
+            print(json.dumps({"error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"}))
         return 1
 
     root, db = _resolve_paths(args)
@@ -563,6 +581,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     if use_json:
         output = {
             "database": str(db),
+            "model": stats.model,
             "files_indexed": stats.files_indexed,
             "files_skipped": stats.files_skipped,
             "files_scanned": stats.files_scanned,

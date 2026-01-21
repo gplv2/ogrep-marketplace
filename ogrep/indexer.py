@@ -381,6 +381,7 @@ class IndexStats:
     chunks_embedded: int = 0
     indexed_files: list[str] | None = None  # Paths of files that were indexed (verbose mode)
     branch: str | None = None  # Git branch that was indexed
+    model: str | None = None  # Embedding model used for indexing
     ast_mode: str | None = None  # "enabled", "disabled", or "unavailable"
     ast_hint: str | None = None  # Hint message when AST is not available
 
@@ -822,7 +823,7 @@ def index_path(
     """
     # Resolve model from arg, env, or default
     model = resolve_model(model)
-    stats = IndexStats(indexed_files=[] if verbose else None)
+    stats = IndexStats(indexed_files=[] if verbose else None, model=model)
 
     # Resolve branch - auto-detect if not specified
     if branch is None:
@@ -994,6 +995,7 @@ def index_path(
                 "chunks_reused": stats.chunks_reused,
                 "indexed_files": stats.indexed_files,
                 "branch": branch,
+                "model": model,
             },
         )
 

@@ -22,16 +22,26 @@ def require_embedding_config() -> bool:
     """
     Check if embedding API is configured, print error if not.
 
+    Supports three embedding backends:
+    - OpenAI (OPENAI_API_KEY)
+    - Voyage AI (VOYAGE_API_KEY)
+    - Local models via LM Studio (OGREP_BASE_URL)
+
     Returns:
         True if configured, False otherwise (with error printed to stderr).
     """
-    if os.environ.get("OPENAI_API_KEY") or os.environ.get("OGREP_BASE_URL"):
+    if (
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("VOYAGE_API_KEY")
+        or os.environ.get("OGREP_BASE_URL")
+    ):
         return True
 
     print(
         "Error: No embedding API configured.\n"
         "Set one of:\n"
         "  - OPENAI_API_KEY for OpenAI embeddings\n"
+        "  - VOYAGE_API_KEY for Voyage AI embeddings (code-optimized)\n"
         "  - OGREP_BASE_URL for local embeddings (e.g., http://localhost:1234/v1)",
         file=sys.stderr,
     )
@@ -174,6 +184,42 @@ def _detect_git_branch(repo_root: Path) -> str:
         pass
 
     return "default"
+
+
+def find_git_root(start_path: Path) -> Path | None:
+    """
+    Find the root of the git repository containing the given path.
+
+    Runs `git rev-parse --show-toplevel` to find the repository root.
+    This ensures .ogrep is created in the repo root, not in subdirectories.
+
+    Args:
+        start_path: Path to start searching from.
+
+    Returns:
+        Path to the git repository root, or None if not in a git repo.
+
+    Examples:
+        >>> find_git_root(Path("/repo/subdir"))
+        PosixPath('/repo')
+        >>> find_git_root(Path("/not-a-repo"))
+        None
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            cwd=start_path,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return Path(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # git not available or timed out
+        pass
+
+    return None
 
 
 def get_git_branches(repo_root: Path | None = None) -> set[str]:
