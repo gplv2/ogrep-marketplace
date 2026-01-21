@@ -28,12 +28,14 @@ def test_index_and_query(sample_repo: Path, db_path: Path) -> None:
     assert db_path.exists()
 
     # Query for something in the repo
+    # Use branch='default' since sample_repo is not a git directory
     hits, fts_available = query(
         db_path=db_path,
         q="hello world function",
         top_k=5,
         model="text-embedding-3-small",
         dimensions=None,
+        branch="default",
     )
 
     assert len(hits) > 0
@@ -101,7 +103,7 @@ def test_skip_binary_files(temp_dir: Path) -> None:
     index_path(root=temp_dir, db_path=db_path)
 
     # Query should only find the source file
-    hits, _ = query(db_path=db_path, q="source file", top_k=10)
+    hits, _ = query(db_path=db_path, q="source file", top_k=10, branch="default")
 
     paths = [h.path for h in hits]
     assert any("sample.py" in p for p in paths)
@@ -196,7 +198,7 @@ def test_ogrepignore_excludes_files(temp_dir: Path) -> None:
     index_path(root=temp_dir, db_path=db_path)
 
     # Query - should only find keep.py
-    hits, _ = query(db_path=db_path, q="function", top_k=10)
+    hits, _ = query(db_path=db_path, q="function", top_k=10, branch="default")
     paths = [h.path for h in hits]
 
     assert any("keep.py" in p for p in paths)

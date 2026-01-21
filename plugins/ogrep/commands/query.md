@@ -5,27 +5,32 @@ argument-hint: <query text>
 ---
 
 Run:
-- `ogrep query "$ARGUMENTS" -n 15 --refresh`
+- `ogrep query "$ARGUMENTS" --top 15 --refresh`
 
-**Core flags:**
-| Flag | Alias | Default | Purpose |
-|------|-------|---------|---------|
-| `--top` | `-n` | 10 | Number of results to return |
-| `--refresh` | `-r` | off | Reindex changed files before querying (recommended) |
-| `--mode` | `-M` | hybrid | Search mode: `semantic`, `fulltext`, or `hybrid` |
-| `--rerank` | - | off | Apply cross-encoder for higher precision (slower) |
-| `--rerank-top` | - | 50 | Candidates to rerank (implies `--rerank`) |
-
-**Output flags:**
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--json` | yes | JSON output (default for AI/machine use) |
-| `--no-json` | - | Human-readable text output |
+**Flags explained:**
+- `--refresh` ensures results reflect current code by checking for changed files and reindexing them before querying
+- JSON output is the default (use `--no-json` for human-readable text)
+- `--mode MODE` (optional) selects search mode: `semantic`, `fulltext`, or `hybrid` (default)
+- `--branch BRANCH` (optional) query a specific branch instead of current branch
+- `--summarize` (optional) return file-level overview instead of full chunks (~85% token savings)
+- `--glob PATTERN` (optional) filter results to matching files (e.g., `--glob "*.py"`)
+- `--exclude PATTERN` (optional) exclude matching files (e.g., `--exclude "tests/*"`)
+- `--rerank` (optional) apply cross-encoder reranking. **Only use with local embeddings (nomic)**; skip with Voyage/OpenAI.
+- `--rerank-model MODEL` (optional) reranker: `flashrank` (default), `voyage`, `minilm`
 
 **Search modes:**
-- `hybrid` (default): Combined semantic + keyword scoring - best for most queries
-- `semantic`: Embedding similarity only - for conceptual questions ("how does X work")
-- `fulltext`: FTS5 keyword matching - for exact identifiers ("class AuthMiddleware")
+- `semantic`: Embedding similarity only (conceptual questions)
+- `fulltext`: FTS5 keyword matching (exact identifiers)
+- `hybrid`: Combined scoring (default, best of both)
+
+**Cross-branch queries:**
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+```
 
 **JSON output structure:**
 ```json
@@ -39,40 +44,27 @@ Run:
       "relative_path": "src/file.py",
       "start_line": 10,
       "end_line": 70,
-      "score": 0.85,
-      "confidence": "high",
+      "score": 0.42,
+      "confidence": {
+        "level": "high",
+        "signal": "top_result_in_typical_range"
+      },
       "language": "python",
       "text": "full chunk content..."
     }
   ],
   "stats": {
     "total_results": 15,
-    "total_chunks": 1234,
-    "search_time_ms": 45,
     "search_mode": "hybrid",
-    "fusion_method": "rrf",
-    "reranked": false,
-    "ast_mode": true,
-    "fts_available": true,
-    "index_model": "text-embedding-3-small",
-    "index_dimensions": 1536,
-    "confidence_summary": {"high": 3, "medium": 5, "low": 2, "very_low": 0}
+    "confidence_summary": {"high": 3, "medium": 5, "low": 2}
   }
 }
 ```
 
-**Using chunk_ref:** The `chunk_ref` (e.g., `"src/file.py:2"`) is a 0-based chunk index, NOT a line number. Use `ogrep chunk "src/file.py:2" --context 1` to expand context around a result.
+**Confidence signals:** `top_result_strong_match` (trust it), `top_result_in_typical_range` (good), `top_result_weak_absolute` (verify), `close_to_top` (alternative), `score_drop_from_top` (lower priority)
 
-**Advanced flags:**
-| Flag | Purpose |
-|------|---------|
-| `--db PATH` | Explicit SQLite DB path (overrides scope options) |
-| `--profile NAME` | Named profile for multiple indexes per repo |
-| `--global-cache` | Use `~/.cache/ogrep/<repo_hash>/index.sqlite` |
-| `--repo-root PATH` | Explicit repository root |
-| `--model`, `-m` | Embedding model (must match indexed model) |
-| `--dimensions`, `-d` | Embedding dimensions |
+**Using chunk_ref:** After finding a result, use `ogrep chunk "src/file.py:2"` to get more context.
 
-**If query fails with "no index":**
-1. Run `/ogrep:index` first
-2. Retry the query
+If it fails because the DB doesn't exist:
+1) Run `/ogrep:index`
+2) Retry the query.

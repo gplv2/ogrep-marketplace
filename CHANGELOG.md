@@ -5,6 +5,333 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-01-17
+
+### ✨ New Features
+
+#### AST Chunking Now Default
+
+AST-aware chunking is now **enabled by default** when tree-sitter is available. This produces semantically coherent chunks (complete functions, classes) instead of arbitrary line breaks.
+
+**What changed:**
+- `--ast` flag removed
+- `--no-ast` flag added to explicitly disable AST chunking
+- Auto-detection: uses AST when tree-sitter is installed, otherwise falls back silently
+
+**JSON output now includes:**
+```json
+{
+  "ast_mode": "enabled",  // or "disabled", "unavailable"
+  "ast_hint": "Install AST support: pip install 'ogrep[ast]'"  // when unavailable
+}
+```
+
+**Migration:**
+```bash
+# Install AST support (recommended)
+pip install "ogrep[ast]"
+
+# Index (AST enabled automatically)
+ogrep index .
+
+# Explicitly disable (for line-based chunking)
+ogrep index . --no-ast
+```
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with AST default behavior
+- Updated SKILL.md with new `--no-ast` flag
+- Added AST status to JSON output documentation
+- Comprehensive README update with v0.8.x features and benchmark findings
+- Updated plugin commands (query.md, index.md, reindex.md) with:
+  - Reranking flags and guidance: "Only use with local embeddings"
+  - AST chunking flags (`--no-ast`)
+  - Embedding model recommendations (Voyage > OpenAI > Nomic)
+- Updated marketplace descriptions to mention Voyage AI
+
+## [0.8.0] - 2026-01-17
+
+### ✨ New Features
+
+#### Voyage AI Integration (Recommended for Code Search)
+
+Voyage AI's code-optimized models now available for both embeddings and reranking. Benchmarks show Voyage achieves the best search quality for code:
+
+| Configuration | Hit@1 | MRR |
+|---------------|-------|-----|
+| **Voyage voyage-code-3** | **7/10** | **0.717** |
+| OpenAI text-embedding-3-small | 6/10 | 0.700 |
+
+**Embeddings:**
+```bash
+export VOYAGE_API_KEY="pa-..."
+ogrep index . -m voyage-code-3   # Best quality
+ogrep index . -m voyage          # Alias
+```
+
+**Reranking (when needed):**
+```bash
+ogrep query "auth" --rerank --rerank-model voyage
+```
+
+**Available models:**
+
+| Model | Alias | Dimensions | Use Case |
+|-------|-------|------------|----------|
+| voyage-code-3 | `voyage` | 1024 | Code search (recommended) |
+| voyage-3 | `voyage-3` | 1024 | General purpose |
+| voyage-3-lite | `voyage-lite` | 512 | Budget option |
+| rerank-2.5 | `voyage` (rerank) | - | API-based reranking |
+
+Install: `pip install "ogrep[voyage]"`
+
+#### FlashRank as Default Reranker
+
+FlashRank is now the default reranking model, replacing bge-m3:
+- **Lightweight**: ~4MB vs ~300MB
+- **Parallel-safe**: No file locking needed (ONNX runtime)
+- **Fast**: Optimized for quick inference
+
+```bash
+pip install "ogrep[rerank-light]"  # FlashRank only
+ogrep query "auth" --rerank        # Uses flashrank by default
+```
+
+Available FlashRank variants:
+- `flashrank` (default): ~4MB, fast
+- `flashrank:mini`: ~50MB, better quality
+
+### 🔬 Research & Benchmarks
+
+#### Reranking Effectiveness Analysis
+
+Comprehensive benchmarks reveal that **reranking degrades results** when using high-quality embeddings:
+
+| Model | Hit@1 | MRR | vs Baseline |
+|-------|-------|-----|-------------|
+| Voyage (no rerank) | 7/10 | 0.717 | **Best** |
+| OpenAI (no rerank) | 6/10 | 0.700 | -0.017 |
+| OpenAI + minilm | 5/10 | 0.617 | -0.100 |
+| OpenAI + voyage | 5/10 | 0.599 | -0.118 |
+| OpenAI + flashrank | 5/10 | 0.550 | -0.167 |
+
+**Key finding:** Skip `--rerank` when using Voyage or OpenAI embeddings. Only use reranking with weak local embeddings (nomic, minilm).
+
+**Why reranking hurts with good embeddings:**
+1. Code embeddings already rank correctly
+2. Rerankers trained on general text, not code
+3. Rerankers "second-guess" correct results
+
+See `test-reports/reranking-effectiveness-analysis.md` for full analysis.
+
+### 📚 Documentation
+
+- Added Voyage AI as recommended embedding provider
+- Updated reranking guidance: skip for quality embeddings
+- Added benchmark comparison tables
+- Updated SKILL.md with embedding quality guidance
+
+### 🧪 Testing
+
+- Added Voyage AI embedding tests (mocked)
+- Added Voyage AI reranking tests (mocked)
+- Added FlashRank backend tests
+- Fixed 4 tests affected by default model change
+- All 86 tests pass
+
+## [0.7.4] - 2026-01-16
+
+### ✨ New Features
+
+#### Hybrid Confidence Scoring
+
+Results now include detailed confidence information combining relative position and absolute quality signals:
+
+```json
+"confidence": {
+  "level": "medium",
+  "relative_pct": 95.2,
+  "absolute_quality": "weak",
+  "signal": "top_result_weak_absolute"
+}
+```
+
+**Why this matters:**
+- AI tools now know when to trust results vs. when to look elsewhere
+- Low absolute scores (e.g., 0.03) can still be "medium" confidence if best available
+- The `signal` field provides human-readable explanation
+
+| Field | Values |
+|-------|--------|
+| `level` | high, medium, low, very_low |
+| `absolute_quality` | strong (>=0.50), expected_range (>=0.35), weak (>=0.25), very_weak (<0.25) |
+| `signal` | E.g., `top_result_strong_match`, `close_to_top_but_weak_absolute` |
+
+#### Path Filtering (`--glob`, `--exclude`)
+
+Filter search results by file patterns:
+
+```bash
+ogrep query "auth" --glob "*.py"           # Only Python files
+ogrep query "auth" -g "*.py" -g "*.php"    # Multiple patterns
+ogrep query "auth" --exclude "tests/*"     # Exclude tests
+ogrep query "auth" -g "**/*.py" -x "vendor/*"  # Recursive + exclude
+```
+
+Features:
+- Supports `**` for recursive matching
+- JSON output includes filter stats (candidates before/after, removal %)
+- Warning if >50% results filtered (suggests increasing `-n`)
+
+#### Summary Mode (`--summarize`)
+
+Get file-level aggregation without full chunk text (~85% token savings):
+
+```bash
+ogrep query "authentication" --summarize
+```
+
+Output:
+```json
+{
+  "summary": true,
+  "total_chunks_matched": 23,
+  "files": [
+    {
+      "path": "src/auth/login.py",
+      "chunks_matched": 4,
+      "best_score": 0.47,
+      "confidence": "high",
+      "lines_covered": [[12, 45], [78, 120]]
+    }
+  ],
+  "recommendation": "Use 'ogrep chunk <path>:<N>' to expand specific files"
+}
+```
+
+Ideal for AI scanning to identify relevant files before deep-diving.
+
+#### Rerank Validation
+
+`--rerank-top` must now be >= `-n`. Invalid combinations produce clear errors:
+
+```bash
+# INVALID: Can't return 20 results from 15 reranked candidates
+ogrep query "test" -n 20 --rerank-top 15
+
+# Error:
+{"error": "--rerank-top (15) must be >= -n (20)", "error_code": "INVALID_RERANK_ARGS"}
+```
+
+#### Rerank Parallel Safety (OOM Prevention)
+
+The ~300MB cross-encoder model now uses file-based locking to prevent out-of-memory errors when multiple processes run `--rerank` simultaneously:
+
+**How it works:**
+- Exclusive lock on `~/.cache/ogrep/rerank.lock` before model loading
+- Only one process loads the model at a time
+- Other processes wait (up to 120s) then proceed with unreranked results
+
+**Graceful degradation:**
+| Scenario | Behavior |
+|----------|----------|
+| Lock timeout | Returns unreranked results with warning |
+| Read-only filesystem | Proceeds without lock (with warning) |
+| Lock creation fails | Proceeds without lock (with warning) |
+
+**Configuration:**
+```bash
+export OGREP_RERANK_LOCK=~/.cache/ogrep/rerank.lock  # Lock file path
+export OGREP_RERANK_LOCK_TIMEOUT=120                  # Timeout in seconds
+```
+
+**Why this matters:**
+- Parallel AI tool sessions (e.g., Claude Code) no longer cause OOM kills
+- Exit code 137 (OOM killer) eliminated in parallel `--rerank` scenarios
+- Results still returned on timeout, just without reranking
+
+### 🧪 Testing
+
+- Added 28 new unit tests for path filtering, confidence scoring, summarize mode
+- Added 5 new tests for rerank lock mechanism
+- All 435 tests pass
+
+### 📚 Documentation
+
+- Updated CLAUDE.md with new features
+- Added confidence scoring reference table
+- Documented path filtering patterns
+- Added summary mode usage examples
+- Added rerank parallel safety documentation and env vars
+
+## [0.7.3] - 2026-01-15
+
+### ✨ New Features
+
+#### Branch-Aware Indexing with Implicit Embedding Reuse
+
+ogrep now tracks files per git branch, preventing stale search results when switching branches. The key innovation is that embeddings are shared across branches via content addressing (`text_sha256`), so switching branches only embeds genuinely new code.
+
+**How it works:**
+- Files are indexed with `(path, branch)` as the unique key
+- Chunks table stores embeddings by content hash, shared across all branches
+- Branch detection via `git symbolic-ref --short HEAD` with fallbacks for detached HEAD and non-git directories
+
+**New commands:**
+```bash
+# Query a specific branch (cross-branch queries)
+ogrep query "authentication" --branch main
+
+# Reset only current branch (preserves other branches)
+ogrep reset -f
+
+# Reset entire database (all branches)
+ogrep reset -f --all
+```
+
+**Automatic branch pruning:**
+- `ogrep clean` now detects and removes entries for deleted git branches
+- Shared embeddings are preserved if used by other branches
+
+**Embedding reuse scenarios:**
+| Scenario | API Calls |
+|----------|-----------|
+| Same file, same content | 0 (already indexed on this branch) |
+| Same code on different branch | 0 (`text_sha256` matches) |
+| 1 function changed | 1-2 (only changed chunks) |
+| Switch main→feature→main | 0 (files already indexed on main) |
+
+**Branch detection:**
+| Scenario | Branch Value |
+|----------|--------------|
+| Normal git branch | `main`, `feature/auth`, etc. |
+| Detached HEAD | `detached-abc1234` (short commit hash) |
+| Non-git directory | `default` |
+
+#### Branch-Aware L2 Cache
+
+The query result cache (L2) now includes branch in the cache key, preventing cross-branch cache pollution. Cache key format: `hash(embedding_key, mode, top_k, branch)`.
+
+### 🔧 Changes
+
+- **`ogrep status`**: Now shows branch info (`branch`, `branch_files`, `branches`)
+- **`ogrep health`**: Now includes branch info section in diagnostics
+- **`ogrep reset`**: Default behavior is now branch-scoped; use `--all` for previous behavior
+- **`ogrep clean`**: Now automatically prunes deleted git branches
+
+### 📚 Documentation
+
+- **CLAUDE.md**: Added comprehensive "Branch-Aware Indexing" section
+- **README.md**: Added v0.7.3 release notes and Branch-Aware Indexing section
+- **Plugin commands**: Updated reset, query, status, clean, health command docs
+- **SKILL.md**: Added branch-aware indexing section and updated command summary
+
+### 🧪 Testing
+
+- Updated test fixtures to pass `branch="default"` explicitly for test databases
+- Fixed test_cache.py, test_hybrid_search.py, test_roundtrip.py, test_search.py
+
 ## [0.7.2] - 2026-01-14
 
 ### ⚠️ BREAKING CHANGE

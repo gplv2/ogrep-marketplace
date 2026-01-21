@@ -43,6 +43,7 @@ import sys
 
 from .commands import (
     cmd_benchmark,
+    cmd_cache_report,
     cmd_chunk,
     cmd_clean,
     cmd_delete,
@@ -60,7 +61,7 @@ from .commands import (
 from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
 
-__version__ = "0.7.2"
+__version__ = "0.8.1"
 
 
 def _add_index_command(sub: argparse._SubParsersAction) -> None:
@@ -152,6 +153,13 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         "hybrid (combined, default). Uses OGREP_SEARCH_MODE env var if not specified.",
     )
     p.add_argument(
+        "--branch",
+        "-b",
+        default=None,
+        help="Git branch to search (default: auto-detect current branch). "
+        "Allows querying a different branch's index without switching.",
+    )
+    p.add_argument(
         "--rerank",
         action="store_true",
         help="Enable cross-encoder reranking for improved result ordering. "
@@ -164,6 +172,46 @@ def _add_query_command(sub: argparse._SubParsersAction) -> None:
         metavar="N",
         help="Number of candidates to rerank (default: 50, via OGREP_RERANK_TOPN). "
         "Implies --rerank.",
+    )
+    p.add_argument(
+        "--rerank-model",
+        metavar="MODEL",
+        default=None,
+        help="Reranking model: flashrank (default), flashrank:mini, voyage, voyage:lite, "
+        "minilm, bge-m3. FlashRank models are lightweight ONNX (~4-50MB) and parallel-safe. "
+        "Voyage models require VOYAGE_API_KEY (code-optimized, 32K context). "
+        "Use OGREP_RERANK_MODEL env var for persistent setting. Implies --rerank.",
+    )
+    p.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable query result caching (L1/L2/L3). Useful for debugging or benchmarking.",
+    )
+    # Path filtering (Phase 3 of adoption improvements)
+    p.add_argument(
+        "--glob",
+        "-g",
+        action="append",
+        metavar="PATTERN",
+        help="Filter results to files matching glob pattern (e.g., '*.py', 'src/*.php'). "
+        "Can be specified multiple times. Supports ** for recursive matching.",
+    )
+    p.add_argument(
+        "--exclude",
+        "-x",
+        action="append",
+        metavar="PATTERN",
+        help="Exclude files matching glob pattern from results (e.g., 'tests/*'). "
+        "Can be specified multiple times. Supports ** for recursive matching.",
+    )
+    # Summary mode (Phase 4 of adoption improvements)
+    p.add_argument(
+        "--summarize",
+        "-S",
+        action="store_true",
+        help="Return file-level summary instead of full chunk text. "
+        "Shows which files match, how many chunks per file, and line ranges. "
+        "Token-efficient for AI scanning. Use 'ogrep chunk' to expand specific files.",
     )
     add_model_args(p, for_query=True)
     p.set_defaults(func=cmd_query)
@@ -225,8 +273,8 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'reset' subcommand."""
     p = sub.add_parser(
         "reset",
-        help="Remove the index database",
-        description="Delete the index database for the current scope.",
+        help="Clear indexed data (current branch by default)",
+        description="Clear indexed data for the current branch. Use --all to delete the entire database.",
     )
     add_scope_args(p)
     p.add_argument(
@@ -234,6 +282,12 @@ def _add_reset_command(sub: argparse._SubParsersAction) -> None:
         "-f",
         action="store_true",
         help="Skip confirmation prompt",
+    )
+    p.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Delete entire database instead of just current branch",
     )
     p.add_argument(
         "--json",
@@ -561,6 +615,41 @@ def _add_tune_command(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=cmd_tune)
 
 
+def _add_cache_report_command(sub: argparse._SubParsersAction) -> None:
+    """Add the 'cache-report' subcommand."""
+    p = sub.add_parser(
+        "cache-report",
+        help="Show cache effectiveness report",
+        description="Display hit rates, time saved, and entry counts for L1/L2/L3 caches.",
+    )
+    add_scope_args(p)
+    p.add_argument(
+        "--hours",
+        type=int,
+        default=24,
+        metavar="N",
+        help="Time period to analyze in hours (default: 24)",
+    )
+    p.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear all caches instead of showing report",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output as JSON (default for AI/machine use)",
+    )
+    p.add_argument(
+        "--no-json",
+        action="store_false",
+        dest="json",
+        help="Output as human-readable text instead of JSON",
+    )
+    p.set_defaults(func=cmd_cache_report)
+
+
 def _add_benchmark_command(sub: argparse._SubParsersAction) -> None:
     """Add the 'benchmark' subcommand."""
     p = sub.add_parser(
@@ -599,6 +688,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_reset_command(sub)
     _add_reindex_command(sub)
     _add_clean_command(sub)
+    _add_cache_report_command(sub)
     _add_delete_command(sub)
     _add_log_command(sub)
     _add_status_command(sub)

@@ -394,7 +394,7 @@ class TestQueryCommandAstHint:
         assert output["stats"]["ast_mode"] is False
         assert "hint" in output
         assert "reindex" in output["hint"].lower()
-        assert "--ast" in output["hint"]
+        assert "ogrep[ast]" in output["hint"]
 
     def test_query_no_hint_for_ast_index(self, ast_index: Path) -> None:
         """Query on AST index should not show hint."""

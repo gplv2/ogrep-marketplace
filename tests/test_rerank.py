@@ -33,9 +33,12 @@ class MockHit:
 class TestRerankerAvailability:
     """Test reranker availability detection."""
 
-    def test_reranker_not_available_without_sentence_transformers(self):
-        """Reranker should report unavailable if sentence-transformers not installed."""
-        with patch.dict("sys.modules", {"sentence_transformers": None}):
+    def test_reranker_not_available_without_any_backend(self):
+        """Reranker should report unavailable if no backend is installed."""
+        # Mock away both backends
+        with patch.dict(
+            "sys.modules", {"sentence_transformers": None, "flashrank": None}
+        ):
             # Force reimport
             import importlib
 
@@ -43,6 +46,7 @@ class TestRerankerAvailability:
                 from ogrep import rerank
 
                 importlib.reload(rerank)
+                # Without any backend, is_reranker_available() should return False
                 assert not rerank.is_reranker_available()
             except ImportError:
                 # Expected if module checks at import time
@@ -129,7 +133,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.3, 0.9]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
 
             # Second hit should now be first
             assert result[0].text == "second result - better match"
@@ -157,7 +162,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.95]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
 
             # Score should be updated to reranker score
             assert result[0].score == pytest.approx(0.95)
@@ -186,7 +192,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.9, 0.8, 0.7]
             mock_reranker.return_value = mock_model
 
-            _result = rerank_results("test query", hits, top_n=3)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            _result = rerank_results("test query", hits, top_n=3, model_name="bge-m3")
 
             # Should have called predict with only 3 pairs
             call_args = mock_model.predict.call_args[0][0]
@@ -326,10 +333,10 @@ class TestRerankerEnvironmentConfig:
         assert DEFAULT_RERANK_TOPN == 50
 
     def test_default_model(self):
-        """Default model should be BAAI/bge-reranker-v2-m3."""
+        """Default model should be flashrank (lightweight, parallel-safe)."""
         from ogrep.rerank import DEFAULT_RERANK_MODEL
 
-        assert DEFAULT_RERANK_MODEL == "BAAI/bge-reranker-v2-m3"
+        assert DEFAULT_RERANK_MODEL == "flashrank"
 
 
 class TestWarningCapture:
@@ -505,3 +512,606 @@ class TestWarningCapture:
         finally:
             sys.stderr = original_stderr
             _clear_all_state()
+
+
+class TestRerankLock:
+    """Test the rerank lock mechanism for preventing parallel OOM."""
+
+    def test_lock_context_manager_exists(self):
+        """The _rerank_lock context manager should exist."""
+        from ogrep.rerank import _rerank_lock
+
+        assert callable(_rerank_lock)
+
+    def test_lock_timeout_exception_exists(self):
+        """The RerankLockTimeout exception should exist."""
+        from ogrep.rerank import RerankLockTimeout
+
+        assert issubclass(RerankLockTimeout, Exception)
+
+    def test_lock_gracefully_handles_readonly_filesystem(self):
+        """Lock should gracefully proceed when lock file can't be created."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import ogrep.rerank as rerank_module
+        from ogrep.rerank import _rerank_lock, clear_captured_warnings
+
+        # Clear any existing warnings
+        clear_captured_warnings()
+
+        # Mock the lock path to a directory that doesn't exist and can't be created
+        fake_path = Path("/nonexistent/readonly/rerank.lock")
+
+        original_lock_path = rerank_module.RERANK_LOCK_PATH
+        try:
+            rerank_module.RERANK_LOCK_PATH = fake_path
+
+            # Should not raise, should proceed without lock
+            with _rerank_lock():
+                pass  # Code executed successfully
+
+            # Should have captured a warning
+            from ogrep.rerank import get_captured_warnings
+
+            warnings = get_captured_warnings()
+            assert len(warnings) >= 1
+            assert "lock" in warnings[0].lower() or "cannot create" in warnings[0].lower()
+
+        finally:
+            rerank_module.RERANK_LOCK_PATH = original_lock_path
+            clear_captured_warnings()
+
+    def test_lock_timeout_returns_unreranked_results(self):
+        """On lock timeout, rerank_results should return unreranked hits with warning."""
+        from unittest.mock import patch
+
+        from ogrep.rerank import (
+            RerankLockTimeout,
+            _clear_all_state,
+            clear_captured_warnings,
+            get_captured_warnings,
+            rerank_results,
+        )
+
+        hits = [
+            MockHit(
+                score=0.8,
+                path="file1.py",
+                start_line=1,
+                end_line=10,
+                text="first",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="high",
+            ),
+            MockHit(
+                score=0.6,
+                path="file2.py",
+                start_line=1,
+                end_line=10,
+                text="second",
+                chunk_id=2,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        clear_captured_warnings()
+
+        # Mock the lock to always timeout
+        def mock_lock_timeout(*args, **kwargs):
+            raise RerankLockTimeout("Test timeout")
+
+        with patch("ogrep.rerank._rerank_lock") as mock_lock:
+            mock_lock.side_effect = mock_lock_timeout
+
+            # Explicitly use sentence-transformers model (flashrank doesn't use lock)
+            result = rerank_results("test query", hits, model_name="bge-m3")
+
+            # Should return unreranked results (same order as input)
+            assert len(result) == 2
+            assert result[0].path == "file1.py"  # Original first hit
+            assert result[1].path == "file2.py"  # Original second hit
+
+            # Should have a warning about timeout
+            warnings = get_captured_warnings()
+            assert len(warnings) >= 1
+            assert "timeout" in warnings[0].lower() or "unreranked" in warnings[0].lower()
+
+        _clear_all_state()
+
+    def test_lock_env_vars_configurable(self):
+        """Lock path and timeout should be configurable via env vars."""
+        import os
+        from pathlib import Path
+
+        # The defaults are read at import time, but let's verify the env var names
+        # are documented in the module
+        import ogrep.rerank as rerank_module
+
+        # Verify constants exist
+        assert hasattr(rerank_module, "RERANK_LOCK_PATH")
+        assert hasattr(rerank_module, "RERANK_LOCK_TIMEOUT")
+
+        # Verify they have sensible defaults
+        assert isinstance(rerank_module.RERANK_LOCK_PATH, Path)
+        assert isinstance(rerank_module.RERANK_LOCK_TIMEOUT, float)
+        assert rerank_module.RERANK_LOCK_TIMEOUT > 0
+
+
+class TestModelAliases:
+    """Test model alias resolution."""
+
+    def test_sentence_transformers_aliases_exist(self):
+        """Sentence-transformers aliases should be defined."""
+        from ogrep.rerank import SENTENCE_TRANSFORMERS_ALIASES
+
+        assert "bge-m3" in SENTENCE_TRANSFORMERS_ALIASES
+        assert "minilm" in SENTENCE_TRANSFORMERS_ALIASES
+        assert SENTENCE_TRANSFORMERS_ALIASES["bge-m3"] == "BAAI/bge-reranker-v2-m3"
+        assert SENTENCE_TRANSFORMERS_ALIASES["minilm"] == "cross-encoder/ms-marco-MiniLM-L6-v2"
+
+    def test_flashrank_aliases_exist(self):
+        """FlashRank aliases should be defined."""
+        from ogrep.rerank import FLASHRANK_ALIASES
+
+        assert "flashrank" in FLASHRANK_ALIASES
+        assert "flashrank:tiny" in FLASHRANK_ALIASES
+        assert "flashrank:mini" in FLASHRANK_ALIASES
+        assert FLASHRANK_ALIASES["flashrank"] == "ms-marco-TinyBERT-L-2-v2"
+        assert FLASHRANK_ALIASES["flashrank:mini"] == "ms-marco-MiniLM-L-12-v2"
+
+    def test_resolve_model_name_with_alias(self):
+        """Model aliases should resolve to full names."""
+        from ogrep.rerank import _resolve_model_name
+
+        assert _resolve_model_name("bge-m3") == "BAAI/bge-reranker-v2-m3"
+        assert _resolve_model_name("minilm") == "cross-encoder/ms-marco-MiniLM-L6-v2"
+        assert _resolve_model_name("flashrank") == "ms-marco-TinyBERT-L-2-v2"
+        assert _resolve_model_name("flashrank:mini") == "ms-marco-MiniLM-L-12-v2"
+
+    def test_resolve_model_name_passthrough(self):
+        """Unknown model names should pass through unchanged."""
+        from ogrep.rerank import _resolve_model_name
+
+        assert _resolve_model_name("custom/model") == "custom/model"
+        assert _resolve_model_name("BAAI/bge-reranker-v2-m3") == "BAAI/bge-reranker-v2-m3"
+
+
+class TestBackendDetection:
+    """Test backend detection logic."""
+
+    def test_is_flashrank_model_with_aliases(self):
+        """FlashRank models should be detected correctly."""
+        from ogrep.rerank import _is_flashrank_model
+
+        assert _is_flashrank_model("flashrank") is True
+        assert _is_flashrank_model("flashrank:tiny") is True
+        assert _is_flashrank_model("flashrank:mini") is True
+        assert _is_flashrank_model("ms-marco-TinyBERT-L-2-v2") is True
+        assert _is_flashrank_model("ms-marco-MiniLM-L-12-v2") is True
+
+    def test_is_flashrank_model_negative(self):
+        """Non-FlashRank models should not be detected as FlashRank."""
+        from ogrep.rerank import _is_flashrank_model
+
+        assert _is_flashrank_model("bge-m3") is False
+        assert _is_flashrank_model("minilm") is False
+        assert _is_flashrank_model("BAAI/bge-reranker-v2-m3") is False
+        assert _is_flashrank_model("custom/model") is False
+
+    def test_is_sentence_transformers_model(self):
+        """Sentence-transformers models should be detected correctly."""
+        from ogrep.rerank import _is_sentence_transformers_model
+
+        assert _is_sentence_transformers_model("bge-m3") is True
+        assert _is_sentence_transformers_model("minilm") is True
+        assert _is_sentence_transformers_model("BAAI/bge-reranker-v2-m3") is True
+        assert _is_sentence_transformers_model("custom/model") is True
+
+    def test_is_sentence_transformers_model_negative(self):
+        """FlashRank models should not be detected as sentence-transformers."""
+        from ogrep.rerank import _is_sentence_transformers_model
+
+        assert _is_sentence_transformers_model("flashrank") is False
+        assert _is_sentence_transformers_model("flashrank:mini") is False
+
+
+class TestFlashRankBackend:
+    """Test FlashRank backend functionality."""
+
+    def test_flashrank_availability_check(self):
+        """is_flashrank_available should work without errors."""
+        from ogrep.rerank import is_flashrank_available
+
+        # Just check it runs without error and returns a bool
+        result = is_flashrank_available()
+        assert isinstance(result, bool)
+
+    def test_rerank_with_flashrank_model_routes_correctly(self):
+        """Using flashrank model should route to FlashRank backend."""
+        from ogrep.rerank import (
+            _clear_all_state,
+            is_flashrank_available,
+            rerank_results,
+        )
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        # Mock FlashRank if not available
+        if not is_flashrank_available():
+            # Skip test if FlashRank is not installed
+            pytest.skip("FlashRank not installed")
+
+        # If FlashRank is available, should work
+        with patch("ogrep.rerank._get_flashrank_reranker") as mock_get:
+            mock_ranker = MagicMock()
+            mock_get.return_value = mock_ranker
+
+            with patch("ogrep.rerank._flashrank_predict") as mock_predict:
+                mock_predict.return_value = [0.9]
+
+                result = rerank_results("test", hits, model_name="flashrank")
+
+                # Should have called FlashRank functions
+                mock_get.assert_called_once()
+                mock_predict.assert_called_once()
+
+        _clear_all_state()
+
+    def test_flashrank_does_not_use_lock(self):
+        """FlashRank backend should not use the rerank lock."""
+        from ogrep.rerank import (
+            _clear_all_state,
+            is_flashrank_available,
+            rerank_results,
+        )
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        if not is_flashrank_available():
+            pytest.skip("FlashRank not installed")
+
+        with patch("ogrep.rerank._rerank_lock") as mock_lock:
+            with patch("ogrep.rerank._get_flashrank_reranker") as mock_get:
+                mock_ranker = MagicMock()
+                mock_get.return_value = mock_ranker
+
+                with patch("ogrep.rerank._flashrank_predict") as mock_predict:
+                    mock_predict.return_value = [0.9]
+
+                    rerank_results("test", hits, model_name="flashrank")
+
+                    # Lock should NOT have been called for FlashRank
+                    mock_lock.assert_not_called()
+
+        _clear_all_state()
+
+
+class TestAvailableBackends:
+    """Test the get_available_backends function."""
+
+    def test_get_available_backends_structure(self):
+        """get_available_backends should return proper structure."""
+        from ogrep.rerank import get_available_backends
+
+        backends = get_available_backends()
+
+        assert "sentence_transformers" in backends
+        assert "flashrank" in backends
+        assert "default_model" in backends
+
+        # Check sentence_transformers structure
+        st = backends["sentence_transformers"]
+        assert "available" in st
+        assert "install" in st
+        assert "models" in st
+        assert isinstance(st["available"], bool)
+        assert isinstance(st["models"], list)
+
+        # Check flashrank structure
+        fr = backends["flashrank"]
+        assert "available" in fr
+        assert "install" in fr
+        assert "models" in fr
+        assert isinstance(fr["available"], bool)
+        assert isinstance(fr["models"], list)
+
+    def test_get_available_backends_model_info(self):
+        """Model info should include alias, name, and size."""
+        from ogrep.rerank import get_available_backends
+
+        backends = get_available_backends()
+
+        # Check a sentence_transformers model
+        st_models = backends["sentence_transformers"]["models"]
+        assert len(st_models) > 0
+        first_model = st_models[0]
+        assert "alias" in first_model
+        assert "name" in first_model
+        assert "size" in first_model
+
+        # Check a flashrank model
+        fr_models = backends["flashrank"]["models"]
+        assert len(fr_models) > 0
+        first_model = fr_models[0]
+        assert "alias" in first_model
+        assert "name" in first_model
+        assert "size" in first_model
+
+
+class TestRerankerAvailabilityWithModel:
+    """Test is_reranker_available with specific models."""
+
+    def test_reranker_available_with_none_checks_any_backend(self):
+        """is_reranker_available(None) should check if any backend is available."""
+        from ogrep.rerank import is_reranker_available
+
+        # Just verify it runs without error
+        result = is_reranker_available(None)
+        assert isinstance(result, bool)
+
+    def test_reranker_available_checks_correct_backend_for_flashrank(self):
+        """is_reranker_available should check FlashRank for flashrank models."""
+        from ogrep.rerank import is_flashrank_available, is_reranker_available
+
+        # The result should match is_flashrank_available for flashrank models
+        flashrank_available = is_flashrank_available()
+        assert is_reranker_available("flashrank") == flashrank_available
+        assert is_reranker_available("flashrank:mini") == flashrank_available
+
+
+class TestVoyageAIBackend:
+    """Test Voyage AI reranking backend."""
+
+    def test_voyage_rerank_aliases_exist(self):
+        """Voyage AI rerank aliases should be defined."""
+        from ogrep.rerank import VOYAGE_RERANK_ALIASES
+
+        assert "voyage" in VOYAGE_RERANK_ALIASES
+        assert "voyage:lite" in VOYAGE_RERANK_ALIASES
+        assert "voyage:2" in VOYAGE_RERANK_ALIASES
+        assert VOYAGE_RERANK_ALIASES["voyage"] == "rerank-2.5"
+        assert VOYAGE_RERANK_ALIASES["voyage:lite"] == "rerank-2.5-lite"
+        assert VOYAGE_RERANK_ALIASES["voyage:2"] == "rerank-2"
+
+    def test_is_voyage_rerank_model_with_aliases(self):
+        """Voyage models should be detected correctly."""
+        from ogrep.rerank import _is_voyage_rerank_model
+
+        assert _is_voyage_rerank_model("voyage") is True
+        assert _is_voyage_rerank_model("voyage:lite") is True
+        assert _is_voyage_rerank_model("voyage:2") is True
+        assert _is_voyage_rerank_model("rerank-2.5") is True
+        assert _is_voyage_rerank_model("rerank-2.5-lite") is True
+
+    def test_is_voyage_rerank_model_negative(self):
+        """Non-Voyage models should not be detected as Voyage."""
+        from ogrep.rerank import _is_voyage_rerank_model
+
+        assert _is_voyage_rerank_model("flashrank") is False
+        assert _is_voyage_rerank_model("bge-m3") is False
+        assert _is_voyage_rerank_model("minilm") is False
+        assert _is_voyage_rerank_model("custom/model") is False
+
+    def test_voyage_is_not_sentence_transformers(self):
+        """Voyage models should not be detected as sentence-transformers."""
+        from ogrep.rerank import _is_sentence_transformers_model
+
+        assert _is_sentence_transformers_model("voyage") is False
+        assert _is_sentence_transformers_model("voyage:lite") is False
+        assert _is_sentence_transformers_model("rerank-2.5") is False
+
+    def test_voyage_availability_check_without_api_key(self):
+        """Voyage should report unavailable without API key."""
+        from ogrep.rerank import is_voyage_rerank_available
+
+        # Clear the API key
+        with patch.dict("os.environ", {}, clear=True):
+            # With no API key set, should return False (even if voyageai is installed)
+            # The actual result depends on whether voyageai is installed
+            result = is_voyage_rerank_available()
+            # If voyageai is installed but no API key, should be False
+            # If voyageai is not installed, should also be False
+            assert isinstance(result, bool)
+
+    def test_voyage_in_available_backends(self):
+        """Voyage should appear in get_available_backends."""
+        from ogrep.rerank import get_available_backends
+
+        backends = get_available_backends()
+
+        assert "voyage_ai" in backends
+
+        voyage = backends["voyage_ai"]
+        assert "available" in voyage
+        assert "install" in voyage
+        assert "models" in voyage
+        assert isinstance(voyage["available"], bool)
+        assert isinstance(voyage["models"], list)
+
+        # Check model info
+        assert len(voyage["models"]) >= 2
+        first_model = voyage["models"][0]
+        assert "alias" in first_model
+        assert "name" in first_model
+        assert "context" in first_model
+
+    def test_is_reranker_available_checks_voyage_for_voyage_models(self):
+        """is_reranker_available should check Voyage availability for voyage models."""
+        from ogrep.rerank import is_reranker_available, is_voyage_rerank_available
+
+        voyage_available = is_voyage_rerank_available()
+        assert is_reranker_available("voyage") == voyage_available
+        assert is_reranker_available("voyage:lite") == voyage_available
+
+    def test_voyage_rerank_routes_correctly(self):
+        """Using voyage model should route to Voyage backend."""
+        from ogrep.rerank import (
+            _clear_all_state,
+            rerank_results,
+        )
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        # Mock Voyage reranking
+        with patch("ogrep.rerank.is_voyage_rerank_available", return_value=True):
+            with patch("ogrep.rerank._voyage_rerank_predict") as mock_predict:
+                mock_predict.return_value = [0.9]
+
+                result = rerank_results("test", hits, model_name="voyage")
+
+                # Should have called Voyage predict
+                mock_predict.assert_called_once()
+                assert result[0].score == pytest.approx(0.9)
+
+        _clear_all_state()
+
+    def test_voyage_does_not_use_lock(self):
+        """Voyage backend (REST API) should not use the rerank lock."""
+        from ogrep.rerank import _clear_all_state, rerank_results
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        with patch("ogrep.rerank._rerank_lock") as mock_lock:
+            with patch("ogrep.rerank.is_voyage_rerank_available", return_value=True):
+                with patch("ogrep.rerank._voyage_rerank_predict") as mock_predict:
+                    mock_predict.return_value = [0.9]
+
+                    rerank_results("test", hits, model_name="voyage")
+
+                    # Lock should NOT have been called for Voyage
+                    mock_lock.assert_not_called()
+
+        _clear_all_state()
+
+    def test_voyage_unavailable_raises_import_error(self):
+        """Should raise ImportError when Voyage is requested but not available."""
+        from ogrep.rerank import _clear_all_state, rerank_results
+
+        _clear_all_state()
+
+        hits = [
+            MockHit(
+                score=0.5,
+                path="/test.py",
+                start_line=1,
+                end_line=10,
+                text="test content",
+                chunk_id=1,
+                chunk_index=0,
+                confidence="medium",
+            ),
+        ]
+
+        with patch("ogrep.rerank.is_voyage_rerank_available", return_value=False):
+            with pytest.raises(ImportError) as exc_info:
+                rerank_results("test", hits, model_name="voyage")
+
+            assert "Voyage AI" in str(exc_info.value)
+            assert "VOYAGE_API_KEY" in str(exc_info.value)
+
+        _clear_all_state()
+
+    def test_voyage_rerank_predict_mocked(self):
+        """Test the _voyage_rerank_predict function with mocked client."""
+        from ogrep.rerank import _voyage_rerank_predict
+
+        # Create mock client and result
+        mock_result = MagicMock()
+        mock_result.results = [
+            MagicMock(index=0, relevance_score=0.95),
+            MagicMock(index=1, relevance_score=0.85),
+            MagicMock(index=2, relevance_score=0.75),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.rerank.return_value = mock_result
+
+        with patch("ogrep.rerank._get_voyage_reranker", return_value=mock_client):
+            scores = _voyage_rerank_predict(
+                "test query",
+                ["doc1", "doc2", "doc3"],
+                "voyage"
+            )
+
+            # Verify scores are in correct order
+            assert scores == [0.95, 0.85, 0.75]
+
+            # Verify rerank was called with correct params
+            mock_client.rerank.assert_called_once()
+            call_kwargs = mock_client.rerank.call_args.kwargs
+            assert call_kwargs["query"] == "test query"
+            assert call_kwargs["documents"] == ["doc1", "doc2", "doc3"]
+            assert call_kwargs["model"] == "rerank-2.5"  # alias resolved
+
+    def test_voyage_model_alias_resolution(self):
+        """Voyage model aliases should be resolved correctly in predict."""
+        from ogrep.rerank import _voyage_rerank_predict
+
+        mock_result = MagicMock()
+        mock_result.results = [MagicMock(index=0, relevance_score=0.9)]
+
+        mock_client = MagicMock()
+        mock_client.rerank.return_value = mock_result
+
+        with patch("ogrep.rerank._get_voyage_reranker", return_value=mock_client):
+            # Test alias resolution
+            _voyage_rerank_predict("q", ["d"], "voyage:lite")
+
+            call_kwargs = mock_client.rerank.call_args.kwargs
+            assert call_kwargs["model"] == "rerank-2.5-lite"

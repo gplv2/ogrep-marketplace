@@ -1,14 +1,15 @@
 """
 Embedding module for ogrep.
 
-Provides text embedding functionality using OpenAI's embedding API
-or a local OpenAI-compatible server (like LM Studio).
+Provides text embedding functionality using OpenAI's embedding API,
+Voyage AI's API, or a local OpenAI-compatible server (like LM Studio).
 
 Embeddings are L2-normalized for cosine similarity calculations and
 stored as compact float32 binary blobs.
 
 Requires:
     OPENAI_API_KEY environment variable (not required for local servers).
+    VOYAGE_API_KEY environment variable (for Voyage AI models).
 
 Configuration:
     OGREP_MODEL: Override default embedding model.
@@ -31,6 +32,140 @@ from .models import get_context_tokens, get_max_batch_size, resolve_dimensions, 
 
 # Environment variable for batch size override
 ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
+
+# Voyage AI environment variables
+ENV_VOYAGE_API_KEY = "VOYAGE_API_KEY"
+ENV_VOYAGE_TIMEOUT = "OGREP_VOYAGE_TIMEOUT"  # Timeout in seconds (default: 120)
+ENV_VOYAGE_RETRIES = "OGREP_VOYAGE_RETRIES"  # Max retries (default: 2)
+
+# Voyage defaults
+DEFAULT_VOYAGE_TIMEOUT = 120.0  # 2 minutes
+DEFAULT_VOYAGE_RETRIES = 2
+
+
+def _is_voyage_model(model: str) -> bool:
+    """
+    Check if model requires Voyage AI backend.
+
+    Args:
+        model: Model ID or alias.
+
+    Returns:
+        True if this is a Voyage AI model.
+    """
+    return model.startswith("voyage-") or model in ("voyage", "voyage-code", "voyage-lite")
+
+
+def _embed_voyage(
+    texts: list[str],
+    model: str,
+    input_type: str = "document",
+) -> tuple[list[bytes], int]:
+    """
+    Embed texts using Voyage AI API.
+
+    Args:
+        texts: List of texts to embed.
+        model: Voyage AI model name (e.g., "voyage-code-3").
+        input_type: Type of input for better retrieval ("document" or "query").
+
+    Returns:
+        Tuple of (embedding_blobs, dimension).
+
+    Raises:
+        ImportError: If voyageai package is not installed.
+        ValueError: If VOYAGE_API_KEY is not set.
+    """
+    try:
+        import voyageai
+    except ImportError as e:
+        raise ImportError(
+            "Voyage AI embeddings require the voyageai package. "
+            "Install with: pip install 'ogrep[voyage]'"
+        ) from e
+
+    api_key = os.environ.get(ENV_VOYAGE_API_KEY)
+    if not api_key:
+        raise ValueError(
+            f"{ENV_VOYAGE_API_KEY} environment variable is not set. "
+            "Get an API key from https://www.voyageai.com/"
+        )
+
+    # Get timeout and retry settings
+    timeout_str = os.environ.get(ENV_VOYAGE_TIMEOUT)
+    timeout = float(timeout_str) if timeout_str else DEFAULT_VOYAGE_TIMEOUT
+    retries_str = os.environ.get(ENV_VOYAGE_RETRIES)
+    max_retries = int(retries_str) if retries_str else DEFAULT_VOYAGE_RETRIES
+
+    client = voyageai.Client(
+        api_key=api_key,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+
+    # Voyage API call with timing for slow request detection
+    start_time = time.time()
+    result = client.embed(
+        texts=texts,
+        model=model,
+        input_type=input_type,
+    )
+    elapsed = time.time() - start_time
+
+    # Warn on slow requests (>30s per batch is unusual)
+    if elapsed > 30:
+        import sys
+        print(
+            f"Warning: Voyage API request took {elapsed:.1f}s for {len(texts)} texts",
+            file=sys.stderr,
+        )
+
+    # Convert to normalized float32 blobs
+    blobs = []
+    for emb in result.embeddings:
+        normalized = _l2_normalize(emb)
+        blob = array.array("f", normalized).tobytes()
+        blobs.append(blob)
+
+    dim = len(result.embeddings[0]) if result.embeddings else 0
+    return blobs, dim
+
+
+def _embed_voyage_batched(
+    texts: list[str],
+    model: str,
+    input_type: str = "document",
+    batch_size: int = 128,
+) -> tuple[list[bytes], int]:
+    """
+    Embed texts using Voyage AI API with batching.
+
+    Voyage API has limits on tokens per request, so we batch to stay safe.
+
+    Args:
+        texts: List of texts to embed.
+        model: Voyage AI model name.
+        input_type: Type of input ("document" or "query").
+        batch_size: Maximum texts per API call.
+
+    Returns:
+        Tuple of (embedding_blobs, dimension).
+    """
+    if not texts:
+        return [], 0
+
+    all_blobs: list[bytes] = []
+    dim: int = 0
+
+    # Process in batches
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        blobs, batch_dim = _embed_voyage(batch, model, input_type)
+        all_blobs.extend(blobs)
+        if dim == 0:
+            dim = batch_dim
+
+    return all_blobs, dim
 
 # Default batch sizes for local models (small context windows)
 LOCAL_BATCH_SIZES = [8, 16, 32, 64, 96]
@@ -502,7 +637,14 @@ def embed_texts(
     resolved_model = resolve_model(model)
     resolved_dimensions = resolve_dimensions(dimensions, resolved_model)
 
-    # Create client
+    # Route to Voyage AI backend if applicable
+    if _is_voyage_model(resolved_model):
+        blobs, dim = _embed_voyage_batched(texts, resolved_model, input_type="document")
+        if return_timing:
+            return blobs, dim, time.perf_counter() - start_time
+        return blobs, dim
+
+    # Create OpenAI client for OpenAI/local models
     client, is_local = _create_client()
 
     # Get model limits

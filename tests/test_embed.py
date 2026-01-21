@@ -277,3 +277,108 @@ class TestTokenAwareBatching:
 
         assert len(blobs) == 40
         assert dim > 0
+
+
+class TestVoyageAIEmbeddings:
+    """Tests for Voyage AI embedding backend."""
+
+    def test_is_voyage_model_detection(self) -> None:
+        """Test Voyage model detection."""
+        from ogrep.embed import _is_voyage_model
+
+        # Should detect Voyage models
+        assert _is_voyage_model("voyage-code-3") is True
+        assert _is_voyage_model("voyage-3") is True
+        assert _is_voyage_model("voyage-3-lite") is True
+        assert _is_voyage_model("voyage") is True
+        assert _is_voyage_model("voyage-code") is True
+
+        # Should not detect non-Voyage models
+        assert _is_voyage_model("text-embedding-3-small") is False
+        assert _is_voyage_model("nomic") is False
+        assert _is_voyage_model("small") is False
+
+    def test_voyage_model_in_models_dict(self) -> None:
+        """Test that Voyage models are defined in MODELS dict."""
+        from ogrep.models import MODELS
+
+        assert "voyage-code-3" in MODELS
+        assert "voyage-3" in MODELS
+        assert "voyage-3-lite" in MODELS
+
+    def test_voyage_model_aliases(self) -> None:
+        """Test that Voyage model aliases are defined."""
+        from ogrep.models import MODEL_ALIASES
+
+        assert "voyage" in MODEL_ALIASES
+        assert "voyage-code" in MODEL_ALIASES
+        assert "voyage-lite" in MODEL_ALIASES
+
+        # Aliases should resolve correctly
+        assert MODEL_ALIASES["voyage"] == "voyage-code-3"
+        assert MODEL_ALIASES["voyage-code"] == "voyage-code-3"
+        assert MODEL_ALIASES["voyage-lite"] == "voyage-3-lite"
+
+    def test_voyage_model_has_correct_dimensions(self) -> None:
+        """Test that Voyage models have correct dimension settings."""
+        from ogrep.models import MODELS
+
+        # voyage-code-3 is 1024D
+        assert MODELS["voyage-code-3"].dimensions == 1024
+
+        # voyage-3 is 1024D
+        assert MODELS["voyage-3"].dimensions == 1024
+
+        # voyage-3-lite is 512D
+        assert MODELS["voyage-3-lite"].dimensions == 512
+
+    def test_embed_voyage_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test Voyage embedding with mocked client."""
+        from unittest.mock import MagicMock, patch
+
+        # Create mock Voyage client and response
+        mock_result = MagicMock()
+        mock_result.embeddings = [
+            [0.1, 0.2, 0.3],  # 3D for testing
+            [0.4, 0.5, 0.6],
+        ]
+
+        mock_client = MagicMock()
+        mock_client.embed.return_value = mock_result
+
+        mock_voyageai = MagicMock()
+        mock_voyageai.Client.return_value = mock_client
+
+        # Set API key
+        monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
+
+        with patch.dict("sys.modules", {"voyageai": mock_voyageai}):
+            from ogrep.embed import _embed_voyage
+
+            blobs, dim = _embed_voyage(["text1", "text2"], "voyage-code-3")
+
+            # Should return correct number of blobs
+            assert len(blobs) == 2
+            # Dimension should match embeddings
+            assert dim == 3
+            # Client should be called with correct params
+            mock_client.embed.assert_called_once()
+            call_kwargs = mock_client.embed.call_args.kwargs
+            assert call_kwargs["texts"] == ["text1", "text2"]
+            assert call_kwargs["model"] == "voyage-code-3"
+            assert call_kwargs["input_type"] == "document"
+
+    def test_voyage_requires_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that Voyage embedding requires API key."""
+        from unittest.mock import MagicMock, patch
+
+        # Clear API key
+        monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+        mock_voyageai = MagicMock()
+
+        with patch.dict("sys.modules", {"voyageai": mock_voyageai}):
+            from ogrep.embed import _embed_voyage
+
+            with pytest.raises(ValueError, match="VOYAGE_API_KEY"):
+                _embed_voyage(["test"], "voyage-code-3")

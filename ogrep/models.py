@@ -218,6 +218,62 @@ MODELS: dict[str, EmbeddingModel] = {
         context_tokens=8192,
         max_batch_size=32,  # Large context allows bigger batches
     ),
+    # Voyage AI models (cloud API)
+    "voyage-code-3": EmbeddingModel(
+        id="voyage-code-3",
+        name="Voyage Code 3",
+        description="Code-optimized embedding model from Voyage AI (1024D)",
+        dimensions=1024,
+        max_dimensions=1024,
+        price_per_million=0.06,
+        use_cases=(
+            "Code search",
+            "Code retrieval",
+            "Technical documentation",
+            "Multi-language code",
+        ),
+        notes="Requires VOYAGE_API_KEY. Best for code-specific queries. 32K token context.",
+        optimal_chunk_lines=60,
+        optimal_overlap_lines=15,
+        context_tokens=32000,
+        max_batch_size=128,
+    ),
+    "voyage-3": EmbeddingModel(
+        id="voyage-3",
+        name="Voyage 3",
+        description="General-purpose embedding model from Voyage AI (1024D)",
+        dimensions=1024,
+        max_dimensions=1024,
+        price_per_million=0.06,
+        use_cases=(
+            "General semantic search",
+            "Multi-domain",
+            "Document retrieval",
+        ),
+        notes="Requires VOYAGE_API_KEY. General-purpose, high quality. 32K token context.",
+        optimal_chunk_lines=60,
+        optimal_overlap_lines=15,
+        context_tokens=32000,
+        max_batch_size=128,
+    ),
+    "voyage-3-lite": EmbeddingModel(
+        id="voyage-3-lite",
+        name="Voyage 3 Lite",
+        description="Lightweight Voyage AI embedding model (512D)",
+        dimensions=512,
+        max_dimensions=512,
+        price_per_million=0.02,
+        use_cases=(
+            "Fast semantic search",
+            "Cost-effective",
+            "High throughput",
+        ),
+        notes="Requires VOYAGE_API_KEY. Faster and cheaper than voyage-3.",
+        optimal_chunk_lines=60,
+        optimal_overlap_lines=15,
+        context_tokens=32000,
+        max_batch_size=128,
+    ),
 }
 
 # Model aliases for convenience
@@ -233,6 +289,10 @@ MODEL_ALIASES: dict[str, str] = {
     "nomic": "nomic-embed-text-v1.5",
     "minilm": "text-embedding-all-minilm-l6-v2-embedding",
     "local": "nomic-embed-text-v1.5",  # Default local model
+    # Voyage AI aliases
+    "voyage": "voyage-code-3",  # Default Voyage model (code-optimized)
+    "voyage-code": "voyage-code-3",
+    "voyage-lite": "voyage-3-lite",
 }
 
 

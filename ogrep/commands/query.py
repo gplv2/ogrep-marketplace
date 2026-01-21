@@ -30,9 +30,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..search import FUSION_METHOD, Hit
+from ..search import FUSION_METHOD, Hit, PathFilter, filter_hits_by_path
 from ..search import query as query_db
-from ._common import detect_language, require_embedding_config, resolve_db_path
+from ._common import detect_language, get_current_branch, require_embedding_config, resolve_db_path
+
+# Over-fetch multiplier when path filtering is active
+# We fetch more results to ensure we have enough after filtering
+PATH_FILTER_OVERFETCH = 3
 
 
 def _get_index_info(db_path: Path) -> tuple[str, int] | None:
@@ -76,6 +80,13 @@ def _format_json_result(hit: Hit, repo_root: Path, rank: int) -> dict:
     # Build chunk_ref: relative_path:chunk_index
     chunk_ref = f"{rel_path}:{hit.chunk_index}"
 
+    # Build confidence output - use detailed object if available
+    if hit.confidence_details is not None:
+        confidence = hit.confidence_details.to_dict()
+    else:
+        # Fallback for legacy mode (absolute confidence)
+        confidence = hit.confidence
+
     return {
         "rank": rank,
         "chunk_ref": chunk_ref,
@@ -85,7 +96,7 @@ def _format_json_result(hit: Hit, repo_root: Path, rank: int) -> dict:
         "start_line": hit.start_line,
         "end_line": hit.end_line,
         "score": round(hit.score, 4),
-        "confidence": hit.confidence,
+        "confidence": confidence,
         "language": detect_language(hit.path),
         "text": hit.text,
     }
@@ -102,6 +113,81 @@ def _format_text_output(hits: list[Hit]) -> None:
         print(f"{h.path}:{h.start_line}-{h.end_line}  score={h.score:0.4f} ({h.confidence})")
         snippet = h.text.strip().replace("\n", "\\n")
         print(f"  {snippet[:240]}")
+
+
+def _aggregate_to_summary(hits: list[Hit], repo_root: Path) -> list[dict]:
+    """
+    Aggregate hits into file-level summary.
+
+    Groups chunks by file and computes statistics for each file.
+
+    Args:
+        hits: List of Hit objects (already filtered/sorted).
+        repo_root: Repository root for relative path calculation.
+
+    Returns:
+        List of file summary dictionaries, sorted by best_score descending.
+    """
+    from collections import defaultdict
+
+    from ..search import assign_confidence
+
+    # Group hits by file path
+    by_file: dict[str, list[Hit]] = defaultdict(list)
+    for hit in hits:
+        by_file[hit.path].append(hit)
+
+    # Build summary for each file
+    summaries = []
+    for path, file_hits in by_file.items():
+        # Calculate relative path
+        try:
+            rel_path = str(Path(path).relative_to(repo_root))
+        except ValueError:
+            rel_path = path
+
+        # Compute statistics
+        scores = [h.score for h in file_hits]
+        best_score = max(scores)
+        min_score = min(scores)
+
+        # Get confidence for best score (using relative to top result of all hits)
+        top_overall_score = hits[0].score if hits else 0.0
+        level, _ = assign_confidence(best_score, top_overall_score, rank=1)
+
+        # Extract line ranges
+        lines_covered = [[h.start_line, h.end_line] for h in sorted(file_hits, key=lambda x: x.start_line)]
+
+        summaries.append({
+            "path": path,
+            "relative_path": rel_path,
+            "chunks_matched": len(file_hits),
+            "best_score": round(best_score, 4),
+            "score_range": [round(min_score, 4), round(best_score, 4)],
+            "confidence": level,
+            "language": detect_language(path),
+            "lines_covered": lines_covered,
+        })
+
+    # Sort by best_score descending
+    summaries.sort(key=lambda x: x["best_score"], reverse=True)
+    return summaries
+
+
+def _format_summary_text(summaries: list[dict]) -> None:
+    """
+    Print file summaries in human-readable text format.
+
+    Args:
+        summaries: List of file summary dictionaries.
+    """
+    for s in summaries:
+        line_ranges = ", ".join(f"{r[0]}-{r[1]}" for r in s["lines_covered"])
+        print(
+            f"{s['relative_path']}  {s['chunks_matched']} chunks  "
+            f"score={s['best_score']:.4f} ({s['confidence']})"
+        )
+        print(f"  lines: {line_ranges}")
 
 
 def _check_stale_files(db_path: Path, repo_root: Path) -> list[Path]:
@@ -295,15 +381,51 @@ def cmd_query(args: argparse.Namespace) -> int:
     # Check reranking options
     do_rerank = getattr(args, "rerank", False)
     rerank_top = getattr(args, "rerank_top", None)
+    rerank_model = getattr(args, "rerank_model", None)
 
-    # --rerank-top implies --rerank
-    if rerank_top is not None:
+    # --rerank-top and --rerank-model imply --rerank
+    if rerank_top is not None or rerank_model is not None:
         do_rerank = True
+
+        # Validate: --rerank-top must be >= -n (only if explicitly specified)
+        # Otherwise we can't return -n results from a smaller rerank pool
+        if rerank_top is not None and rerank_top < args.top:
+            error_msg = f"--rerank-top ({rerank_top}) must be >= -n ({args.top})"
+            if use_json:
+                print(
+                    json.dumps(
+                        {
+                            "error": error_msg,
+                            "error_code": "INVALID_RERANK_ARGS",
+                            "suggestion": (
+                                f"Use --rerank-top {args.top} or higher, "
+                                f"or reduce -n to {rerank_top} or lower"
+                            ),
+                        }
+                    )
+                )
+            else:
+                print(f"Error: {error_msg}", file=sys.stderr)
+                print(
+                    f"Suggestion: Use --rerank-top {args.top} or higher, "
+                    f"or reduce -n to {rerank_top} or lower",
+                    file=sys.stderr,
+                )
+            return 1
+
+    # Build path filter from CLI args
+    glob_patterns = getattr(args, "glob", None)
+    exclude_patterns = getattr(args, "exclude", None)
+    path_filter = PathFilter(
+        glob_patterns=glob_patterns,
+        exclude_patterns=exclude_patterns,
+    )
+    has_path_filter = not path_filter.is_empty()
 
     # Time the search
     start_time = time.perf_counter()
 
-    # If reranking, fetch more candidates initially
+    # Calculate fetch_limit with over-fetching for reranking and/or filtering
     fetch_limit = args.top
     if do_rerank:
         # Fetch enough for reranking (default 50, or rerank_top if specified)
@@ -312,6 +434,13 @@ def cmd_query(args: argparse.Namespace) -> int:
         rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
         fetch_limit = max(args.top, rerank_n)
 
+    # Over-fetch when path filtering is active to ensure enough results after filtering
+    if has_path_filter:
+        fetch_limit = max(fetch_limit, args.top * PATH_FILTER_OVERFETCH)
+
+    # Get branch - from CLI arg or auto-detect
+    branch = getattr(args, "branch", None) or get_current_branch(repo_root)
+
     hits, fts_available = query_db(
         db_path=db,
         q=query_text,
@@ -319,6 +448,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         model=index_model,
         dimensions=index_dim,
         mode=search_mode,
+        branch=branch,
     )
 
     # Apply reranking if requested
@@ -330,16 +460,30 @@ def cmd_query(args: argparse.Namespace) -> int:
     if do_rerank and hits:
         try:
             from ..rerank import (
+                _is_flashrank_model,
                 clear_captured_warnings,
                 get_captured_warnings,
                 is_reranker_available,
                 rerank_results,
             )
 
-            if is_reranker_available():
+            if is_reranker_available(rerank_model):
                 rerank_n = rerank_top if rerank_top is not None else DEFAULT_RERANK_TOPN
                 try:
-                    hits = rerank_results(query_text, hits, top_n=rerank_n)
+                    # Get cache path for L3 caching (if caching enabled)
+                    cache_path = None
+                    no_cache = getattr(args, "no_cache", False)
+                    if not no_cache:
+                        from ..cache import get_cache_path
+                        cache_path = get_cache_path(db)
+
+                    hits = rerank_results(
+                        query_text,
+                        hits,
+                        top_n=rerank_n,
+                        model_name=rerank_model,
+                        cache_path=cache_path,
+                    )
                     # Trim to requested number after reranking
                     hits = hits[: args.top]
                     reranked = True
@@ -357,16 +501,22 @@ def cmd_query(args: argparse.Namespace) -> int:
                         print(f"Warning: {rerank_skip_reason}", file=sys.stderr)
                         print("Returning results without reranking.", file=sys.stderr)
             else:
-                # sentence-transformers not installed
+                # Required backend not installed
                 rerank_skipped = True
-                rerank_skip_reason = "sentence-transformers not installed"
+                if rerank_model and _is_flashrank_model(rerank_model):
+                    rerank_skip_reason = "flashrank not installed"
+                    install_cmd = "pip install 'ogrep[rerank-light]'"
+                else:
+                    rerank_skip_reason = "sentence-transformers not installed"
+                    install_cmd = "pip install 'ogrep[rerank]'"
+
                 if not use_json:
                     print(
-                        "Warning: Reranking requested but sentence-transformers not installed.",
+                        f"Warning: Reranking requested but {rerank_skip_reason}.",
                         file=sys.stderr,
                     )
                     print(
-                        "Install with: pip install 'ogrep[rerank]'",
+                        f"Install with: {install_cmd}",
                         file=sys.stderr,
                     )
                     print("Returning results without reranking.", file=sys.stderr)
@@ -379,6 +529,16 @@ def cmd_query(args: argparse.Namespace) -> int:
                 print("Returning results without reranking.", file=sys.stderr)
 
     search_time_ms = int((time.perf_counter() - start_time) * 1000)
+
+    # Apply path filtering if configured
+    filter_stats = None
+    if has_path_filter:
+        hits, filter_stats = filter_hits_by_path(hits, path_filter, args.top)
+        # Trim to requested number after filtering
+        hits = hits[: args.top]
+        # Add filter warning if applicable
+        if filter_stats.warning and not use_json:
+            print(f"Warning: {filter_stats.warning}", file=sys.stderr)
 
     # Get total chunk count for stats (model/dim already fetched above)
     con = sqlite3.connect(str(db))
@@ -398,72 +558,162 @@ def cmd_query(args: argparse.Namespace) -> int:
             "Run 'ogrep reindex .' to enable hybrid search."
         )
 
+    # Check if summary mode is requested
+    use_summarize = getattr(args, "summarize", False)
+
     if use_json:
-        # Build JSON output using helper
-        results = [_format_json_result(h, repo_root, rank) for rank, h in enumerate(hits, 1)]
+        if use_summarize:
+            # Summary mode: aggregate to file-level
+            file_summaries = _aggregate_to_summary(hits, repo_root)
 
-        # Calculate confidence distribution
-        confidence_summary = {"high": 0, "medium": 0, "low": 0, "very_low": 0}
-        for h in hits:
-            confidence_summary[h.confidence] += 1
-
-        output: dict[str, Any] = {
-            "query": query_text,
-            "results": results,
-            "stats": {
-                "total_results": len(hits),
-                "total_chunks": total_chunks,
+            output: dict[str, Any] = {
+                "query": query_text,
+                "mode": search_mode or "hybrid",
+                "summary": True,
+                "total_chunks_matched": len(hits),
+                "files": file_summaries,
                 "search_time_ms": search_time_ms,
+                "recommendation": "Use 'ogrep chunk <path>:<N>' to expand specific files",
+            }
+
+            # Add basic stats
+            output["stats"] = {
+                "files_matched": len(file_summaries),
+                "total_chunks": total_chunks,
                 "search_mode": search_mode or "hybrid",
-                "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
                 "reranked": reranked,
-                "rerank_requested": do_rerank,
                 "fts_available": fts_available,
-                "index_model": index_model,
-                "index_dimensions": index_dim,
-                "refreshed_files": refreshed_files,
-                "confidence_summary": confidence_summary,
-            },
-        }
+                "branch": branch,
+            }
+        else:
+            # Full results mode (default)
+            results = [_format_json_result(h, repo_root, rank) for rank, h in enumerate(hits, 1)]
 
-        # Add rerank skip info if reranking was requested but couldn't be performed
-        if rerank_skipped:
-            output["stats"]["rerank_skipped"] = True
-            output["stats"]["rerank_skip_reason"] = rerank_skip_reason
+            # Calculate confidence distribution
+            confidence_summary = {"high": 0, "medium": 0, "low": 0, "very_low": 0}
+            for h in hits:
+                confidence_summary[h.confidence] += 1
 
-            # Build suggestion based on skip reason
-            if "not installed" in (rerank_skip_reason or ""):
-                output["suggestion"] = (
-                    "Reranking requires sentence-transformers. "
-                    "Install with: pip install 'ogrep[rerank]' "
-                    "Or remove --rerank flag to avoid this warning."
+            output = {
+                "query": query_text,
+                "branch": branch,
+                "results": results,
+                "stats": {
+                    "total_results": len(hits),
+                    "total_chunks": total_chunks,
+                    "search_time_ms": search_time_ms,
+                    "search_mode": search_mode or "hybrid",
+                    "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
+                    "reranked": reranked,
+                    "rerank_requested": do_rerank,
+                    "fts_available": fts_available,
+                    "index_model": index_model,
+                    "index_dimensions": index_dim,
+                    "refreshed_files": refreshed_files,
+                    "confidence_summary": confidence_summary,
+                    "branch": branch,
+                },
+            }
+
+            # Add rerank model info if reranking was performed
+            if reranked:
+                output["stats"]["rerank_model"] = rerank_model or "bge-m3"
+
+                # Hint: reranking typically doesn't help with high-quality embeddings
+                high_quality_models = (
+                    "voyage-code-3",
+                    "voyage-3",
+                    "voyage-code",
+                    "voyage",
+                    "text-embedding-3-small",
+                    "text-embedding-3-large",
+                    "small",
+                    "large",
                 )
-            else:
-                output["suggestion"] = (
-                    "Reranking failed on this device. Results returned without reranking. "
-                    "Run 'ogrep device' to check hardware support. "
-                    "Consider removing --rerank flag for this device."
-                )
+                if index_model and index_model.lower() in high_quality_models:
+                    output["rerank_hint"] = (
+                        f"Note: Reranking typically does not improve results with {index_model}. "
+                        "Benchmarks show it can degrade quality. Consider querying without "
+                        "--rerank for optimal results."
+                    )
+
+            # Add rerank skip info if reranking was requested but couldn't be performed
+            if rerank_skipped:
+                output["stats"]["rerank_skipped"] = True
+                output["stats"]["rerank_skip_reason"] = rerank_skip_reason
+
+                # Build suggestion based on skip reason
+                if "flashrank not installed" in (rerank_skip_reason or ""):
+                    output["suggestion"] = (
+                        "FlashRank reranking requires the flashrank package. "
+                        "Install with: pip install 'ogrep[rerank-light]' "
+                        "Or use --rerank-model bge-m3 for sentence-transformers backend."
+                    )
+                elif "sentence-transformers not installed" in (rerank_skip_reason or ""):
+                    output["suggestion"] = (
+                        "Reranking requires sentence-transformers. "
+                        "Install with: pip install 'ogrep[rerank]' "
+                        "Or use --rerank-model flashrank for lightweight ONNX backend."
+                    )
+                else:
+                    output["suggestion"] = (
+                        "Reranking failed on this device. Results returned without reranking. "
+                        "Run 'ogrep device' to check hardware support. "
+                        "Consider using --rerank-model flashrank for lightweight ONNX backend."
+                    )
+
+            # Add AST mode info if available
+            if index_ast_mode is not None:
+                output["stats"]["ast_mode"] = index_ast_mode
+                if not index_ast_mode:
+                    output["hint"] = (
+                        "Index was built without AST chunking. For semantic boundaries, "
+                        "install tree-sitter support and reindex: "
+                        "pip install 'ogrep[ast]' && ogrep reindex ."
+                    )
+
+        # Add path filter stats if filtering was applied (both modes)
+        if filter_stats is not None:
+            output["stats"]["path_filter"] = filter_stats.to_dict()
+            # Add filter warning to all_warnings if present
+            if filter_stats.warning:
+                all_warnings.append(filter_stats.warning)
 
         # Add warnings if any (includes CUDA, FTS5, reranker issues)
         if all_warnings:
             output["warnings"] = all_warnings
 
-        # Add AST mode info if available
-        if index_ast_mode is not None:
-            output["stats"]["ast_mode"] = index_ast_mode
-            if not index_ast_mode:
-                output["hint"] = (
-                    "Index was built without AST chunking. For better semantic boundaries, "
-                    "run: ogrep reindex . --ast"
-                )
         print(json.dumps(output, indent=2))
     else:
         # Print warnings first for text output (to stderr)
         for warning in all_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
 
-        # Human-readable output using helper
-        _format_text_output(hits)
+        # Print rerank hint for high-quality embeddings
+        if reranked and index_model:
+            high_quality_models = (
+                "voyage-code-3",
+                "voyage-3",
+                "voyage-code",
+                "voyage",
+                "text-embedding-3-small",
+                "text-embedding-3-large",
+                "small",
+                "large",
+            )
+            if index_model.lower() in high_quality_models:
+                print(
+                    f"Hint: Reranking may not improve results with {index_model}. "
+                    "Try without --rerank for potentially better results.",
+                    file=sys.stderr,
+                )
+
+        if use_summarize:
+            # Summary mode: aggregate to file-level
+            file_summaries = _aggregate_to_summary(hits, repo_root)
+            _format_summary_text(file_summaries)
+        else:
+            # Human-readable output using helper
+            _format_text_output(hits)
 
     return 0

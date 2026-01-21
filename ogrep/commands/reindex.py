@@ -67,13 +67,25 @@ def cmd_reindex(args: argparse.Namespace) -> int:
     if overlap is None:
         overlap = get_optimal_overlap(args.model)
 
-    # Remove existing database
+    # Remove existing database and cache
     removed_existing = False
+    cache_removed = False
     if db.exists():
         db.unlink()
         removed_existing = True
+
+        # Also delete cache file if it exists
+        from ..cache import get_cache_path
+
+        cache_path = get_cache_path(db)
+        if cache_path.exists():
+            cache_path.unlink()
+            cache_removed = True
+
         if not use_json:
             print(f"Removed existing index at {db}")
+            if cache_removed:
+                print(f"Removed cache at {cache_path}")
 
     # Reindex
     try:
@@ -100,6 +112,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
     # Log reindex action to history (overrides the "index" entry from index_path)
     # We update the most recent entry to be "reindex" for clarity
+    # Note: db_version is already incremented by index_path, no need to increment again
     con = sqlite3.connect(str(db))
     try:
         con.execute(
@@ -112,21 +125,22 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         con.close()
 
     if use_json:
-        print(
-            json.dumps(
-                {
-                    "database": str(db),
-                    "removed_existing": removed_existing,
-                    "files_indexed": stats.files_indexed,
-                    "files_skipped": stats.files_skipped,
-                    "files_scanned": stats.files_scanned,
-                    "chunks_total": stats.chunks_total,
-                    "chunks_embedded": stats.chunks_embedded,
-                    "chunks_reused": stats.chunks_reused,
-                    "tokens_saved_estimate": stats.tokens_saved_estimate,
-                }
-            )
-        )
+        result = {
+            "database": str(db),
+            "removed_existing": removed_existing,
+            "cache_removed": cache_removed,
+            "files_indexed": stats.files_indexed,
+            "files_skipped": stats.files_skipped,
+            "files_scanned": stats.files_scanned,
+            "chunks_total": stats.chunks_total,
+            "chunks_embedded": stats.chunks_embedded,
+            "chunks_reused": stats.chunks_reused,
+            "tokens_saved_estimate": stats.tokens_saved_estimate,
+            "ast_mode": stats.ast_mode,
+        }
+        if stats.ast_hint:
+            result["ast_hint"] = stats.ast_hint
+        print(json.dumps(result))
     else:
         print(f"Reindexed into {db}")
         print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")

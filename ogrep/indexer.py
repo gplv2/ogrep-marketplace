@@ -380,6 +380,9 @@ class IndexStats:
     chunks_reused_local: int = 0  # Reused from same file edit
     chunks_embedded: int = 0
     indexed_files: list[str] | None = None  # Paths of files that were indexed (verbose mode)
+    branch: str | None = None  # Git branch that was indexed
+    ast_mode: str | None = None  # "enabled", "disabled", or "unavailable"
+    ast_hint: str | None = None  # Hint message when AST is not available
 
     @property
     def tokens_saved_estimate(self) -> int:
@@ -560,9 +563,11 @@ def _read_file_if_indexable(
     return b
 
 
-def _is_file_unchanged(con, rel_path: str, sha: str, mtime_ns: int, size: int) -> tuple:
+def _is_file_unchanged(
+    con, rel_path: str, sha: str, mtime_ns: int, size: int, branch: str
+) -> tuple:
     """
-    Check if file is already indexed and unchanged.
+    Check if file is already indexed and unchanged on this branch.
 
     Args:
         con: Database connection.
@@ -570,14 +575,15 @@ def _is_file_unchanged(con, rel_path: str, sha: str, mtime_ns: int, size: int) -
         sha: SHA-256 hash of file contents.
         mtime_ns: Modification time in nanoseconds.
         size: File size in bytes.
+        branch: Git branch name for scoping.
 
     Returns:
         Tuple of (is_unchanged, existing_row).
-        existing_row is None if file not in database.
+        existing_row is None if file not in database for this branch.
     """
     row = con.execute(
-        "SELECT id, mtime_ns, size, sha256 FROM files WHERE path=?",
-        (rel_path,),
+        "SELECT id, mtime_ns, size, sha256 FROM files WHERE path=? AND branch=?",
+        (rel_path, branch),
     ).fetchone()
 
     if row and int(row[1]) == mtime_ns and int(row[2]) == size and str(row[3]) == sha:
@@ -612,10 +618,11 @@ def _upsert_file_record(
     mtime_ns: int,
     size: int,
     sha: str,
+    branch: str,
     existing_row: tuple | None,
 ) -> int:
     """
-    Insert or update file record in database.
+    Insert or update file record in database for a specific branch.
 
     Args:
         con: Database connection.
@@ -623,6 +630,7 @@ def _upsert_file_record(
         mtime_ns: Modification time in nanoseconds.
         size: File size in bytes.
         sha: SHA-256 hash of file contents.
+        branch: Git branch name for scoping.
         existing_row: Existing row from files table (or None).
 
     Returns:
@@ -637,8 +645,8 @@ def _upsert_file_record(
         )
     else:
         cur = con.execute(
-            "INSERT INTO files(path, mtime_ns, size, sha256) VALUES(?,?,?,?)",
-            (rel_path, mtime_ns, size, sha),
+            "INSERT INTO files(path, branch, mtime_ns, size, sha256) VALUES(?,?,?,?,?)",
+            (rel_path, branch, mtime_ns, size, sha),
         )
         file_id = int(cur.lastrowid)
     return file_id
@@ -760,6 +768,7 @@ def index_path(
     detect: bool = True,
     verbose: bool = False,
     ast: bool = False,
+    branch: str | None = None,
 ) -> IndexStats:
     """
     Index a directory for semantic search.
@@ -790,6 +799,8 @@ def index_path(
         verbose: Track and return paths of indexed files (default False).
         ast: Use AST-aware chunking for semantic boundaries (default False).
             Requires: pip install "ogrep[ast]"
+        branch: Git branch name for scoping (None for auto-detect).
+            Files are indexed per-branch, enabling branch-aware search.
 
     Returns:
         IndexStats with counts of files/chunks processed and reused.
@@ -813,11 +824,27 @@ def index_path(
     model = resolve_model(model)
     stats = IndexStats(indexed_files=[] if verbose else None)
 
-    # Initialize AST chunker if requested
+    # Resolve branch - auto-detect if not specified
+    if branch is None:
+        from .commands._common import get_current_branch
+
+        branch = get_current_branch(root)
+
+    # Initialize AST chunker
+    # ast=None: auto-detect (use AST when available, silent fallback)
+    # ast=False: explicitly disabled via --no-ast
+    # ast=True: explicitly requested (legacy, warn if unavailable)
     ast_chunker = None
-    if ast:
+    if ast is False:
+        # Explicitly disabled
+        stats.ast_mode = "disabled"
+    else:
+        # Auto-detect (ast=None) or explicitly requested (ast=True)
         ast_chunker = _get_ast_chunker()
-        if ast_chunker is None:
+        if ast_chunker is not None:
+            stats.ast_mode = "enabled"
+        elif ast is True:
+            # Explicitly requested but unavailable - warn
             import sys
 
             print(
@@ -826,6 +853,12 @@ def index_path(
                 "Falling back to line-based chunking.",
                 file=sys.stderr,
             )
+            stats.ast_mode = "unavailable"
+            stats.ast_hint = "Install AST support: pip install 'ogrep[ast]'"
+        else:
+            # Auto-detect but unavailable - silent fallback with hint
+            stats.ast_mode = "unavailable"
+            stats.ast_hint = "AST chunking not available. Install: pip install 'ogrep[ast]'"
 
     # Load .ogrepignore patterns and combine with CLI excludes
     ignore_patterns = load_ogrepignore(root)
@@ -839,7 +872,7 @@ def index_path(
     # Store AST mode in metadata (tracks how index was built)
     from .db import set_metadata
 
-    ast_mode_effective = "true" if (ast and ast_chunker is not None) else "false"
+    ast_mode_effective = "true" if (ast is not False and ast_chunker is not None) else "false"
     set_metadata(con, "ast_mode", ast_mode_effective)
 
     # Get expected dimensions
@@ -872,7 +905,9 @@ def index_path(
         sha = _sha256_bytes(b)
         rel = str(p.resolve())
 
-        is_unchanged, existing_row = _is_file_unchanged(con, rel, sha, st.st_mtime_ns, st.st_size)
+        is_unchanged, existing_row = _is_file_unchanged(
+            con, rel, sha, st.st_mtime_ns, st.st_size, branch
+        )
         if is_unchanged:
             stats.files_skipped += 1
             continue
@@ -933,7 +968,9 @@ def index_path(
         # ── Phase 6: Atomic DB write (transaction) ──
         try:
             con.execute("BEGIN IMMEDIATE")
-            file_id = _upsert_file_record(con, rel, st.st_mtime_ns, st.st_size, sha, existing_row)
+            file_id = _upsert_file_record(
+                con, rel, st.st_mtime_ns, st.st_size, sha, branch, existing_row
+            )
             _store_chunks(
                 con, file_id, chunks, chunk_hashes, new_embeddings, reusable_indices, model
             )
@@ -956,7 +993,19 @@ def index_path(
                 "chunks_embedded": stats.chunks_embedded,
                 "chunks_reused": stats.chunks_reused,
                 "indexed_files": stats.indexed_files,
+                "branch": branch,
             },
         )
+
+        # Increment db_version to invalidate L2 cache
+        from .cache import increment_db_version
+
+        increment_db_version(con)
+
+    # Store current branch in metadata
+    set_metadata(con, "current_branch", branch)
+
+    # Set branch in stats for reporting
+    stats.branch = branch
 
     return stats

@@ -81,11 +81,13 @@ def add_indexing_args(parser: argparse.ArgumentParser) -> None:
         "Example: -i '*.md' to index markdown files",
     )
     parser.add_argument(
-        "--ast",
-        action="store_true",
-        help="Use AST-aware chunking for semantic boundaries. "
-        "Chunks by function/class instead of lines. "
-        "Requires: pip install 'ogrep[ast]'",
+        "--no-ast",
+        action="store_false",
+        dest="ast",
+        default=None,  # None = auto-detect (use AST when available)
+        help="Disable AST-aware chunking, use line-based chunking instead. "
+        "By default, AST chunking is used when tree-sitter is available "
+        "(pip install 'ogrep[ast]').",
     )
 
 

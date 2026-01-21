@@ -24,10 +24,12 @@ PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE,
+  path TEXT NOT NULL,
+  branch TEXT NOT NULL DEFAULT 'default',
   mtime_ns INTEGER NOT NULL,
   size INTEGER NOT NULL,
-  sha256 TEXT NOT NULL
+  sha256 TEXT NOT NULL,
+  UNIQUE(path, branch)
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -98,12 +100,19 @@ END;
 """
 
 
+class DatabaseError(Exception):
+    """Raised when database operations fail with helpful context."""
+
+    pass
+
+
 def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     """
     Connect to the ogrep SQLite database, creating it if necessary.
 
     Creates the parent directory if it doesn't exist, opens the database,
-    and initializes the schema if tables don't exist.
+    and initializes the schema if tables don't exist. Also runs migrations
+    for existing databases (e.g., adding branch column).
 
     Args:
         db_path: Path to the SQLite database file.
@@ -114,14 +123,70 @@ def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
     Returns:
         An open sqlite3.Connection with the schema initialized.
 
+    Raises:
+        DatabaseError: If the database cannot be opened or initialized,
+            with a helpful error message explaining the issue.
+
     Example:
         >>> con = connect(Path(".ogrep/index.sqlite"))
         >>> con.execute("SELECT COUNT(*) FROM files").fetchone()
         (0,)
     """
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(db_path))
-    con.executescript(SCHEMA)
+    # Create parent directory
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise DatabaseError(
+            f"Cannot create database directory '{db_path.parent}': {e}. "
+            f"Check that you have write permissions to this location."
+        ) from e
+
+    # Open database
+    try:
+        con = sqlite3.connect(str(db_path))
+    except sqlite3.OperationalError as e:
+        error_msg = str(e).lower()
+        if "unable to open" in error_msg:
+            # Check if file exists but is not readable
+            if db_path.exists():
+                raise DatabaseError(
+                    f"Cannot open database '{db_path}': file exists but is not accessible. "
+                    f"Check file permissions or remove the corrupted file with: rm '{db_path}'"
+                ) from e
+            else:
+                raise DatabaseError(
+                    f"Cannot create database '{db_path}': {e}. "
+                    f"Check that you have write permissions to '{db_path.parent}'."
+                ) from e
+        raise DatabaseError(f"Database error opening '{db_path}': {e}") from e
+
+    # Initialize schema
+    try:
+        con.executescript(SCHEMA)
+    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+        con.close()
+        error_msg = str(e).lower()
+        if "database is locked" in error_msg:
+            raise DatabaseError(
+                f"Database '{db_path}' is locked by another process. "
+                f"Wait for other ogrep commands to finish, or remove stale locks."
+            ) from e
+        if "disk i/o error" in error_msg or "readonly" in error_msg:
+            raise DatabaseError(
+                f"Cannot write to database '{db_path}': {e}. "
+                f"Check disk space and write permissions."
+            ) from e
+        if "malformed" in error_msg or "corrupt" in error_msg or "not a database" in error_msg:
+            raise DatabaseError(
+                f"Database '{db_path}' is corrupted or not a valid SQLite database. "
+                f"Remove it and reindex: rm '{db_path}' && ogrep index ."
+            ) from e
+        raise DatabaseError(
+            f"Failed to initialize database '{db_path}': {e}"
+        ) from e
+
+    # Run migrations for existing databases
+    _migrate_branch_column(con)
 
     if init_fts:
         try:
@@ -269,3 +334,105 @@ def get_all_metadata(con: sqlite3.Connection) -> dict[str, str]:
     """
     rows = con.execute("SELECT key, value FROM index_metadata").fetchall()
     return dict(rows)
+
+
+def _migrate_branch_column(con: sqlite3.Connection) -> bool:
+    """
+    Migrate existing database to add branch column if missing.
+
+    This handles databases created before branch-aware indexing was added.
+    Existing files get branch='default'.
+
+    SQLite doesn't allow modifying UNIQUE constraints in-place, so we use
+    the table recreation approach:
+    1. Create new table with correct schema
+    2. Copy data from old table
+    3. Drop old table
+    4. Rename new table
+
+    Args:
+        con: Open database connection.
+
+    Returns:
+        True if migration was performed, False if already migrated.
+    """
+    # Check if branch column exists
+    columns = con.execute("PRAGMA table_info(files)").fetchall()
+    column_names = {col[1] for col in columns}
+
+    if "branch" in column_names:
+        return False  # Already migrated
+
+    # SQLite doesn't allow dropping auto-generated unique indexes,
+    # so we need to recreate the table with the new schema
+
+    # Step 1: Create new table with branch column and updated unique constraint
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS files_new (
+            id INTEGER PRIMARY KEY,
+            path TEXT NOT NULL,
+            branch TEXT NOT NULL DEFAULT 'default',
+            mtime_ns INTEGER NOT NULL,
+            size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            UNIQUE(path, branch)
+        )
+    """)
+
+    # Step 2: Copy data from old table (all existing files get branch='default')
+    con.execute("""
+        INSERT INTO files_new (id, path, branch, mtime_ns, size, sha256)
+        SELECT id, path, 'default', mtime_ns, size, sha256 FROM files
+    """)
+
+    # Step 3: Drop old table
+    con.execute("DROP TABLE files")
+
+    # Step 4: Rename new table
+    con.execute("ALTER TABLE files_new RENAME TO files")
+
+    con.commit()
+    return True
+
+
+def get_indexed_branches(con: sqlite3.Connection) -> set[str]:
+    """
+    Get all branches that have indexed files.
+
+    Returns:
+        Set of branch names.
+    """
+    rows = con.execute("SELECT DISTINCT branch FROM files").fetchall()
+    return {row[0] for row in rows}
+
+
+def get_branch_file_counts(con: sqlite3.Connection) -> dict[str, int]:
+    """
+    Get file counts per branch.
+
+    Returns:
+        Dict mapping branch name to file count.
+    """
+    rows = con.execute(
+        "SELECT branch, COUNT(*) FROM files GROUP BY branch ORDER BY COUNT(*) DESC"
+    ).fetchall()
+    return dict(rows)
+
+
+def delete_branch_files(con: sqlite3.Connection, branch: str) -> int:
+    """
+    Delete all file entries for a specific branch.
+
+    Note: Chunks are deleted via CASCADE, but shared embeddings
+    (same text_sha256) used by other branches are preserved.
+
+    Args:
+        con: Open database connection.
+        branch: Branch name to delete.
+
+    Returns:
+        Number of files deleted.
+    """
+    cur = con.execute("DELETE FROM files WHERE branch = ?", (branch,))
+    con.commit()
+    return cur.rowcount

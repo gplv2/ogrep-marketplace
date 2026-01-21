@@ -14,33 +14,75 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ---
 
-## What's New in v0.7.2
+## What's New in v0.8.x
 
-### Breaking Change (v0.7.2)
+### v0.8.1: AST Chunking Now Default
 
-- **JSON Output is Now Default** — All commands output JSON by default for AI/machine use. Use `--no-json` for human-readable text output. The `--json` flag is still accepted for backwards compatibility.
+AST-aware chunking is now **enabled by default** when tree-sitter is available. This produces semantically coherent chunks (complete functions, classes) instead of arbitrary line breaks.
 
-### Major Features (v0.7.0+)
+- `--ast` flag removed (now default behavior)
+- `--no-ast` flag added to explicitly disable
+- Auto-detection: uses AST when tree-sitter is installed, falls back silently otherwise
 
-- **AST-Aware Chunking** — Use `--ast` to chunk code by function/class/method boundaries instead of arbitrary line counts. This produces semantically coherent chunks that dramatically improve search accuracy for code-related queries.
+```bash
+pip install "ogrep[ast]"  # Enable AST support
+ogrep index .             # AST enabled automatically
+ogrep index . --no-ast    # Explicitly disable
+```
 
-- **Cross-Encoder Reranking** — Add `--rerank` to apply a cross-encoder model for high-precision ranking of search results. Solves the "right file is in top 30 but not #1" problem.
+### v0.8.0: Voyage AI Integration & Benchmark Findings
 
-- **RRF Hybrid Fusion** — Reciprocal Rank Fusion replaces alpha weighting as the default hybrid search method. Combines results by position rather than raw scores for more robust ranking.
+#### Voyage AI (Recommended for Code Search)
 
-- **AST Mode Tracking** — Index now tracks whether AST chunking was used. Query results include hints when the index could benefit from AST mode.
+Voyage AI's `voyage-code-3` achieves **best search quality** in our benchmarks:
 
-### Improvements
+| Configuration | Hit@1 | MRR | Cost |
+|---------------|-------|-----|------|
+| **Voyage voyage-code-3** | **7/10** | **0.717** | $0.06/M |
+| OpenAI text-embedding-3-small | 6/10 | 0.700 | $0.02/M |
+| Nomic (local) + flashrank | 6/10 | 0.633 | Free |
 
-- **Index Change History** — Track what changed with `ogrep log`, useful for AI tool integration
-- **Fusion Method in JSON** — Query stats now include `fusion_method` to show which method was used
-- **Graceful Degradation** — Works reliably with or without optional features (reranking, FTS5, GPU, AST)
+```bash
+pip install "ogrep[voyage]"
+export VOYAGE_API_KEY="pa-..."
+ogrep index . -m voyage-code-3
+```
 
-### Recent (v0.6.x)
+#### Key Finding: Skip Reranking with Quality Embeddings
 
-- Cross-file chunk deduplication (up to 80% embedding cost savings)
-- Relative confidence scoring (compares to top result, not fixed thresholds)
-- Graceful Ctrl-C handling with recovery messages
+**Reranking degrades results** when using high-quality embeddings:
+
+| Embedding | Without Rerank | With Rerank | Action |
+|-----------|----------------|-------------|--------|
+| Voyage | **0.717 MRR** | 0.593 (-17%) | ❌ Don't rerank |
+| OpenAI | **0.700 MRR** | 0.550 (-21%) | ❌ Don't rerank |
+| Nomic (local) | 0.545 MRR | **0.633** (+16%) | ✅ Use reranking |
+
+**The rule:** Reranking helps weak embeddings but hurts strong ones.
+
+#### FlashRank as Default Reranker
+
+When reranking is needed, FlashRank is now the default:
+- **Lightweight:** ~4MB (vs ~300MB for PyTorch models)
+- **Parallel-safe:** No file locking needed (ONNX runtime)
+- **Fast:** ~200ms per query on CPU
+
+### v0.7.4: Path Filtering, Summary Mode, Confidence Scoring
+
+- **Path filtering:** `--glob "*.py"` and `--exclude "tests/*"`
+- **Summary mode:** `--summarize` for file-level aggregation (~85% token savings)
+- **Hybrid confidence scoring:** Combines relative position + absolute quality
+
+### v0.7.3: Branch-Aware Indexing
+
+- Automatic branch tracking prevents stale results when switching branches
+- Cross-branch queries: `ogrep query "auth" --branch main`
+- Embedding reuse across branches via content addressing
+
+### Breaking Changes
+
+- **v0.8.1:** `--ast` flag removed (AST is now default)
+- **v0.7.2:** JSON output is now default (use `--no-json` for text)
 
 ---
 
@@ -75,38 +117,57 @@ It will ask where to install. Use 'user' mode — local mode can cause path issu
 ### Optional Extras
 
 ```bash
-# AST-aware chunking (recommended for code search)
+# AST-aware chunking (recommended - enables default AST mode)
 pip install "ogrep[ast]"           # Python/JS/TS/Go/Rust support
 pip install "ogrep[ast-all]"       # All 13 supported languages
 
-# Cross-encoder reranking (high-precision ranking)
-pip install "ogrep[rerank]"        # sentence-transformers
+# Voyage AI (best search quality)
+pip install "ogrep[voyage]"        # Voyage embeddings + reranking
+
+# Reranking (only needed for local embeddings)
+pip install "ogrep[rerank-light]"  # FlashRank (lightweight, recommended)
+pip install "ogrep[rerank]"        # sentence-transformers (PyTorch)
 
 # Other extras
 pip install "ogrep[speed]"         # Faster scoring with numpy
 pip install "ogrep[mcp]"           # MCP server support
 
 # Combine extras
-pip install "ogrep[ast,rerank]"    # AST + reranking
+pip install "ogrep[ast,voyage]"    # AST + Voyage (best quality)
+pip install "ogrep[ast,rerank-light]"  # AST + FlashRank (local use)
 ```
 
 ---
 
 ## Quick Start
 
-### With OpenAI
+### With Voyage AI (Best Quality)
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+pip install "ogrep[ast,voyage]"
+export VOYAGE_API_KEY="pa-..."  # Get from https://dash.voyageai.com/
 
-ogrep index .                              # Index current directory
-ogrep query "where is auth handled?" -n 10 # Semantic search
+ogrep index . -m voyage-code-3             # Index with code-optimized embeddings
+ogrep query "where is auth handled?" -n 10 # Semantic search (no reranking needed)
 ogrep status                               # Check index stats
 ```
 
-### With LM Studio (Local, Free)
+### With OpenAI (Good Quality, Lower Cost)
 
 ```bash
+pip install "ogrep[ast]"
+export OPENAI_API_KEY="sk-..."
+
+ogrep index .                              # Index current directory
+ogrep query "where is auth handled?" -n 10 # Semantic search (no reranking needed)
+ogrep status                               # Check index stats
+```
+
+### With LM Studio (Local, Free, Offline)
+
+```bash
+pip install "ogrep[ast,rerank-light]"
+
 # 1. Install LM Studio from https://lmstudio.ai
 # 2. Download and load a model
 lms get nomic-embed-text-v1.5 -y
@@ -116,18 +177,18 @@ lms server start
 # 3. Point ogrep to local server
 export OGREP_BASE_URL=http://localhost:1234/v1
 
-# 4. Index and query
+# 4. Index and query (use reranking with local embeddings)
 ogrep index . -m nomic
-ogrep query "database connection handling" -m nomic
+ogrep query "database connection handling" --rerank
 ```
 
 See [LOCAL_EMBEDDINGS_GUIDE.md](LOCAL_EMBEDDINGS_GUIDE.md) for detailed setup and tuning.
 
 ---
 
-## AST-Aware Chunking
+## AST-Aware Chunking (Default)
 
-**The biggest accuracy improvement for code search.** Instead of splitting by arbitrary line counts, AST chunking respects function, class, and method boundaries.
+**AST chunking is now enabled by default** when tree-sitter is installed. Instead of splitting by arbitrary line counts, AST chunking respects function, class, and method boundaries for better search quality.
 
 ### Why AST Chunking Matters
 
@@ -139,7 +200,7 @@ Lines 55-115 (one chunk):
   - Beginning of method foo()
 ```
 
-With AST chunking:
+With AST chunking (default):
 ```
 Chunk 1: ClassA (complete)
 Chunk 2: ClassB.foo() method
@@ -149,19 +210,19 @@ Chunk 3: ClassB.bar() method
 ### Usage
 
 ```bash
-# Install AST support
+# Install AST support (recommended)
 pip install "ogrep[ast]"           # Python/JS/TS/Go/Rust
 pip install "ogrep[ast-all]"       # All 13 languages
 
-# Index with AST chunking
-ogrep index . --ast
+# Index (AST enabled automatically when tree-sitter available)
+ogrep index .
 
 # Check if index uses AST
 ogrep status
 # Output: AST Mode: enabled
 
-# Reindex existing index with AST
-ogrep reindex . --ast
+# Disable AST chunking (use line-based)
+ogrep index . --no-ast
 ```
 
 ### Supported Languages
@@ -188,40 +249,68 @@ Files in unsupported languages fall back to line-based chunking automatically.
 
 ## Cross-Encoder Reranking
 
-**Solves the "right file in top 30 but not #1" problem.** Cross-encoders process (query, document) pairs together, providing much higher precision than bi-encoder embeddings.
+Cross-encoders process (query, document) pairs together, providing higher precision than bi-encoder embeddings alone. However, **reranking is not always beneficial**.
 
-### How It Works
+### The Rule: Reranking Helps Weak Embeddings, Hurts Strong Ones
 
-```
-Query → Stage 1: Fast Retrieval (embeddings + BM25) → Top 50 candidates
-                              ↓
-      Stage 2: Slow Reranking (cross-encoder) → Top 10 results
-```
+Based on comprehensive benchmarks (10 ground-truth queries, 285 files):
 
-The cross-encoder sees both query AND document together, so it can model fine-grained relationships that embeddings miss.
+| Embedding | Without Rerank | With flashrank | Recommendation |
+|-----------|----------------|----------------|----------------|
+| **Voyage** | **0.717 MRR** | 0.593 (-17%) | ❌ Don't rerank |
+| **OpenAI** | **0.700 MRR** | 0.550 (-21%) | ❌ Don't rerank |
+| **Nomic** (local) | 0.545 MRR | **0.633** (+16%) | ✅ Use reranking |
+
+**Why reranking hurts with good embeddings:**
+1. Code embeddings (Voyage, OpenAI) are already well-calibrated for code search
+2. Rerankers are trained on web search data (MS MARCO), not code
+3. They "second-guess" correct results and push them down
+
+### When to Use Reranking
+
+✅ **Use `--rerank` when:**
+- Using **local embeddings** (nomic, minilm, bge)
+- Searching **massive codebases** (>10K files) with noisy retrieval
+- The right answer appears in results but **not in top 3**
+
+❌ **Skip `--rerank` when:**
+- Using **Voyage or OpenAI embeddings** (already optimized)
+- Searching **focused codebases** (<10K files)
+- Results are already good without it
 
 ### Usage
 
 ```bash
-# Install reranking support
-pip install "ogrep[rerank]"
+# Install reranking support (only needed for local embeddings)
+pip install "ogrep[rerank-light]"  # FlashRank (recommended, parallel-safe)
+pip install "ogrep[rerank]"        # sentence-transformers (PyTorch)
 
-# Enable reranking (fetches 50, reranks, returns top -n)
-ogrep query "where is authentication?" -n 10 --rerank
+# With local embeddings - USE reranking
+ogrep query "where is auth?" --rerank
 
-# Custom rerank pool size
-ogrep query "where is authentication?" -n 10 --rerank-top 100
+# With Voyage/OpenAI - DON'T use reranking
+ogrep query "where is auth?"  # No --rerank flag
 ```
 
-### Reranking Model
+### Reranking Models
 
-ogrep uses `BAAI/bge-reranker-v2-m3` by default (~300MB, auto-downloaded on first use). This model works well with code and is multilingual.
+| Model | Backend | Size | Speed | Best For |
+|-------|---------|------|-------|----------|
+| `flashrank` (default) | ONNX | ~4MB | ~200ms | **Recommended** |
+| `flashrank:mini` | ONNX | ~50MB | ~300ms | Better quality |
+| `voyage` | API | - | ~300ms | Long documents (32K context) |
+| `minilm` | PyTorch | ~90MB | ~2s | Local, no API |
+| `bge-m3` | PyTorch | ~300MB | ~30s | ❌ Too slow on CPU |
 
 Configure via environment:
 ```bash
-export OGREP_RERANK_MODEL=BAAI/bge-reranker-v2-m3
+export OGREP_RERANK_MODEL=flashrank
 export OGREP_RERANK_TOPN=50
 ```
+
+### Parallel Safety
+
+FlashRank models (ONNX) are **parallel-safe** and can be used by multiple processes simultaneously. PyTorch models (minilm, bge-m3) use file-based locking to prevent OOM errors in parallel AI tool sessions.
 
 ---
 
@@ -266,6 +355,74 @@ If you prefer the old score-based fusion:
 export OGREP_FUSION_METHOD=alpha
 export OGREP_HYBRID_ALPHA=0.7  # 70% semantic, 30% keyword
 ```
+
+---
+
+## Path Filtering
+
+Filter search results to specific file patterns using `--glob` and `--exclude`:
+
+```bash
+# Include only Python files
+ogrep query "auth" --glob "*.py"
+ogrep query "auth" -g "*.py"
+
+# Multiple patterns
+ogrep query "auth" -g "*.py" -g "*.php"
+
+# Recursive matching
+ogrep query "auth" -g "**/*.py"
+
+# Exclude patterns
+ogrep query "auth" --exclude "tests/*"
+ogrep query "auth" -x "vendor/*"
+
+# Combine include and exclude
+ogrep query "auth" -g "**/*.py" -x "tests/*" -x "vendor/*"
+```
+
+JSON output includes filter stats:
+```json
+{
+  "stats": {
+    "filter_stats": {
+      "candidates_before": 50,
+      "candidates_after": 23,
+      "removed_percent": 54.0
+    }
+  }
+}
+```
+
+---
+
+## Summary Mode
+
+Get file-level aggregation without full chunk text using `--summarize`. Reduces token usage by ~85%:
+
+```bash
+ogrep query "authentication" --summarize
+```
+
+Output:
+```json
+{
+  "summary": true,
+  "total_chunks_matched": 23,
+  "files": [
+    {
+      "path": "src/auth/login.py",
+      "chunks_matched": 4,
+      "best_score": 0.47,
+      "confidence": "high",
+      "lines_covered": [[12, 45], [78, 120]]
+    }
+  ],
+  "recommendation": "Use 'ogrep chunk <path>:<N>' to expand specific files"
+}
+```
+
+Ideal for AI tools to scan and identify relevant files before deep-diving with `ogrep chunk`.
 
 ---
 
@@ -315,13 +472,13 @@ ogrep query "database connections"
 
 ### AST Mode Hints
 
-When querying an index built without AST chunking, JSON output includes a hint:
+When querying an index and AST chunking is unavailable, JSON output includes a hint:
 
 ```json
 {
   "results": [...],
-  "stats": { "ast_mode": false },
-  "hint": "Index was built without AST chunking. For better semantic boundaries, run: ogrep reindex . --ast"
+  "stats": { "ast_mode": "unavailable" },
+  "ast_hint": "Install AST support: pip install 'ogrep[ast]'"
 }
 ```
 
@@ -336,7 +493,10 @@ ogrep status
   "database": ".ogrep/index.sqlite",
   "status": "indexed",
   "indexed": true,
+  "branch": "main",
+  "branch_files": 45,
   "files": 45,
+  "branches": {"main": 45},
   "chunks": 234,
   "model": "text-embedding-3-small",
   "dimensions": 1536,
@@ -361,14 +521,17 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 
 | Command | Description |
 |---------|-------------|
-| `ogrep index .` | Index current directory |
-| `ogrep index . --ast` | Index with AST-aware chunking |
+| `ogrep index .` | Index current directory (AST enabled by default) |
+| `ogrep index . --no-ast` | Index with line-based chunking |
 | `ogrep index . --list` | Preview files before indexing |
 | `ogrep query "text" -n 10` | Search (hybrid mode by default) |
 | `ogrep query "text" --rerank` | Search with cross-encoder reranking |
+| `ogrep query "text" --glob "*.py"` | Filter to Python files |
+| `ogrep query "text" --summarize` | File-level summary (token-efficient) |
 | `ogrep query "text" --no-json` | Human-readable output |
 | `ogrep query "text" --mode semantic` | Pure semantic search |
 | `ogrep query "text" --mode fulltext` | Keyword search (FTS5) |
+| `ogrep query "text" --branch main` | Query a specific branch |
 | `ogrep chunk "path:N" -C 1` | Get chunk with context |
 | `ogrep status` | Show index statistics |
 | `ogrep device` | Check GPU/CPU for reranking |
@@ -377,8 +540,9 @@ All commands output JSON by default. Use `--no-json` for human-readable text.
 | `ogrep health --full` | Vacuum + rebuild FTS5 + integrity check |
 | `ogrep log` | Show index change history |
 | `ogrep delete "path"` | Remove files from index |
-| `ogrep reset -f` | Delete index |
-| `ogrep reindex . --ast` | Rebuild with AST chunking |
+| `ogrep reset -f` | Delete current branch from index |
+| `ogrep reset -f --all` | Delete entire index (all branches) |
+| `ogrep reindex .` | Rebuild index (AST enabled by default) |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available embedding models |
 | `ogrep tune .` | Auto-tune chunk size |
@@ -433,21 +597,39 @@ ogrep flips that:
 
 ## Embedding Providers
 
-**Choose your embedding source:**
+**Choose your embedding source based on quality benchmarks:**
 
-| Provider | Cost | Privacy | Setup |
-|----------|------|---------|-------|
-| **OpenAI API** | $0.02/M tokens | Cloud | Just add `OPENAI_API_KEY` |
-| **LM Studio** (local) | Free | 100% local | Run `lms server start` |
+| Provider | Cost | Quality (MRR) | Reranking | Setup |
+|----------|------|---------------|-----------|-------|
+| **Voyage AI** (recommended) | $0.06/M | **0.717** | ❌ Skip | Add `VOYAGE_API_KEY` |
+| **OpenAI API** | $0.02/M | 0.700 | ❌ Skip | Add `OPENAI_API_KEY` |
+| **LM Studio** (local) | Free | 0.633 | ✅ Use flashrank | Run `lms server start` |
 
-### Setting up environment
+### Voyage AI (Recommended for Code Search)
+
+Voyage AI's `voyage-code-3` model is specifically optimized for code and outperforms OpenAI on semantic code search benchmarks.
 
 ```bash
-# OpenAI (cloud)
+# Get API key from https://dash.voyageai.com/
+export VOYAGE_API_KEY="pa-..."
+
+# Index with Voyage (best quality)
+ogrep index . -m voyage-code-3
+
+# Or use the alias
+ogrep index . -m voyage
+```
+
+### OpenAI (Good Quality, Lower Cost)
+
+```bash
 export OPENAI_API_KEY="sk-..."
 ogrep index . -m small
+```
 
-# LM Studio (local, free, offline)
+### LM Studio (Local, Free, Offline)
+
+```bash
 export OGREP_BASE_URL=http://localhost:1234/v1
 ogrep index . -m nomic
 ```
@@ -527,22 +709,32 @@ ogrep chunk "src/auth.py:2" --context 1   # 1 before AND after
 
 ## Embedding Models
 
+### Voyage AI Models (Recommended for Code)
+
+| Model | Alias | Dimensions | Price | Best For |
+|-------|-------|------------|-------|----------|
+| voyage-code-3 | `voyage` | 1024 | $0.06/M | **Code search (best quality)** |
+| voyage-3 | `voyage-3` | 1024 | $0.06/M | General purpose |
+| voyage-3-lite | `voyage-lite` | 512 | $0.02/M | Budget option |
+
+Voyage AI models are specifically optimized for code and achieve the highest accuracy in our benchmarks (MRR 0.717).
+
 ### OpenAI Models (Cloud)
 
 | Model | Alias | Dimensions | Price | Best For |
 |-------|-------|------------|-------|----------|
-| text-embedding-3-small | `small` | 1536 | $0.02/M | Most use cases (default) |
+| text-embedding-3-small | `small` | 1536 | $0.02/M | Good quality, low cost |
 | text-embedding-3-large | `large` | 3072 | $0.13/M | High-accuracy, multi-language |
 | text-embedding-ada-002 | `ada` | 1536 | $0.10/M | Legacy compatibility |
 
 ### Local Models (via LM Studio)
 
-| Model | Alias | Dimensions | Accuracy | Notes |
-|-------|-------|------------|----------|-------|
-| all-MiniLM-L6-v2 | `minilm` | 384 | **96%** | Best accuracy, smallest (~25MB) |
-| nomic-embed-text-v1.5 | `nomic` | 768 | 72% | Large context window (8192 tokens) |
-| bge-base-en-v1.5 | `bge` | 768 | 52% | Fallback option |
-| bge-m3 | `bge-m3` | 1024 | TBD | Multi-lingual (100+ languages) |
+| Model | Alias | Dimensions | Notes |
+|-------|-------|------------|-------|
+| nomic-embed-text-v1.5 | `nomic` | 768 | Large context (8192 tokens) |
+| all-MiniLM-L6-v2 | `minilm` | 384 | Smallest (~25MB) |
+| bge-base-en-v1.5 | `bge` | 768 | Fallback option |
+| bge-m3 | `bge-m3` | 1024 | Multi-lingual (100+ languages) |
 
 > **Important:** Query model must match index model. Use `ogrep status` to check.
 
@@ -648,23 +840,51 @@ ogrep tune . -m nomic --save --apply # Both
 
 ## Environment Variables
 
+### Core Configuration
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key (required for cloud) | — |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `VOYAGE_API_KEY` | Voyage AI API key | — |
 | `OGREP_BASE_URL` | Local server URL (e.g., LM Studio) | — |
 | `OGREP_MODEL` | Default embedding model | Smart default* |
 | `OGREP_CHUNK_LINES` | Tuned chunk size | Model default |
 | `OGREP_DIMENSIONS` | Embedding dimensions | Model default |
+
+### Search Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
 | `OGREP_SEARCH_MODE` | Default search mode | `hybrid` |
 | `OGREP_FUSION_METHOD` | Hybrid fusion method | `rrf` |
 | `OGREP_HYBRID_ALPHA` | Semantic weight (if using alpha) | `0.7` |
-| `OGREP_RERANK_MODEL` | Cross-encoder model | `BAAI/bge-reranker-v2-m3` |
+
+### Reranking Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OGREP_RERANK_MODEL` | Reranking model | `flashrank` |
 | `OGREP_RERANK_TOPN` | Candidates to rerank | `50` |
+| `OGREP_RERANK_LOCK` | Lock file path (PyTorch models) | `~/.cache/ogrep/rerank.lock` |
+| `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds | `120` |
+
+### Voyage AI Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OGREP_VOYAGE_TIMEOUT` | API request timeout (seconds) | `120` |
+| `OGREP_VOYAGE_RETRIES` | Max retries on failure | `2` |
+
+### Confidence Thresholds
+
+| Variable | Description | Default |
+|----------|-------------|---------|
 | `OGREP_CONFIDENCE_HIGH` | Threshold for "high" | `0.85` |
 | `OGREP_CONFIDENCE_MEDIUM` | Threshold for "medium" | `0.70` |
 | `OGREP_CONFIDENCE_LOW` | Threshold for "low" | `0.50` |
 
 **Smart Model Default:**
+- If `VOYAGE_API_KEY` is set → defaults to `voyage-code-3`
 - If `OGREP_BASE_URL` is set → defaults to `nomic` (local)
 - Otherwise → defaults to `text-embedding-3-small` (OpenAI)
 
@@ -680,6 +900,70 @@ Prevent cross-repo pollution:
 | `--profile NAME` | Named profile (`.ogrep/<name>/index.sqlite`) |
 | `--global-cache` | Use `~/.cache/ogrep/<hash>/index.sqlite` |
 | `--repo-root PATH` | Explicit repo root |
+
+---
+
+## Branch-Aware Indexing
+
+ogrep tracks files per-branch to prevent stale search results when switching branches.
+
+### How It Works
+
+```
+files table: (path, branch) → file metadata (branch-specific)
+chunks table: text_sha256 → embedding (SHARED across all branches)
+```
+
+Same code on different branches shares embeddings — switching branches only embeds genuinely new code.
+
+### Branch Detection
+
+| Scenario | Branch Value |
+|----------|--------------|
+| Normal git branch | `main`, `feature/auth`, etc. |
+| Detached HEAD | `detached-abc1234` |
+| Non-git directory | `default` |
+
+### Cross-Branch Queries
+
+```bash
+# Query current branch (default)
+ogrep query "authentication"
+
+# Query a specific branch
+ogrep query "authentication" --branch main
+
+# While on feature branch, find code in main
+git checkout feature/new-auth
+ogrep query "old auth function" --branch main
+```
+
+### Branch-Scoped Reset
+
+```bash
+# Clear only current branch (preserves other branches)
+ogrep reset -f
+
+# Clear entire database (all branches)
+ogrep reset -f --all
+```
+
+### Automatic Cleanup
+
+```bash
+ogrep clean
+# - Removes files for deleted branches
+# - Shared embeddings are preserved if used by other branches
+```
+
+### Embedding Reuse Across Branches
+
+| Scenario | API Calls |
+|----------|-----------|
+| Same file, same content | 0 (already indexed on this branch) |
+| Same code on different branch | 0 (`text_sha256` matches) |
+| 1 function changed | 1-2 (only changed chunks) |
+| Switch main→feature→main | 0 (files already indexed on main) |
 
 ---
 

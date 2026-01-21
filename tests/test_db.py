@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from ogrep.db import connect
+import pytest
+
+from ogrep.db import DatabaseError, connect
 
 
 def test_db_creation(temp_dir: Path) -> None:
@@ -85,3 +88,62 @@ def test_db_parent_directory_creation(temp_dir: Path) -> None:
     assert db_path.exists()
 
     con.close()
+
+
+class TestDatabaseErrorHandling:
+    """Tests for database error handling and helpful error messages."""
+
+    def test_error_message_for_permission_denied(self, temp_dir: Path) -> None:
+        """Test that permission errors produce helpful messages."""
+        # Create a read-only directory
+        readonly_dir = temp_dir / "readonly"
+        readonly_dir.mkdir()
+        os.chmod(readonly_dir, 0o444)
+
+        db_path = readonly_dir / "subdir" / "test.sqlite"
+
+        try:
+            with pytest.raises(DatabaseError) as exc_info:
+                connect(db_path)
+
+            assert "Cannot create database directory" in str(exc_info.value)
+            assert "write permissions" in str(exc_info.value)
+        finally:
+            # Restore permissions for cleanup
+            os.chmod(readonly_dir, 0o755)
+
+    def test_error_message_for_corrupted_database(self, temp_dir: Path) -> None:
+        """Test that corrupted database files produce helpful messages."""
+        db_path = temp_dir / "corrupted.sqlite"
+
+        # Create a file with invalid content (not a valid SQLite database)
+        db_path.write_text("this is not a valid sqlite database")
+
+        with pytest.raises(DatabaseError) as exc_info:
+            connect(db_path)
+
+        error_msg = str(exc_info.value)
+        # Should suggest removing and reindexing
+        assert "corrupted" in error_msg.lower() or "malformed" in error_msg.lower() or "not a database" in error_msg.lower()
+
+    def test_database_error_exception_exists(self) -> None:
+        """DatabaseError should be a proper exception class."""
+        assert issubclass(DatabaseError, Exception)
+
+        # Should be raisable with a message
+        try:
+            raise DatabaseError("Test error message")
+        except DatabaseError as e:
+            assert "Test error message" in str(e)
+
+    def test_successful_connect_no_error(self, temp_dir: Path) -> None:
+        """Normal operation should not raise DatabaseError."""
+        db_path = temp_dir / "normal.sqlite"
+
+        # Should not raise
+        con = connect(db_path)
+        assert con is not None
+
+        # Verify it's a working connection
+        con.execute("SELECT 1").fetchone()
+        con.close()

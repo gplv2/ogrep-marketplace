@@ -47,7 +47,9 @@ Environment variables:
 from __future__ import annotations
 
 import array
+import fnmatch
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -95,6 +97,472 @@ CONFIDENCE_LOW = float(os.environ.get("OGREP_CONFIDENCE_LOW", "0.30"))
 RELATIVE_HIGH = float(os.environ.get("OGREP_RELATIVE_HIGH", "0.90"))  # >= 90% of top
 RELATIVE_MEDIUM = float(os.environ.get("OGREP_RELATIVE_MEDIUM", "0.75"))  # >= 75% of top
 RELATIVE_LOW = float(os.environ.get("OGREP_RELATIVE_LOW", "0.50"))  # >= 50% of top
+
+# Absolute quality thresholds (calibrated for text-embedding-3-small)
+# These are used in hybrid confidence mode to assess absolute match quality
+ABSOLUTE_STRONG = float(os.environ.get("OGREP_ABSOLUTE_STRONG", "0.50"))  # top 10%
+ABSOLUTE_EXPECTED = float(os.environ.get("OGREP_ABSOLUTE_EXPECTED", "0.35"))  # typical good match
+ABSOLUTE_WEAK = float(os.environ.get("OGREP_ABSOLUTE_WEAK", "0.25"))  # borderline
+
+
+@dataclass(frozen=True)
+class HybridConfidence:
+    """
+    Hybrid confidence scoring combining relative and absolute signals.
+
+    This addresses the problem where AI tools can't trust low absolute scores
+    even when they represent the best available matches. By combining relative
+    position with absolute quality signals, AI tools get actionable guidance.
+
+    Attributes:
+        level: Overall confidence level (high/medium/low/very_low).
+        relative_pct: Percentage of top score (100 = top result).
+        absolute_quality: Quality band (strong/expected_range/weak/very_weak).
+        signal: Human-readable explanation of the scoring decision.
+    """
+
+    level: str
+    relative_pct: float
+    absolute_quality: str
+    signal: str
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "level": self.level,
+            "relative_pct": round(self.relative_pct, 1),
+            "absolute_quality": self.absolute_quality,
+            "signal": self.signal,
+        }
+
+
+def get_absolute_quality(score: float) -> str:
+    """
+    Determine absolute quality band for a score.
+
+    Calibrated for text-embedding-3-small. Different models may need
+    different thresholds (see OGREP_ABSOLUTE_* env vars).
+
+    Args:
+        score: Similarity score (0.0 to 1.0).
+
+    Returns:
+        Quality band: "strong", "expected_range", "weak", or "very_weak".
+    """
+    if score >= ABSOLUTE_STRONG:
+        return "strong"
+    elif score >= ABSOLUTE_EXPECTED:
+        return "expected_range"
+    elif score >= ABSOLUTE_WEAK:
+        return "weak"
+    else:
+        return "very_weak"
+
+
+def compute_hybrid_confidence(score: float, top_score: float, rank: int = 1) -> HybridConfidence:
+    """
+    Compute hybrid confidence combining relative position and absolute quality.
+
+    This is the core of the improved confidence scoring. It addresses scenarios
+    where correct results have low absolute scores (e.g., 0.03 for "export CSV").
+
+    Logic:
+        1. Compute relative_pct = (score / top_score) * 100
+        2. Determine absolute_quality from fixed thresholds
+        3. Combine into level:
+           - "high" = relative >= 90% AND absolute in (strong, expected_range)
+           - "medium" = relative >= 75% OR absolute == expected_range
+           - "low" = relative >= 50% OR absolute == weak
+           - "very_low" = everything else
+        4. Generate human-readable signal
+
+    Args:
+        score: Similarity score for this result.
+        top_score: Highest score in the result set.
+        rank: 1-indexed rank position (1 = top result).
+
+    Returns:
+        HybridConfidence with level, relative_pct, absolute_quality, and signal.
+    """
+    # Handle edge cases
+    if top_score <= 0:
+        return HybridConfidence(
+            level="very_low",
+            relative_pct=0.0,
+            absolute_quality="very_weak",
+            signal="no_valid_top_score",
+        )
+
+    # Step 1: Compute relative percentage
+    relative_pct = (score / top_score) * 100
+
+    # Step 2: Determine absolute quality
+    absolute_quality = get_absolute_quality(score)
+
+    # Step 3: Combine into level
+    is_relative_high = relative_pct >= RELATIVE_HIGH * 100  # >= 90%
+    is_relative_medium = relative_pct >= RELATIVE_MEDIUM * 100  # >= 75%
+    is_relative_low = relative_pct >= RELATIVE_LOW * 100  # >= 50%
+
+    is_absolute_strong_or_expected = absolute_quality in ("strong", "expected_range")
+    is_absolute_expected = absolute_quality == "expected_range"
+    is_absolute_weak = absolute_quality == "weak"
+
+    if is_relative_high and is_absolute_strong_or_expected:
+        level = "high"
+    elif is_relative_high and absolute_quality == "weak":
+        # Close to top but weak absolute - still useful but cautious
+        level = "medium"
+    elif is_relative_high and absolute_quality == "very_weak":
+        # Top result but very weak absolute - AI should know this is the best available
+        # but may not be good enough
+        level = "medium" if rank == 1 else "low"
+    elif is_relative_medium or is_absolute_expected:
+        level = "medium"
+    elif is_relative_low or is_absolute_weak:
+        level = "low"
+    else:
+        level = "very_low"
+
+    # Step 4: Generate signal
+    signal = _generate_confidence_signal(
+        level, relative_pct, absolute_quality, rank, top_score
+    )
+
+    return HybridConfidence(
+        level=level,
+        relative_pct=relative_pct,
+        absolute_quality=absolute_quality,
+        signal=signal,
+    )
+
+
+def _generate_confidence_signal(
+    level: str,
+    relative_pct: float,
+    absolute_quality: str,
+    rank: int,
+    top_score: float,
+) -> str:
+    """
+    Generate a human-readable signal explaining the confidence decision.
+
+    Args:
+        level: Computed confidence level.
+        relative_pct: Percentage of top score.
+        absolute_quality: Absolute quality band.
+        rank: 1-indexed rank position.
+        top_score: Top score in result set.
+
+    Returns:
+        Signal string for AI/human interpretation.
+    """
+    if rank == 1:
+        if absolute_quality == "strong":
+            return "top_result_strong_match"
+        elif absolute_quality == "expected_range":
+            return "top_result_in_typical_range"
+        elif absolute_quality == "weak":
+            return "top_result_weak_absolute"
+        else:
+            return "top_result_very_weak_but_best_available"
+    else:
+        if relative_pct >= 90:
+            return "close_to_top"
+        elif relative_pct >= 75:
+            if absolute_quality in ("strong", "expected_range"):
+                return "good_alternative"
+            else:
+                return "close_to_top_but_weak_absolute"
+        elif relative_pct >= 50:
+            return "moderate_relevance"
+        else:
+            return "score_drop_from_top"
+
+
+# =============================================================================
+# Path Filtering (Phase 3 - Adoption Improvements)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class PathFilter:
+    """
+    Configuration for path-based filtering of search results.
+
+    Supports two types of patterns:
+    - Simple patterns: *.py, src/* (can use SQL GLOB pre-filter)
+    - Complex patterns: **/*.py, multiple patterns (requires fnmatch post-filter)
+
+    Attributes:
+        glob_patterns: List of glob patterns to include (None = all files).
+        exclude_patterns: List of glob patterns to exclude (None = no exclusions).
+    """
+
+    glob_patterns: list[str] | None = None
+    exclude_patterns: list[str] | None = None
+
+    def is_empty(self) -> bool:
+        """Check if no filtering is configured."""
+        return not self.glob_patterns and not self.exclude_patterns
+
+
+@dataclass(frozen=True)
+class FilterStats:
+    """
+    Statistics about path filtering applied to search results.
+
+    Attributes:
+        candidates_before: Number of results before filtering.
+        candidates_after: Number of results after filtering.
+        removal_pct: Percentage of results removed by filter.
+        method: Filtering method used ("sql_prefilter", "fnmatch_postfilter", "none").
+        warning: Warning message if filter removed too many results.
+    """
+
+    candidates_before: int
+    candidates_after: int
+    removal_pct: float
+    method: str
+    warning: str | None = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "candidates_before": self.candidates_before,
+            "candidates_after": self.candidates_after,
+            "removal_pct": round(self.removal_pct, 1),
+            "method": self.method,
+            "warning": self.warning,
+        }
+
+
+def is_simple_pattern(pattern: str) -> bool:
+    """
+    Check if a glob pattern is simple enough for SQL GLOB pre-filter.
+
+    Simple patterns:
+    - *.py (single wildcard at start)
+    - src/* (single directory level)
+    - templates/*.j2 (single directory with extension)
+
+    Complex patterns (need fnmatch):
+    - **/*.py (recursive)
+    - src/**/*.j2 (recursive in subdirectory)
+    - *.{py,php} (brace expansion - not supported by SQLite GLOB)
+
+    Args:
+        pattern: Glob pattern to analyze.
+
+    Returns:
+        True if pattern can be handled by SQLite GLOB, False otherwise.
+    """
+    # Complex patterns that need fnmatch
+    if "**" in pattern:
+        return False
+    if "{" in pattern or "}" in pattern:
+        return False
+    # SQLite GLOB uses * for any characters, ? for single char
+    # fnmatch [abc] syntax works in SQLite too
+    return True
+
+
+def pattern_to_sql_glob(pattern: str) -> str:
+    """
+    Convert a simple glob pattern to SQLite GLOB syntax.
+
+    SQLite GLOB:
+    - * matches any sequence of characters
+    - ? matches any single character
+    - [...] matches character class
+
+    Fnmatch patterns that translate directly to SQLite GLOB:
+    - *.py → *.py
+    - src/* → src/*
+    - test_*.py → test_*.py
+
+    Args:
+        pattern: Simple glob pattern (must pass is_simple_pattern).
+
+    Returns:
+        Pattern suitable for SQLite GLOB clause.
+    """
+    # Most simple patterns work directly with SQLite GLOB
+    # Just ensure we handle any edge cases
+    return pattern
+
+
+def _glob_to_regex(pattern: str) -> str:
+    """
+    Convert a glob pattern to a regex pattern.
+
+    Handles:
+    - ** for recursive matching (any path depth, including zero)
+    - * for single path component matching (no /)
+    - ? for single character matching (no /)
+    - Escapes other regex special characters
+
+    Args:
+        pattern: Glob pattern (e.g., "**/*.py", "src/*.js").
+
+    Returns:
+        Regex pattern string.
+    """
+    # Escape special regex chars first (except * and ?)
+    regex = ""
+    i = 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "*":
+            # Check for ** (recursive)
+            if i + 1 < len(pattern) and pattern[i + 1] == "*":
+                # ** followed by / means "any directory path or empty"
+                if i + 2 < len(pattern) and pattern[i + 2] == "/":
+                    regex += "(?:.*/)?"  # Optional path with trailing /
+                    i += 3
+                    continue
+                else:
+                    # ** at end or not followed by / - match anything
+                    regex += ".*"
+                    i += 2
+                continue
+            else:
+                # Single * matches any chars except /
+                regex += "[^/]*"
+        elif c == "?":
+            regex += "[^/]"
+        elif c in ".^$+{}[]|()\\":
+            regex += "\\" + c
+        else:
+            regex += c
+        i += 1
+    return f"^{regex}$"
+
+
+def matches_any_pattern(path: str, patterns: list[str]) -> bool:
+    """
+    Check if a path matches any of the given glob patterns.
+
+    Handles both absolute and relative paths by trying multiple match strategies:
+    1. Match against full path
+    2. Match against path without leading /
+    3. Match against basename
+
+    Args:
+        path: File path to check (can be absolute or relative).
+        patterns: List of glob patterns to match against.
+
+    Returns:
+        True if path matches at least one pattern, False otherwise.
+    """
+    # Prepare different path variants for matching
+    path_variants = [path]
+    if path.startswith("/"):
+        path_variants.append(path[1:])  # Without leading /
+    # Add basename for simple extension patterns
+    basename = path.rsplit("/", 1)[-1] if "/" in path else path
+    if basename not in path_variants:
+        path_variants.append(basename)
+
+    for pattern in patterns:
+        if "**" in pattern:
+            # Use regex for patterns with **
+            regex = _glob_to_regex(pattern)
+            for variant in path_variants:
+                if re.match(regex, variant):
+                    return True
+        else:
+            # Use fnmatch for simple patterns
+            for variant in path_variants:
+                if fnmatch.fnmatch(variant, pattern):
+                    return True
+    return False
+
+
+def filter_hits_by_path(
+    hits: list["Hit"],
+    path_filter: PathFilter,
+    requested_n: int,
+) -> tuple[list["Hit"], FilterStats]:
+    """
+    Filter search results by path patterns.
+
+    Uses fnmatch for flexible pattern matching. This is the post-filter
+    approach used when SQL pre-filtering isn't possible.
+
+    Args:
+        hits: List of Hit objects to filter.
+        path_filter: PathFilter configuration.
+        requested_n: Number of results originally requested.
+
+    Returns:
+        Tuple of (filtered_hits, filter_stats).
+    """
+    if path_filter.is_empty():
+        return hits, FilterStats(
+            candidates_before=len(hits),
+            candidates_after=len(hits),
+            removal_pct=0.0,
+            method="none",
+        )
+
+    before_count = len(hits)
+    filtered = []
+
+    # Compute relative paths from cwd for pattern matching
+    cwd = os.getcwd()
+    cwd_prefix = cwd + "/" if not cwd.endswith("/") else cwd
+
+    for hit in hits:
+        # Get relative path for matching
+        path = hit.path
+
+        # Compute relative path from cwd
+        if path.startswith(cwd_prefix):
+            rel_path = path[len(cwd_prefix):]
+        elif path.startswith("/"):
+            # Fallback: use everything after first component for absolute paths
+            # e.g., /home/user/repo/tests/foo.py -> tests/foo.py (try last 2+ components)
+            parts = path.split("/")
+            # Try progressively shorter paths to find a match
+            rel_path = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+        else:
+            rel_path = path
+
+        # Check glob patterns (include)
+        if path_filter.glob_patterns:
+            if not matches_any_pattern(rel_path, path_filter.glob_patterns):
+                # Also try matching against full path
+                if not matches_any_pattern(path, path_filter.glob_patterns):
+                    continue
+
+        # Check exclude patterns
+        if path_filter.exclude_patterns:
+            if matches_any_pattern(rel_path, path_filter.exclude_patterns):
+                continue
+            if matches_any_pattern(path, path_filter.exclude_patterns):
+                continue
+
+        filtered.append(hit)
+
+    after_count = len(filtered)
+    removal_pct = ((before_count - after_count) / before_count * 100) if before_count > 0 else 0.0
+
+    # Generate warning if too many results removed
+    warning = None
+    if removal_pct > 50:
+        warning = (
+            f"Filter removed {before_count - after_count} of {before_count} results. "
+            f"Consider increasing -n or broadening glob."
+        )
+
+    return filtered, FilterStats(
+        candidates_before=before_count,
+        candidates_after=after_count,
+        removal_pct=removal_pct,
+        method="fnmatch_postfilter",
+        warning=warning,
+    )
 
 
 def get_confidence_level(score: float) -> str:
@@ -167,21 +635,35 @@ def get_relative_confidence(score: float, top_score: float) -> str:
         return "very_low"
 
 
-def assign_confidence(score: float, top_score: float | None = None) -> str:
+def assign_confidence(
+    score: float,
+    top_score: float | None = None,
+    rank: int = 1,
+) -> tuple[str, HybridConfidence | None]:
     """
-    Assign confidence level based on current mode (absolute or relative).
+    Assign confidence level based on current mode.
+
+    Now supports hybrid mode which combines relative and absolute signals.
+    This gives AI tools actionable guidance even when absolute scores are low.
 
     Args:
         score: Similarity score for this result.
-        top_score: Highest score in result set (required for relative mode).
+        top_score: Highest score in result set (required for relative/hybrid mode).
+        rank: 1-indexed rank position (1 = top result).
 
     Returns:
-        Confidence level: "high", "medium", "low", or "very_low".
+        Tuple of (level, details):
+        - level: Confidence string ("high", "medium", "low", or "very_low")
+        - details: HybridConfidence object (None if using absolute mode)
     """
-    if CONFIDENCE_MODE == "relative" and top_score is not None:
-        return get_relative_confidence(score, top_score)
+    # Always compute hybrid confidence when top_score is available
+    # This gives the most useful information to AI tools
+    if top_score is not None and top_score > 0:
+        hybrid = compute_hybrid_confidence(score, top_score, rank)
+        return hybrid.level, hybrid
     else:
-        return get_confidence_level(score)
+        # Fallback to absolute mode (legacy behavior)
+        return get_confidence_level(score), None
 
 
 @dataclass(frozen=True)
@@ -198,6 +680,7 @@ class Hit:
         chunk_id: Internal database ID for the chunk.
         chunk_index: Index of this chunk within its file (0-indexed).
         confidence: Human-readable confidence level based on score.
+        confidence_details: Detailed hybrid confidence (None for legacy mode).
     """
 
     score: float
@@ -208,6 +691,7 @@ class Hit:
     chunk_id: int
     chunk_index: int
     confidence: str
+    confidence_details: HybridConfidence | None = None
 
 
 def _dot_py(a: array.array, b: array.array) -> float:
@@ -350,6 +834,8 @@ def query(
     model: str = "text-embedding-3-small",
     dimensions: int | None = None,
     mode: SearchMode | None = None,
+    no_cache: bool = False,
+    branch: str | None = None,
 ) -> tuple[list[Hit], bool]:
     """
     Perform search against the indexed codebase.
@@ -368,6 +854,9 @@ def query(
         dimensions: Embedding dimensions. Must match indexing dimensions.
         mode: Search mode (semantic, fulltext, hybrid). Default from
             OGREP_SEARCH_MODE env var or "hybrid".
+        no_cache: Disable L1/L2 caching for this query (default: False).
+        branch: Git branch to search (None for auto-detect from current).
+            Only files indexed on this branch will be searched.
 
     Returns:
         Tuple of (hits, fts_available):
@@ -382,6 +871,9 @@ def query(
         If FTS5 is unavailable and mode is hybrid/fulltext, falls back
         to semantic search and returns fts_available=False.
 
+        Caching: Query embeddings are cached in L1 (TTL-based, 24h default).
+        Set no_cache=True or OGREP_CACHE_DISABLED=1 to bypass.
+
     Example:
         >>> hits, fts_ok = query(Path(".ogrep/index.sqlite"), "database connection")
         >>> for h in hits[:3]:
@@ -391,6 +883,16 @@ def query(
         mode = DEFAULT_SEARCH_MODE
 
     con = connect(db_path, init_fts=False)
+
+    # Resolve branch - auto-detect if not specified
+    if branch is None:
+        from .commands._common import get_current_branch
+
+        branch = get_current_branch()
+
+    # Cache setup (lazy initialization)
+    cache_con = None
+    cache_enabled = not no_cache and not os.environ.get("OGREP_CACHE_DISABLED")
 
     # Check for mixed dimensions (corrupted index)
     distinct_dims = con.execute("SELECT DISTINCT dim FROM chunks").fetchall()
@@ -423,15 +925,15 @@ def query(
         if not fts_scores:
             return [], fts_available
 
-        # Fetch chunk details for FTS matches
+        # Fetch chunk details for FTS matches (filtered by branch)
         chunk_ids = list(fts_scores.keys())
         placeholders = ",".join("?" * len(chunk_ids))
         rows = con.execute(
             f"""SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text
                 FROM chunks c
                 JOIN files f ON f.id = c.file_id
-                WHERE c.id IN ({placeholders})""",
-            chunk_ids,
+                WHERE c.id IN ({placeholders}) AND f.branch = ?""",
+            [*chunk_ids, branch],
         ).fetchall()
 
         # Build hits with scores, sorted by score descending
@@ -444,24 +946,60 @@ def query(
         # Get top score for relative confidence
         top_score = scored_rows[0][0] if scored_rows else 0.0
 
-        hits = [
-            Hit(
-                score=score,
-                path=row[2],
-                start_line=int(row[3]),
-                end_line=int(row[4]),
-                text=row[5],
-                chunk_id=int(row[0]),
-                chunk_index=int(row[1]),
-                confidence=assign_confidence(score, top_score),
+        hits = []
+        for rank, (score, row) in enumerate(scored_rows, start=1):
+            level, details = assign_confidence(score, top_score, rank)
+            hits.append(
+                Hit(
+                    score=score,
+                    path=row[2],
+                    start_line=int(row[3]),
+                    end_line=int(row[4]),
+                    text=row[5],
+                    chunk_id=int(row[0]),
+                    chunk_index=int(row[1]),
+                    confidence=level,
+                    confidence_details=details,
+                )
             )
-            for score, row in scored_rows
-        ]
         return hits, fts_available
 
     # Semantic search (needed for semantic and hybrid modes)
-    # Embed the query
-    q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+    # Embed the query (with L1 cache if enabled)
+    embedding_key = None
+    l1_hit = False
+
+    if cache_enabled:
+        from .cache import (
+            connect_cache,
+            get_cache_path,
+            get_query_embedding,
+            log_cache_event,
+            set_query_embedding,
+        )
+
+        cache_path = get_cache_path(db_path)
+        cache_con = connect_cache(cache_path)
+        base_url = os.environ.get("OGREP_BASE_URL")
+
+        # Check L1 cache
+        result = get_query_embedding(cache_con, q, model, dimensions, base_url)
+        if result.hit:
+            # Cache hit - use cached embedding
+            q_blob = [result.data]
+            # Dimension = number of float32 values = byte_length / 4
+            q_dim = len(result.data) // 4 if result.data else 0
+            l1_hit = True
+            log_cache_event(cache_con, "L1", "hit", time_saved_ms=result.time_saved_ms)
+        else:
+            # Cache miss - embed and store
+            q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+            set_query_embedding(cache_con, q, model, dimensions, base_url, q_blob[0])
+            log_cache_event(cache_con, "L1", "miss")
+    else:
+        # No caching - embed directly
+        q_blob, q_dim = embed_texts([q], model=model, dimensions=dimensions)
+
     q_arr = array.array("f")
     q_arr.frombytes(q_blob[0])
 
@@ -480,11 +1018,76 @@ def query(
             f"Use -m {index_alias} or reindex with -m {query_alias}."
         )
 
-    # Fetch all chunks
+    # L2 Cache: Check for cached search results
+    l2_hit = False
+    if cache_enabled and cache_con is not None:
+        from .cache import cache_key, get_search_results, log_cache_event, set_search_results
+
+        base_url = os.environ.get("OGREP_BASE_URL")
+        embedding_key = cache_key(q, model, dimensions, base_url or "openai")
+
+        # Check L2 cache (db_version validated inside get_search_results)
+        # Branch is included in cache key to prevent cross-branch cache pollution
+        l2_result = get_search_results(
+            cache_con, con, embedding_key, effective_mode, top_k, branch
+        )
+        if l2_result.hit:
+            # Cache hit - reconstruct Hits from cached chunk_ids and scores
+            cached_results = l2_result.data  # List of (chunk_id, score)
+            chunk_ids = [r[0] for r in cached_results]
+
+            if chunk_ids:
+                placeholders = ",".join("?" * len(chunk_ids))
+                rows = con.execute(
+                    f"""SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text
+                        FROM chunks c
+                        JOIN files f ON f.id = c.file_id
+                        WHERE c.id IN ({placeholders}) AND f.branch = ?""",
+                    [*chunk_ids, branch],
+                ).fetchall()
+
+                # Build lookup for chunk details
+                chunk_lookup = {row[0]: row for row in rows}
+
+                # Get top score for relative confidence
+                top_score = cached_results[0][1] if cached_results else 0.0
+
+                hits = []
+                for rank, (chunk_id, score) in enumerate(cached_results, start=1):
+                    if chunk_id in chunk_lookup:
+                        row = chunk_lookup[chunk_id]
+                        level, details = assign_confidence(score, top_score, rank)
+                        hits.append(
+                            Hit(
+                                score=score,
+                                path=row[2],
+                                start_line=int(row[3]),
+                                end_line=int(row[4]),
+                                text=row[5],
+                                chunk_id=int(row[0]),
+                                chunk_index=int(row[1]),
+                                confidence=level,
+                                confidence_details=details,
+                            )
+                        )
+
+                log_cache_event(
+                    cache_con, "L2", "hit",
+                    time_saved_ms=l2_result.time_saved_ms
+                )
+                return hits, l2_result.fts_available if l2_result.fts_available is not None else fts_available
+
+            # Empty cached results
+            log_cache_event(cache_con, "L2", "hit", time_saved_ms=l2_result.time_saved_ms)
+            return [], fts_available
+
+    # Fetch all chunks for current branch
     rows = con.execute(
         """SELECT c.id, c.chunk_index, f.path, c.start_line, c.end_line, c.text, c.embedding
            FROM chunks c
-           JOIN files f ON f.id = c.file_id"""
+           JOIN files f ON f.id = c.file_id
+           WHERE f.branch = ?""",
+        (branch,),
     ).fetchall()
 
     # Get FTS scores and ranks if in hybrid mode
@@ -572,18 +1175,36 @@ def query(
     top_score = top_results[0][0] if top_results else 0.0
 
     # Build final Hit objects with confidence
-    hits = [
-        Hit(
-            score=score,
-            path=path,
-            start_line=sl,
-            end_line=el,
-            text=text,
-            chunk_id=chunk_id,
-            chunk_index=chunk_idx,
-            confidence=assign_confidence(score, top_score),
+    hits = []
+    for rank, (score, chunk_id, chunk_idx, path, sl, el, text) in enumerate(top_results, start=1):
+        level, details = assign_confidence(score, top_score, rank)
+        hits.append(
+            Hit(
+                score=score,
+                path=path,
+                start_line=sl,
+                end_line=el,
+                text=text,
+                chunk_id=chunk_id,
+                chunk_index=chunk_idx,
+                confidence=level,
+                confidence_details=details,
+            )
         )
-        for score, chunk_id, chunk_idx, path, sl, el, text in top_results
-    ]
+
+    # L2 Cache: Store search results
+    if cache_enabled and cache_con is not None:
+        from .cache import cache_key, log_cache_event, set_search_results
+
+        base_url = os.environ.get("OGREP_BASE_URL")
+        embedding_key = cache_key(q, model, dimensions, base_url or "openai")
+
+        # Store (chunk_id, score) pairs (branch-scoped cache key)
+        results_to_cache = [(h.chunk_id, h.score) for h in hits]
+        set_search_results(
+            cache_con, con, embedding_key, effective_mode, top_k,
+            results_to_cache, fts_available, branch
+        )
+        log_cache_event(cache_con, "L2", "miss")
 
     return hits, fts_available

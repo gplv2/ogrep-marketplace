@@ -2,7 +2,8 @@
 Clean command for ogrep.
 
 Removes stale entries from the index where the source files
-no longer exist on disk, and optionally compacts the database.
+no longer exist on disk, prunes orphaned branch data, and
+optionally compacts the database.
 """
 
 from __future__ import annotations
@@ -12,17 +13,18 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ..db import log_history
-from ._common import resolve_db_path
+from ..db import delete_branch_files, get_indexed_branches, log_history
+from ._common import get_git_branches, resolve_db_path
 
 
 def cmd_clean(args: argparse.Namespace) -> int:
     """
-    Remove stale entries and optionally vacuum the database.
+    Remove stale entries, prune deleted branches, and optionally vacuum.
 
     Scans the index for files that no longer exist on disk and
-    removes their entries. This keeps the index lean and prevents
-    stale results from appearing in searches.
+    removes their entries. Also removes data for git branches that
+    no longer exist. This keeps the index lean and prevents stale
+    results from appearing in searches.
 
     Args:
         args: Parsed command-line arguments containing:
@@ -62,18 +64,38 @@ def cmd_clean(args: argparse.Namespace) -> int:
 
         con.commit()
 
-        # Log to history if files were removed (AI tool integration)
-        if removed > 0:
+        # Prune orphaned branches (branches that no longer exist in git)
+        indexed_branches = get_indexed_branches(con)
+        git_branches = get_git_branches(repo_root)
+        orphaned_branches = indexed_branches - git_branches
+        pruned_branches = []
+        pruned_files = 0
+
+        for branch in orphaned_branches:
+            files_deleted = delete_branch_files(con, branch)
+            if files_deleted > 0:
+                pruned_branches.append(branch)
+                pruned_files += files_deleted
+
+        # Log to history if anything was cleaned (AI tool integration)
+        if removed > 0 or pruned_files > 0:
             log_history(
                 con,
                 action="clean",
-                files_affected=removed,
+                files_affected=removed + pruned_files,
                 chunks_affected=0,  # Chunks are cascade-deleted
                 details={
                     "removed_paths": removed_paths,
+                    "pruned_branches": pruned_branches,
+                    "pruned_files": pruned_files,
                     "vacuumed": args.vacuum,
                 },
             )
+
+            # Increment db_version to invalidate L2 cache
+            from ..cache import increment_db_version
+
+            increment_db_version(con)
 
         vacuumed = False
         if args.vacuum:
@@ -92,12 +114,16 @@ def cmd_clean(args: argparse.Namespace) -> int:
                         "exists": True,
                         "removed": removed,
                         "removed_paths": removed_paths,
+                        "pruned_branches": pruned_branches,
+                        "pruned_files": pruned_files,
                         "vacuumed": vacuumed,
                     }
                 )
             )
         else:
             print(f"Removed {removed} stale file entries")
+            if pruned_branches:
+                print(f"Pruned {pruned_files} files from deleted branches: {', '.join(pruned_branches)}")
 
     except KeyboardInterrupt:
         con.close()

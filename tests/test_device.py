@@ -112,10 +112,10 @@ class TestDeviceInfoWithMocks:
         info = _get_device_info()
         text = _format_text_output(info)
 
-        # Should always have Reranking Support header
-        assert "Reranking Support" in text
+        # Should always have Reranking Backends header
+        assert "Reranking Backends" in text
 
-        # Full output only available when sentence-transformers is installed
+        # Full output only available when any reranking backend is installed
         if info["rerank_available"]:
             assert "Device Detection" in text
             assert "CUDA" in text
@@ -123,8 +123,8 @@ class TestDeviceInfoWithMocks:
             assert "CPU" in text
             assert "Recommendation" in text
         else:
-            # When not available, should show install instructions
-            assert "pip install" in text or "not available" in text.lower()
+            # When not available, should show install instructions for both backends
+            assert "pip install" in text or "not installed" in text.lower()
 
 
 class TestDeviceHelp:

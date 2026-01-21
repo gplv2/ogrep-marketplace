@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from pathlib import Path
 
-from ._common import resolve_db_path
+from ..db import connect, get_branch_file_counts
+from ._common import get_current_branch, resolve_db_path
 
 
 def _format_size(size_bytes: int) -> str:
@@ -71,8 +71,15 @@ def cmd_status(args: argparse.Namespace) -> int:
             print("Status: Not indexed")
         return 0
 
-    con = sqlite3.connect(str(db))
+    # Detect current branch
+    current_branch = get_current_branch(repo_root)
+
+    con = connect(db, init_fts=False)  # Runs migrations, skip FTS for status
     cur = con.cursor()
+
+    # Get per-branch file counts
+    branch_counts = get_branch_file_counts(con)
+    current_branch_files = branch_counts.get(current_branch, 0)
 
     cur.execute("SELECT COUNT(*) FROM files")
     file_count = cur.fetchone()[0]
@@ -106,7 +113,10 @@ def cmd_status(args: argparse.Namespace) -> int:
             "database": str(db),
             "status": "indexed",
             "indexed": True,
-            "files": file_count,
+            "branch": current_branch,
+            "branch_files": current_branch_files,
+            "total_files": file_count,
+            "branches": branch_counts,
             "chunks": chunk_count,
             "model": model,
             "dimensions": dim,
@@ -119,7 +129,16 @@ def cmd_status(args: argparse.Namespace) -> int:
     else:
         print(f"Database: {db}")
         print("Status: Indexed")
-        print(f"Files: {file_count}")
+        print(f"Branch: {current_branch}")
+        if len(branch_counts) > 1:
+            # Show per-branch breakdown when multiple branches exist
+            print(f"Files: {current_branch_files} (current branch), {file_count} total")
+            print("  Branches:")
+            for branch_name, count in sorted(branch_counts.items()):
+                marker = " *" if branch_name == current_branch else ""
+                print(f"    {branch_name}: {count} files{marker}")
+        else:
+            print(f"Files: {file_count}")
         print(f"Chunks: {chunk_count}")
         print(f"Model: {model}")
         print(f"Dimensions: {dim}")

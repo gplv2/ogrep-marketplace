@@ -573,7 +573,10 @@ def cmd_index(args: argparse.Namespace) -> int:
             "chunks_reused_local": stats.chunks_reused_local,
             "tokens_saved_estimate": stats.tokens_saved_estimate,
             "dedup_ratio": stats.dedup_ratio,
+            "ast_mode": stats.ast_mode,
         }
+        if stats.ast_hint:
+            output["ast_hint"] = stats.ast_hint
         if verbose and stats.indexed_files is not None:
             output["indexed_files"] = stats.indexed_files
         print(json.dumps(output))
