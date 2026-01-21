@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-01-21
+
+### 🔧 Maintenance
+
+- **Re-release of 0.8.4**: PyPI package rebuild to ensure complete distribution artifacts
+
 ## [0.8.4] - 2026-01-21
 
 ### ✨ New Features
