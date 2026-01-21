@@ -1,6 +1,8 @@
 ---
 name: chunk
 description: Get a chunk by reference with optional context. Use after query finds something interesting to expand context.
+allowed-tools: Bash
+argument-hint: <chunk_ref or chunk_id>
 ---
 
 # ogrep chunk
@@ -10,7 +12,7 @@ Retrieve chunks by reference (path:index) or raw ID, with optional neighboring c
 ## Usage
 
 ```bash
-ogrep chunk "path/to/file.py:N"     # By chunk reference
+ogrep chunk "path/to/file.py:N"     # By chunk reference (N is 0-based chunk index)
 ogrep chunk 42                       # By raw chunk ID
 
 # With context
@@ -21,14 +23,13 @@ ogrep chunk "auth.py:2" --context 1  # + 1 before AND after
 
 ## Options
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--before N` | `-B` | Include N chunks before the requested chunk |
-| `--after N` | `-A` | Include N chunks after the requested chunk |
-| `--context N` | `-C` | Include N chunks before AND after (shorthand) |
-| `--no-json` | | Output as human-readable text instead of JSON |
-
-JSON output is the default for all commands.
+| Flag | Alias | Default | Description |
+|------|-------|---------|-------------|
+| `--before N` | `-B` | 0 | Include N chunks before the requested chunk |
+| `--after N` | `-A` | 0 | Include N chunks after the requested chunk |
+| `--context N` | `-C` | 0 | Include N chunks before AND after (shorthand for `-B N -A N`) |
+| `--json` | - | yes | Output as JSON (default for AI/machine use) |
+| `--no-json` | - | - | Output as human-readable text instead of JSON |
 
 ## Output Format
 
@@ -86,3 +87,18 @@ ogrep chunk "handler.py:2" --after 2
 # Get surrounding context
 ogrep chunk "auth.py:4" --context 1
 ```
+
+## Advanced Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--db PATH` | Explicit SQLite DB path (overrides scope options) |
+| `--profile NAME` | Named profile for multiple indexes per repo |
+| `--global-cache` | Use `~/.cache/ogrep/<repo_hash>/index.sqlite` |
+| `--repo-root PATH` | Explicit repository root |
+
+## Notes
+
+- The chunk index in `chunk_ref` (e.g., `"file.py:2"`) is **0-based**, not a line number
+- The `chunk_ref` comes from query results - use it directly
+- If chunk not found, verify the ref from query results or run `ogrep status`

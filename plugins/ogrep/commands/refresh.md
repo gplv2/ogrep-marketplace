@@ -1,10 +1,11 @@
 ---
 description: Refresh the index by reindexing any files that have changed since last index
 allowed-tools: Bash
+argument-hint: [path]
 ---
 
 Run:
-- `ogrep index .`
+- `ogrep index ${1:-.}`
 
 This performs an incremental reindex - only changed files are re-embedded,
 and unchanged chunks reuse their existing embeddings (fast and token-efficient).
