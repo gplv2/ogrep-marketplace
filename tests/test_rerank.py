@@ -36,9 +36,7 @@ class TestRerankerAvailability:
     def test_reranker_not_available_without_any_backend(self):
         """Reranker should report unavailable if no backend is installed."""
         # Mock away both backends
-        with patch.dict(
-            "sys.modules", {"sentence_transformers": None, "flashrank": None}
-        ):
+        with patch.dict("sys.modules", {"sentence_transformers": None, "flashrank": None}):
             # Force reimport
             import importlib
 
@@ -97,7 +95,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.8, 0.6]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
             assert len(result) <= len(hits)
 
     def test_rerank_reorders_by_cross_encoder_score(self):
@@ -228,7 +227,8 @@ class TestRerankerFunction:
             mock_model.predict.return_value = [0.8]
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
             assert len(result) == 1
 
 
@@ -317,7 +317,8 @@ class TestRerankerConfidence:
             mock_model.predict.return_value = [0.95]  # High reranker score
             mock_reranker.return_value = mock_model
 
-            result = rerank_results("test query", hits)
+            # Explicitly use sentence-transformers model (default is now flashrank)
+            result = rerank_results("test query", hits, model_name="bge-m3")
 
             # Confidence should be updated based on new score
             assert result[0].confidence == "high"
@@ -1080,11 +1081,7 @@ class TestVoyageAIBackend:
         mock_client.rerank.return_value = mock_result
 
         with patch("ogrep.rerank._get_voyage_reranker", return_value=mock_client):
-            scores = _voyage_rerank_predict(
-                "test query",
-                ["doc1", "doc2", "doc3"],
-                "voyage"
-            )
+            scores = _voyage_rerank_predict("test query", ["doc1", "doc2", "doc3"], "voyage")
 
             # Verify scores are in correct order
             assert scores == [0.95, 0.85, 0.75]

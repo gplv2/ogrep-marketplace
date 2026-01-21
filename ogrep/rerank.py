@@ -87,10 +87,9 @@ DEFAULT_RERANK_MODEL = "flashrank"  # Lightweight, parallel-safe, best for local
 DEFAULT_RERANK_TOPN = int(os.environ.get("OGREP_RERANK_TOPN", "50"))
 
 # Lock configuration - prevents multiple processes from loading the ~300MB model simultaneously
-RERANK_LOCK_PATH = Path(os.environ.get(
-    "OGREP_RERANK_LOCK",
-    Path.home() / ".cache" / "ogrep" / "rerank.lock"
-))
+RERANK_LOCK_PATH = Path(
+    os.environ.get("OGREP_RERANK_LOCK", Path.home() / ".cache" / "ogrep" / "rerank.lock")
+)
 RERANK_LOCK_TIMEOUT = float(os.environ.get("OGREP_RERANK_LOCK_TIMEOUT", "120"))  # seconds
 
 # =============================================================================
@@ -879,10 +878,7 @@ def rerank_results(
         cache_con = connect_cache(cache_path)
 
         # Compute content-addressable chunk hashes
-        chunk_hashes = [
-            hashlib.sha256(hit.text.encode()).hexdigest()[:16]
-            for hit in candidates
-        ]
+        chunk_hashes = [hashlib.sha256(hit.text.encode()).hexdigest()[:16] for hit in candidates]
 
         # Check L3 cache
         l3_result = get_rerank_results(cache_con, query, chunk_hashes, model, n)

@@ -181,9 +181,7 @@ def connect(db_path: Path, init_fts: bool = True) -> sqlite3.Connection:
                 f"Database '{db_path}' is corrupted or not a valid SQLite database. "
                 f"Remove it and reindex: rm '{db_path}' && ogrep index ."
             ) from e
-        raise DatabaseError(
-            f"Failed to initialize database '{db_path}': {e}"
-        ) from e
+        raise DatabaseError(f"Failed to initialize database '{db_path}': {e}") from e
 
     # Run migrations for existing databases
     _migrate_branch_column(con)

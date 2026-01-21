@@ -206,7 +206,9 @@ class TestConcurrentAccess:
         elapsed = time.perf_counter() - start
 
         avg_time_ms = (elapsed / operations) * 1000
-        print(f"\nMixed operations: {avg_time_ms:.3f}ms average ({operations} ops, 80/20 read/write)")
+        print(
+            f"\nMixed operations: {avg_time_ms:.3f}ms average ({operations} ops, 80/20 read/write)"
+        )
 
         # Should be under 2ms per operation on average
         assert avg_time_ms < 2.0, f"Mixed operations too slow: {avg_time_ms:.3f}ms"

@@ -46,9 +46,7 @@ def index_db(temp_dir):
     index_path = temp_dir / "index.sqlite"
     con = connect(index_path)
     # Initialize db_version
-    con.execute(
-        "INSERT OR REPLACE INTO index_metadata (key, value) VALUES ('db_version', '1')"
-    )
+    con.execute("INSERT OR REPLACE INTO index_metadata (key, value) VALUES ('db_version', '1')")
     con.commit()
     return con
 
@@ -96,9 +94,7 @@ class TestL1QueryEmbeddingCache:
         """Empty cache returns CacheResult with hit=False."""
         from ogrep.cache import get_query_embedding
 
-        result = get_query_embedding(
-            cache_db, "test query", "text-embedding-3-small", 1536, None
-        )
+        result = get_query_embedding(cache_db, "test query", "text-embedding-3-small", 1536, None)
         assert result.hit is False
         assert result.data is None
 
@@ -112,9 +108,7 @@ class TestL1QueryEmbeddingCache:
         )
 
         # Retrieve it
-        result = get_query_embedding(
-            cache_db, "test query", "text-embedding-3-small", 1536, None
-        )
+        result = get_query_embedding(cache_db, "test query", "text-embedding-3-small", 1536, None)
         assert result.hit is True
         assert result.data == sample_embedding
 
@@ -128,9 +122,7 @@ class TestL1QueryEmbeddingCache:
         )
 
         # Query B should miss
-        result = get_query_embedding(
-            cache_db, "query B", "text-embedding-3-small", 1536, None
-        )
+        result = get_query_embedding(cache_db, "query B", "text-embedding-3-small", 1536, None)
         assert result.hit is False
 
     def test_different_model_different_key(self, cache_db, sample_embedding):
@@ -143,9 +135,7 @@ class TestL1QueryEmbeddingCache:
         )
 
         # Different model should miss
-        result = get_query_embedding(
-            cache_db, "test query", "text-embedding-3-large", 3072, None
-        )
+        result = get_query_embedding(cache_db, "test query", "text-embedding-3-large", 3072, None)
         assert result.hit is False
 
     def test_different_base_url_different_key(self, cache_db, sample_embedding):
@@ -173,9 +163,7 @@ class TestL1QueryEmbeddingCache:
         )
 
         # Should hit immediately
-        result = get_query_embedding(
-            cache_db, "test query", "text-embedding-3-small", 1536, None
-        )
+        result = get_query_embedding(cache_db, "test query", "text-embedding-3-small", 1536, None)
         assert result.hit is True
 
         # Mock time to be after TTL
@@ -196,14 +184,10 @@ class TestL1QueryEmbeddingCache:
 
         # Access multiple times
         for _ in range(3):
-            get_query_embedding(
-                cache_db, "test query", "text-embedding-3-small", 1536, None
-            )
+            get_query_embedding(cache_db, "test query", "text-embedding-3-small", 1536, None)
 
         # Check hit_count in database
-        row = cache_db.execute(
-            "SELECT hit_count FROM query_embeddings LIMIT 1"
-        ).fetchone()
+        row = cache_db.execute("SELECT hit_count FROM query_embeddings LIMIT 1").fetchone()
         assert row[0] == 3
 
     def test_lru_eviction(self, cache_db, sample_embedding):
@@ -236,9 +220,7 @@ class TestL2SearchResultsCache:
         """Empty cache returns CacheResult with hit=False."""
         from ogrep.cache import get_search_results
 
-        result = get_search_results(
-            cache_db, index_db, "embedding_key_abc", "hybrid", 10
-        )
+        result = get_search_results(cache_db, index_db, "embedding_key_abc", "hybrid", 10)
         assert result.hit is False
         assert result.data is None
 
@@ -322,8 +304,12 @@ class TestL3RerankResultsCache:
 
         # Store rerank results
         set_rerank_results(
-            cache_db, "test query", sample_chunk_hashes, "BAAI/bge-reranker-v2-m3", 50,
-            sample_results
+            cache_db,
+            "test query",
+            sample_chunk_hashes,
+            "BAAI/bge-reranker-v2-m3",
+            50,
+            sample_results,
         )
 
         # Retrieve them
@@ -346,9 +332,7 @@ class TestL3RerankResultsCache:
         )
 
         # hashes_b should miss
-        result = get_rerank_results(
-            cache_db, "test query", hashes_b, "BAAI/bge-reranker-v2-m3", 50
-        )
+        result = get_rerank_results(cache_db, "test query", hashes_b, "BAAI/bge-reranker-v2-m3", 50)
         assert result.hit is False
 
     def test_same_content_different_order_hits_cache(self, cache_db, sample_results):
@@ -360,8 +344,7 @@ class TestL3RerankResultsCache:
 
         # Store with one order
         set_rerank_results(
-            cache_db, "test query", hashes_ordered, "BAAI/bge-reranker-v2-m3", 50,
-            sample_results
+            cache_db, "test query", hashes_ordered, "BAAI/bge-reranker-v2-m3", 50, sample_results
         )
 
         # Different order should still hit (sorted internally)
@@ -370,14 +353,20 @@ class TestL3RerankResultsCache:
         )
         assert result.hit is True
 
-    def test_different_rerank_model_different_key(self, cache_db, sample_chunk_hashes, sample_results):
+    def test_different_rerank_model_different_key(
+        self, cache_db, sample_chunk_hashes, sample_results
+    ):
         """Same chunks, different model = different cache key."""
         from ogrep.cache import get_rerank_results, set_rerank_results
 
         # Store with model A
         set_rerank_results(
-            cache_db, "test query", sample_chunk_hashes, "BAAI/bge-reranker-v2-m3", 50,
-            sample_results
+            cache_db,
+            "test query",
+            sample_chunk_hashes,
+            "BAAI/bge-reranker-v2-m3",
+            50,
+            sample_results,
         )
 
         # Different model should miss
@@ -478,7 +467,7 @@ class TestCacheMaintenance:
             """INSERT INTO query_embeddings
                (cache_key, query_text, model, dimensions, embedding, created_at, hit_count)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("old_key", "old query", "model", 1536, sample_embedding, 0.0, 0)
+            ("old_key", "old query", "model", 1536, sample_embedding, 0.0, 0),
         )
         cache_db.commit()
 
@@ -495,13 +484,13 @@ class TestCacheMaintenance:
             """INSERT INTO search_results
                (cache_key, embedding_key, mode, top_k, db_version, results, fts_available, created_at, hit_count)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("key1", "emb1", "hybrid", 10, 1, json.dumps(sample_results), 1, time.time(), 0)
+            ("key1", "emb1", "hybrid", 10, 1, json.dumps(sample_results), 1, time.time(), 0),
         )
         cache_db.execute(
             """INSERT INTO search_results
                (cache_key, embedding_key, mode, top_k, db_version, results, fts_available, created_at, hit_count)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("key2", "emb2", "hybrid", 10, 5, json.dumps(sample_results), 1, time.time(), 0)
+            ("key2", "emb2", "hybrid", 10, 5, json.dumps(sample_results), 1, time.time(), 0),
         )
         cache_db.commit()
 
@@ -513,7 +502,9 @@ class TestCacheMaintenance:
         count = cache_db.execute("SELECT COUNT(*) FROM search_results").fetchone()[0]
         assert count == 1
 
-    def test_clear_all_caches(self, cache_db, sample_embedding, sample_results, sample_chunk_hashes):
+    def test_clear_all_caches(
+        self, cache_db, sample_embedding, sample_results, sample_chunk_hashes
+    ):
         """All cache tables are cleared."""
         from ogrep.cache import clear_all_caches, set_query_embedding
 
@@ -524,14 +515,14 @@ class TestCacheMaintenance:
             """INSERT INTO search_results
                (cache_key, embedding_key, mode, top_k, db_version, results, fts_available, created_at, hit_count)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("key1", "emb1", "hybrid", 10, 1, json.dumps(sample_results), 1, time.time(), 0)
+            ("key1", "emb1", "hybrid", 10, 1, json.dumps(sample_results), 1, time.time(), 0),
         )
 
         cache_db.execute(
             """INSERT INTO rerank_results
                (cache_key, query_text, chunk_content_hash, rerank_model, rerank_top, results, created_at, hit_count)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("key1", "query", "hash", "model", 50, json.dumps(sample_results), time.time(), 0)
+            ("key1", "query", "hash", "model", 50, json.dumps(sample_results), time.time(), 0),
         )
         cache_db.commit()
 
@@ -621,8 +612,12 @@ class TestCachePerformance:
 
         # Store results
         set_rerank_results(
-            cache_db, "test query", sample_chunk_hashes, "BAAI/bge-reranker-v2-m3", 50,
-            sample_results
+            cache_db,
+            "test query",
+            sample_chunk_hashes,
+            "BAAI/bge-reranker-v2-m3",
+            50,
+            sample_results,
         )
 
         # Measure lookup time

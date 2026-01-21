@@ -372,7 +372,9 @@ def cmd_health(args: argparse.Namespace) -> int:
     if db_path.is_dir():
         error_msg = f"Path is a directory, not a database file: {db_path}"
         if use_json:
-            print(json.dumps({"database": str(db_path), "error": error_msg, "status": "invalid_path"}))
+            print(
+                json.dumps({"database": str(db_path), "error": error_msg, "status": "invalid_path"})
+            )
         else:
             print(f"Error: {error_msg}")
             print("Hint: Use --db /path/to/.ogrep/index.sqlite or let ogrep find it automatically")
@@ -390,7 +392,11 @@ def cmd_health(args: argparse.Namespace) -> int:
         if not tables:
             error_msg = "File is not an ogrep index database (missing required tables)"
             if use_json:
-                print(json.dumps({"database": str(db_path), "error": error_msg, "status": "not_ogrep_db"}))
+                print(
+                    json.dumps(
+                        {"database": str(db_path), "error": error_msg, "status": "not_ogrep_db"}
+                    )
+                )
             else:
                 print(f"Error: {error_msg}")
                 print("Hint: This may be a different SQLite database, not an ogrep index")
@@ -401,7 +407,11 @@ def cmd_health(args: argparse.Namespace) -> int:
     except sqlite3.OperationalError as e:
         error_msg = f"Cannot open database: {e}"
         if use_json:
-            print(json.dumps({"database": str(db_path), "error": error_msg, "status": "invalid_database"}))
+            print(
+                json.dumps(
+                    {"database": str(db_path), "error": error_msg, "status": "invalid_database"}
+                )
+            )
         else:
             print(f"Error: {error_msg}")
             print("Hint: The file may not be a valid SQLite database")
@@ -615,7 +625,9 @@ def cmd_health(args: argparse.Namespace) -> int:
                     # Hit/Miss rates (if we have data)
                     if totals["lifetime_hits"] + totals["lifetime_misses"] > 0:
                         print("\n  Performance (lifetime):")
-                        print(f"    {'Level':<12} {'Hits':>8} {'Misses':>8} {'Rate':>10} {'Saved':>12}")
+                        print(
+                            f"    {'Level':<12} {'Hits':>8} {'Misses':>8} {'Rate':>10} {'Saved':>12}"
+                        )
                         print(f"    {'─' * 52}")
                         for level in ["L1", "L2", "L3"]:
                             lvl = cache_stats["levels"].get(level, {})
@@ -626,11 +638,17 @@ def cmd_health(args: argparse.Namespace) -> int:
                             saved = lvl.get("time_saved_ms", 0)
                             rate_str = f"{rate:.1f}%" if rate is not None else "N/A"
                             saved_str = _format_time_saved(saved) if saved > 0 else "-"
-                            print(f"    {desc:<12} {hits:>8} {misses:>8} {rate_str:>10} {saved_str:>12}")
+                            print(
+                                f"    {desc:<12} {hits:>8} {misses:>8} {rate_str:>10} {saved_str:>12}"
+                            )
                         print(f"    {'─' * 52}")
                         total_rate = totals.get("lifetime_hit_rate")
                         total_rate_str = f"{total_rate:.1f}%" if total_rate is not None else "N/A"
-                        total_saved_str = _format_time_saved(totals["time_saved_ms"]) if totals["time_saved_ms"] > 0 else "-"
+                        total_saved_str = (
+                            _format_time_saved(totals["time_saved_ms"])
+                            if totals["time_saved_ms"] > 0
+                            else "-"
+                        )
                         print(
                             f"    {'Total':<12} {totals['lifetime_hits']:>8} "
                             f"{totals['lifetime_misses']:>8} {total_rate_str:>10} {total_saved_str:>12}"
@@ -639,9 +657,13 @@ def cmd_health(args: argparse.Namespace) -> int:
                     # Recent stats (last 24h)
                     if totals["recent_hits"] + totals["recent_misses"] > 0:
                         recent_rate = totals.get("recent_hit_rate")
-                        recent_rate_str = f"{recent_rate:.1f}%" if recent_rate is not None else "N/A"
-                        print(f"\n  Last 24h: {totals['recent_hits']} hits, "
-                              f"{totals['recent_misses']} misses ({recent_rate_str})")
+                        recent_rate_str = (
+                            f"{recent_rate:.1f}%" if recent_rate is not None else "N/A"
+                        )
+                        print(
+                            f"\n  Last 24h: {totals['recent_hits']} hits, "
+                            f"{totals['recent_misses']} misses ({recent_rate_str})"
+                        )
 
                 # Total size
                 print(f"\nTotal size: {_format_size(total_size)}")

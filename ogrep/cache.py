@@ -640,12 +640,8 @@ def get_cache_health_stats(cache_con: sqlite3.Connection) -> dict:
             entry_hits = row[1] if row else 0
 
             # Oldest and newest entry
-            oldest = cache_con.execute(
-                f"SELECT MIN(created_at) FROM {table}"
-            ).fetchone()
-            newest = cache_con.execute(
-                f"SELECT MAX(created_at) FROM {table}"
-            ).fetchone()
+            oldest = cache_con.execute(f"SELECT MIN(created_at) FROM {table}").fetchone()
+            newest = cache_con.execute(f"SELECT MAX(created_at) FROM {table}").fetchone()
 
             # Recent stats from cache_stats (last 24h)
             cutoff_24h = time.time() - (24 * 60 * 60)
@@ -690,7 +686,9 @@ def get_cache_health_stats(cache_con: sqlite3.Connection) -> dict:
                 "recent_hit_rate": (recent_hits / recent_total * 100) if recent_total > 0 else None,
                 "lifetime_hits": lifetime_hits,
                 "lifetime_misses": lifetime_misses,
-                "lifetime_hit_rate": (lifetime_hits / lifetime_total * 100) if lifetime_total > 0 else None,
+                "lifetime_hit_rate": (lifetime_hits / lifetime_total * 100)
+                if lifetime_total > 0
+                else None,
                 "time_saved_ms": lifetime_saved,
                 "oldest_entry": oldest[0] if oldest and oldest[0] else None,
                 "newest_entry": newest[0] if newest and newest[0] else None,
@@ -718,8 +716,12 @@ def get_cache_health_stats(cache_con: sqlite3.Connection) -> dict:
     totals = stats["totals"]
     recent_total = totals["recent_hits"] + totals["recent_misses"]
     lifetime_total = totals["lifetime_hits"] + totals["lifetime_misses"]
-    totals["recent_hit_rate"] = (totals["recent_hits"] / recent_total * 100) if recent_total > 0 else None
-    totals["lifetime_hit_rate"] = (totals["lifetime_hits"] / lifetime_total * 100) if lifetime_total > 0 else None
+    totals["recent_hit_rate"] = (
+        (totals["recent_hits"] / recent_total * 100) if recent_total > 0 else None
+    )
+    totals["lifetime_hit_rate"] = (
+        (totals["lifetime_hits"] / lifetime_total * 100) if lifetime_total > 0 else None
+    )
 
     return stats
 

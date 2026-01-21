@@ -156,18 +156,22 @@ def _aggregate_to_summary(hits: list[Hit], repo_root: Path) -> list[dict]:
         level, _ = assign_confidence(best_score, top_overall_score, rank=1)
 
         # Extract line ranges
-        lines_covered = [[h.start_line, h.end_line] for h in sorted(file_hits, key=lambda x: x.start_line)]
+        lines_covered = [
+            [h.start_line, h.end_line] for h in sorted(file_hits, key=lambda x: x.start_line)
+        ]
 
-        summaries.append({
-            "path": path,
-            "relative_path": rel_path,
-            "chunks_matched": len(file_hits),
-            "best_score": round(best_score, 4),
-            "score_range": [round(min_score, 4), round(best_score, 4)],
-            "confidence": level,
-            "language": detect_language(path),
-            "lines_covered": lines_covered,
-        })
+        summaries.append(
+            {
+                "path": path,
+                "relative_path": rel_path,
+                "chunks_matched": len(file_hits),
+                "best_score": round(best_score, 4),
+                "score_range": [round(min_score, 4), round(best_score, 4)],
+                "confidence": level,
+                "language": detect_language(path),
+                "lines_covered": lines_covered,
+            }
+        )
 
     # Sort by best_score descending
     summaries.sort(key=lambda x: x["best_score"], reverse=True)
@@ -475,6 +479,7 @@ def cmd_query(args: argparse.Namespace) -> int:
                     no_cache = getattr(args, "no_cache", False)
                     if not no_cache:
                         from ..cache import get_cache_path
+
                         cache_path = get_cache_path(db)
 
                     hits = rerank_results(
@@ -603,7 +608,9 @@ def cmd_query(args: argparse.Namespace) -> int:
                     "total_chunks": total_chunks,
                     "search_time_ms": search_time_ms,
                     "search_mode": search_mode or "hybrid",
-                    "fusion_method": FUSION_METHOD if (search_mode or "hybrid") == "hybrid" else None,
+                    "fusion_method": FUSION_METHOD
+                    if (search_mode or "hybrid") == "hybrid"
+                    else None,
                     "reranked": reranked,
                     "rerank_requested": do_rerank,
                     "fts_available": fts_available,
