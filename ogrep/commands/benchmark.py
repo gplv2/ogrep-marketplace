@@ -182,9 +182,10 @@ def _test_configuration(
 
     for file_path, line_num, _original, query in samples:
         query_start = time.perf_counter()
-        results = search_query(db_path=db_path, q=query, top_k=5, model=model)
+        results, _ = search_query(db_path=db_path, q=query, top_k=5, model=model)
         query_time += time.perf_counter() - query_start
 
+        # DB stores absolute paths (resolved)
         file_str = str(file_path.resolve())
         for i, hit in enumerate(results):
             if hit.path == file_str:

@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 
 from ..indexer import index_path, iter_files
+from ..models import resolve_model
 from ..search import query as search_query
 
 
@@ -129,6 +130,9 @@ def _test_chunk_size(
     Returns:
         (accuracy_score, hit_count) - accuracy is 0.0-1.0
     """
+    # Resolve model from arg, env, or default (avoid passing None to search)
+    resolved_model = resolve_model(model)
+
     # Index with this chunk size
     index_path(
         root=root,
@@ -142,16 +146,13 @@ def _test_chunk_size(
     total_score = 0.0
 
     for file_path, line_num, _original, query in samples:
-        results, _ = search_query(db_path=db_path, q=query, top_k=5, model=model)
+        results, _ = search_query(db_path=db_path, q=query, top_k=5, model=resolved_model)
 
         # Check if correct file is in top results
-        # Convert to relative path for comparison (db stores relative paths)
-        try:
-            rel_path = str(file_path.relative_to(root))
-        except ValueError:
-            rel_path = str(file_path)
+        # DB stores absolute paths (resolved)
+        file_str = str(file_path.resolve())
         for i, hit in enumerate(results):
-            if hit.path == rel_path:
+            if hit.path == file_str:
                 # Check if line number is within the chunk
                 if hit.start_line <= line_num <= hit.end_line:
                     hits += 1
