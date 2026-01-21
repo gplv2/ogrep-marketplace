@@ -13,13 +13,10 @@ Cache Levels:
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 
 # === Fixtures ===
 
@@ -168,7 +165,7 @@ class TestL1QueryEmbeddingCache:
 
     def test_ttl_expiry(self, cache_db, sample_embedding):
         """Entry expires after TTL."""
-        from ogrep.cache import get_query_embedding, set_query_embedding, L1_TTL_SECONDS
+        from ogrep.cache import L1_TTL_SECONDS, get_query_embedding, set_query_embedding
 
         # Store embedding
         set_query_embedding(
@@ -198,7 +195,7 @@ class TestL1QueryEmbeddingCache:
         )
 
         # Access multiple times
-        for i in range(3):
+        for _ in range(3):
             get_query_embedding(
                 cache_db, "test query", "text-embedding-3-small", 1536, None
             )
@@ -211,7 +208,7 @@ class TestL1QueryEmbeddingCache:
 
     def test_lru_eviction(self, cache_db, sample_embedding):
         """Oldest entries evicted when over limit."""
-        from ogrep.cache import set_query_embedding, evict_lru
+        from ogrep.cache import evict_lru, set_query_embedding
 
         # Insert more than max entries
         for i in range(10):
@@ -262,7 +259,7 @@ class TestL2SearchResultsCache:
 
     def test_db_version_mismatch_returns_none(self, cache_db, index_db, sample_results):
         """Stale db_version = cache miss."""
-        from ogrep.cache import get_search_results, set_search_results, increment_db_version
+        from ogrep.cache import get_search_results, increment_db_version, set_search_results
 
         # Store results at version 1
         set_search_results(
@@ -398,8 +395,8 @@ class TestDbVersion:
 
     def test_get_db_version_default(self, temp_dir):
         """New index has db_version=0."""
-        from ogrep.db import connect
         from ogrep.cache import get_db_version
+        from ogrep.db import connect
 
         index_path = temp_dir / "fresh_index.sqlite"
         con = connect(index_path)
@@ -442,7 +439,7 @@ class TestCacheStats:
 
     def test_get_cache_report(self, cache_db):
         """Cache report aggregates stats correctly."""
-        from ogrep.cache import log_cache_event, get_cache_report
+        from ogrep.cache import get_cache_report, log_cache_event
 
         # Log some events
         for _ in range(5):
@@ -474,7 +471,7 @@ class TestCacheMaintenance:
 
     def test_clear_expired_l1(self, cache_db, sample_embedding):
         """Expired L1 entries are removed."""
-        from ogrep.cache import set_query_embedding, clear_expired_l1
+        from ogrep.cache import clear_expired_l1
 
         # Insert entries with old timestamps
         cache_db.execute(
@@ -518,9 +515,7 @@ class TestCacheMaintenance:
 
     def test_clear_all_caches(self, cache_db, sample_embedding, sample_results, sample_chunk_hashes):
         """All cache tables are cleared."""
-        from ogrep.cache import (
-            set_query_embedding, clear_all_caches
-        )
+        from ogrep.cache import clear_all_caches, set_query_embedding
 
         # Add some data
         set_query_embedding(cache_db, "q1", "model", 1536, None, sample_embedding)

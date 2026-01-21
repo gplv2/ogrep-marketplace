@@ -13,7 +13,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from ..db import connect as db_connect, get_branch_file_counts
+from ..db import connect as db_connect
+from ..db import get_branch_file_counts
 from ._common import get_current_branch, resolve_db_path
 
 
@@ -517,7 +518,7 @@ def cmd_health(args: argparse.Namespace) -> int:
                 print(json.dumps(output))
             else:
                 # Branch info
-                print(f"\n── Branch Info ──")
+                print("\n── Branch Info ──")
                 print(f"  Current: {current_branch}")
                 if branch_counts:
                     print(f"  Indexed branches: {len(branch_counts)}")

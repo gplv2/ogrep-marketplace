@@ -9,18 +9,14 @@ Marked as slow tests - run separately from unit tests.
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from ogrep.cache import (
-    L1_TTL_SECONDS,
     cache_key,
     connect_cache,
-    get_cache_path,
     get_query_embedding,
     get_rerank_results,
     get_search_results,
@@ -247,7 +243,7 @@ class TestEndToEndCachePerformance:
             l1_hits * l1_savings + l2_hits * l2_savings + l3_hits * l3_hits * l3_savings
         )
 
-        print(f"\nEstimated session savings:")
+        print("\nEstimated session savings:")
         print(f"  L1 hits: {l1_hits} x {l1_savings}ms = {l1_hits * l1_savings}ms")
         print(f"  L2 hits: {l2_hits} x {l2_savings}ms = {l2_hits * l2_savings}ms")
         print(f"  L3 hits: {l3_hits} x {l3_savings}ms = {l3_hits * l3_savings}ms")

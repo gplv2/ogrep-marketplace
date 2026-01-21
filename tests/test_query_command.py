@@ -1170,7 +1170,7 @@ class TestRerankValidation:
             exclude=None,
         )
 
-        result = cmd_query(args)
+        cmd_query(args)
 
         # Should succeed (or gracefully degrade if reranker unavailable)
         captured = capsys.readouterr()
@@ -1214,7 +1214,7 @@ class TestRerankValidation:
             exclude=None,
         )
 
-        result = cmd_query(args)
+        cmd_query(args)
 
         # Should succeed (or gracefully degrade if reranker unavailable)
         captured = capsys.readouterr()
@@ -1257,7 +1257,7 @@ class TestRerankValidation:
             exclude=None,
         )
 
-        result = cmd_query(args)
+        cmd_query(args)
 
         # Should succeed (or gracefully degrade if reranker unavailable)
         captured = capsys.readouterr()
@@ -1301,7 +1301,7 @@ class TestRerankValidation:
             exclude=None,
         )
 
-        result = cmd_query(args)
+        cmd_query(args)
 
         # Should succeed (or gracefully degrade if reranker unavailable)
         captured = capsys.readouterr()
