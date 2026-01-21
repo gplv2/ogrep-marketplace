@@ -243,7 +243,16 @@ ogrep index . --no-ast
 
 **Local models:** See `LOCAL_EMBEDDINGS_GUIDE.md` for LM Studio setup.
 
-**Smart default:** If `OGREP_BASE_URL` set → `nomic`, else → `small`.
+**Smart default model selection** (based on available API keys):
+
+| Environment | Default Model |
+|-------------|---------------|
+| `OGREP_BASE_URL` set | `nomic-embed-text-v1.5` (local) |
+| Only `VOYAGE_API_KEY` | `voyage-code-3` (code-optimized) |
+| Only `OPENAI_API_KEY` | `text-embedding-3-small` |
+| Both API keys | `text-embedding-3-small` (OpenAI) |
+
+This means you only need to set the API key for the service you want to use - ogrep will automatically select the right model.
 
 ## Voyage AI Backend
 
@@ -319,12 +328,21 @@ ogrep query "your search" --rerank  # flashrank default
 
 ## Environment Variables
 
+**API Keys (set at least one):**
+
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | Required for OpenAI models |
-| `VOYAGE_API_KEY` | Required for Voyage AI models |
-| `OGREP_MODEL` | Default embedding model |
-| `OGREP_BASE_URL` | Local server URL |
+| `OPENAI_API_KEY` | For OpenAI models (text-embedding-3-small/large) |
+| `VOYAGE_API_KEY` | For Voyage AI models (voyage-code-3, voyage-3-lite) |
+| `OGREP_BASE_URL` | For local models via LM Studio (e.g., `http://localhost:1234/v1`) |
+
+You only need **one** of these. The default model is automatically selected based on which key is available (see "Smart default model selection" above).
+
+**Configuration:**
+
+| Variable | Description |
+|----------|-------------|
+| `OGREP_MODEL` | Override default embedding model |
 | `OGREP_SEARCH_MODE` | Default mode (semantic/fulltext/hybrid) |
 | `OGREP_CHUNK_LINES` | Override chunk size |
 | `OGREP_RERANK_MODEL` | Default rerank model (flashrank/voyage/minilm/bge-m3) |
@@ -388,10 +406,16 @@ git push && git push --tags
 
 ## Scope Fencing
 
-- Default: `.ogrep/index.sqlite` in repo root
-- Profile: `.ogrep/<profile>/index.sqlite`
-- Global: `~/.cache/ogrep/<hash>/index.sqlite`
-- Explicit: `--db /path/to/db.sqlite`
+The `.ogrep/` directory is **always created in the git repository root**, not the current working directory. This means you can run `ogrep index .` from any subdirectory and the index will be stored at the repo root.
+
+| Scope | Location |
+|-------|----------|
+| Default | `<git-root>/.ogrep/index.sqlite` |
+| Profile | `<git-root>/.ogrep/<profile>/index.sqlite` |
+| Global | `~/.cache/ogrep/<hash>/index.sqlite` |
+| Explicit | `--db /path/to/db.sqlite` |
+
+For non-git directories, `.ogrep/` is created in the indexed directory itself.
 
 ## Testing
 

@@ -31,14 +31,19 @@ def _get_default_model() -> str:
     """
     Get the default model based on environment configuration.
 
-    If OGREP_BASE_URL is set (local server), defaults to nomic.
-    Otherwise, defaults to OpenAI's text-embedding-3-small.
+    Priority:
+    1. OGREP_BASE_URL set → nomic (local model)
+    2. Only VOYAGE_API_KEY set → voyage-code-3 (code-optimized)
+    3. OPENAI_API_KEY set (or both) → text-embedding-3-small
 
     Returns:
         Default model ID.
     """
     if os.environ.get(ENV_BASE_URL):
         return DEFAULT_LOCAL_MODEL
+    # If only Voyage key is available, default to Voyage model
+    if os.environ.get("VOYAGE_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
+        return "voyage-code-3"
     return DEFAULT_OPENAI_MODEL
 
 

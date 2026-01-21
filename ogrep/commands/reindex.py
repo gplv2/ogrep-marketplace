@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..indexer import index_path
 from ..models import get_optimal_chunk_lines, get_optimal_overlap
-from ._common import require_embedding_config, resolve_db_path
+from ._common import find_git_root, require_embedding_config, resolve_db_path
 
 
 def cmd_reindex(args: argparse.Namespace) -> int:
@@ -45,17 +45,26 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
     if not require_embedding_config():
         if use_json:
-            print(json.dumps({"error": "Missing OPENAI_API_KEY environment variable"}))
+            print(json.dumps({"error": "No embedding API configured. Set OPENAI_API_KEY, VOYAGE_API_KEY, or OGREP_BASE_URL"}))
         return 1
 
     root = Path(args.path).resolve()
-    # If root is a file, use its parent directory for repo_root
+    # If root is a file, use its parent directory for searching
+    search_path = root.parent if root.is_file() else root
+
+    # Determine repo_root for .ogrep location
     if args.repo_root:
+        # Explicit --repo-root takes priority
         repo_root = args.repo_root.resolve()
-    elif root.is_file():
-        repo_root = root.parent
     else:
-        repo_root = root
+        # Try to find git repository root
+        git_root = find_git_root(search_path)
+        if git_root:
+            repo_root = git_root
+        else:
+            # Not in a git repo - use the indexed path
+            repo_root = search_path
+
     db = resolve_db_path(args.db, args.profile, args.global_cache, repo_root)
 
     # Use model-specific optimal settings if not explicitly specified
@@ -129,13 +138,17 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             "database": str(db),
             "removed_existing": removed_existing,
             "cache_removed": cache_removed,
+            "model": stats.model,
             "files_indexed": stats.files_indexed,
             "files_skipped": stats.files_skipped,
             "files_scanned": stats.files_scanned,
             "chunks_total": stats.chunks_total,
             "chunks_embedded": stats.chunks_embedded,
             "chunks_reused": stats.chunks_reused,
+            "chunks_reused_global": stats.chunks_reused_global,
+            "chunks_reused_local": stats.chunks_reused_local,
             "tokens_saved_estimate": stats.tokens_saved_estimate,
+            "dedup_ratio": stats.dedup_ratio,
             "ast_mode": stats.ast_mode,
         }
         if stats.ast_hint:
@@ -143,8 +156,14 @@ def cmd_reindex(args: argparse.Namespace) -> int:
         print(json.dumps(result))
     else:
         print(f"Reindexed into {db}")
+        print(f"  Model: {stats.model}")
         print(f"  Files: {stats.files_indexed} indexed, {stats.files_skipped} skipped")
         if stats.chunks_total > 0:
-            print(f"  Chunks: {stats.chunks_total} ({stats.chunks_embedded} embedded)")
+            msg = f"  Chunks: {stats.chunks_total} total"
+            if stats.chunks_reused > 0:
+                msg += f" ({stats.chunks_reused} reused, ~{stats.tokens_saved_estimate} tokens saved)"
+            else:
+                msg += f" ({stats.chunks_embedded} embedded)"
+            print(msg)
 
     return 0
