@@ -480,10 +480,10 @@ def matches_any_pattern(path: str, patterns: list[str]) -> bool:
 
 
 def filter_hits_by_path(
-    hits: list["Hit"],
+    hits: list[Hit],
     path_filter: PathFilter,
     requested_n: int,
-) -> tuple[list["Hit"], FilterStats]:
+) -> tuple[list[Hit], FilterStats]:
     """
     Filter search results by path patterns.
 
@@ -967,7 +967,6 @@ def query(
     # Semantic search (needed for semantic and hybrid modes)
     # Embed the query (with L1 cache if enabled)
     embedding_key = None
-    l1_hit = False
 
     if cache_enabled:
         from .cache import (
@@ -989,7 +988,6 @@ def query(
             q_blob = [result.data]
             # Dimension = number of float32 values = byte_length / 4
             q_dim = len(result.data) // 4 if result.data else 0
-            l1_hit = True
             log_cache_event(cache_con, "L1", "hit", time_saved_ms=result.time_saved_ms)
         else:
             # Cache miss - embed and store
@@ -1019,7 +1017,6 @@ def query(
         )
 
     # L2 Cache: Check for cached search results
-    l2_hit = False
     if cache_enabled and cache_con is not None:
         from .cache import cache_key, get_search_results, log_cache_event, set_search_results
 

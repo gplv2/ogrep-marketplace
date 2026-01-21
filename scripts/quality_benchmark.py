@@ -9,11 +9,8 @@ Calculates Hit@1, Hit@3, Hit@5, and MRR metrics.
 import argparse
 import json
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
 
 # Ground truth: 10 queries with expected top file
 GROUND_TRUTH = [
@@ -97,7 +94,7 @@ def run_query(
     query: str,
     repo_path: str,
     rerank: bool = False,
-    rerank_model: Optional[str] = None,
+    rerank_model: str | None = None,
     n_results: int = 10,
     rerank_top: int = 50,
 ) -> dict:
@@ -136,7 +133,7 @@ def run_query(
         return {"error": f"JSON decode error: {e}", "results": []}
 
 
-def find_file_rank(results: list, expected_file: str) -> Optional[int]:
+def find_file_rank(results: list, expected_file: str) -> int | None:
     """Find the rank (1-indexed) of expected file in results."""
     for i, result in enumerate(results):
         # Try both 'relative_path' (new format) and 'file' (legacy)
@@ -147,7 +144,7 @@ def find_file_rank(results: list, expected_file: str) -> Optional[int]:
     return None
 
 
-def calculate_metrics(ranks: list[Optional[int]]) -> dict:
+def calculate_metrics(ranks: list[int | None]) -> dict:
     """Calculate Hit@1, Hit@3, Hit@5, and MRR from ranks."""
     n = len(ranks)
 
@@ -246,7 +243,7 @@ def generate_quality_report(results: dict, output_path: str) -> None:
         "# Reranking Quality Benchmark",
         "",
         f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"**Codebase:** julan_peppol",
+        "**Codebase:** julan_peppol",
         f"**Queries:** {len(GROUND_TRUTH)}",
         "",
         "## Summary",
@@ -356,7 +353,7 @@ def generate_comparison_report(results: dict, output_path: str) -> None:
         "",
         f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"**Best Reranking Model:** {best_model}",
-        f"**Baseline:** OpenAI semantic search (no reranking)",
+        "**Baseline:** OpenAI semantic search (no reranking)",
         "",
         "## Summary",
         "",

@@ -531,9 +531,7 @@ class TestRerankLock:
 
     def test_lock_gracefully_handles_readonly_filesystem(self):
         """Lock should gracefully proceed when lock file can't be created."""
-        import tempfile
         from pathlib import Path
-        from unittest.mock import patch
 
         import ogrep.rerank as rerank_module
         from ogrep.rerank import _rerank_lock, clear_captured_warnings
@@ -624,7 +622,6 @@ class TestRerankLock:
 
     def test_lock_env_vars_configurable(self):
         """Lock path and timeout should be configurable via env vars."""
-        import os
         from pathlib import Path
 
         # The defaults are read at import time, but let's verify the env var names
@@ -766,7 +763,7 @@ class TestFlashRankBackend:
             with patch("ogrep.rerank._flashrank_predict") as mock_predict:
                 mock_predict.return_value = [0.9]
 
-                result = rerank_results("test", hits, model_name="flashrank")
+                rerank_results("test", hits, model_name="flashrank")
 
                 # Should have called FlashRank functions
                 mock_get.assert_called_once()

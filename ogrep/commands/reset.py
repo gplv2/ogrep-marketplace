@@ -147,6 +147,6 @@ def cmd_reset(args: argparse.Namespace) -> int:
             )
         else:
             print(f"Cleared branch '{branch}' ({files_deleted} files)")
-            print(f"Use --all to delete entire database")
+            print("Use --all to delete entire database")
 
     return 0

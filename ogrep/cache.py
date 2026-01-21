@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 # Configuration from environment
 L1_TTL_SECONDS = int(os.environ.get("OGREP_CACHE_L1_TTL", str(24 * 60 * 60)))  # 24h
 L1_MAX_ENTRIES = int(os.environ.get("OGREP_CACHE_L1_MAX", "1000"))
@@ -673,7 +672,7 @@ def get_cache_health_stats(cache_con: sqlite3.Connection) -> dict:
 
             recent_hits = recent[0] or 0 if recent else 0
             recent_misses = recent[1] or 0 if recent else 0
-            recent_saved = recent[2] or 0 if recent else 0
+            _ = recent[2] or 0 if recent else 0  # recent_saved (unused but part of query)
             lifetime_hits = lifetime[0] or 0 if lifetime else 0
             lifetime_misses = lifetime[1] or 0 if lifetime else 0
             lifetime_saved = lifetime[2] or 0 if lifetime else 0

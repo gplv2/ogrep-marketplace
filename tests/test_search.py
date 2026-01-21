@@ -12,7 +12,6 @@ from ogrep.embed import embed_texts
 from ogrep.search import (
     FilterStats,
     Hit,
-    HybridConfidence,
     PathFilter,
     _dot_py,
     _rrf_score,
