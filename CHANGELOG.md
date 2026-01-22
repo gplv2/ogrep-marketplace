@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-01-22
+
+### ✨ New Features
+
+#### Voyage AI Optimized Chunk Size
+
+Default chunk size for Voyage AI models is now 30 lines, tuned for better search quality with code-optimized embeddings.
+
+### 🔧 Improvements
+
+- **Enhanced Skill Triggers**: ogrep skill now responds to broader query patterns like "where is X handled", "how does Y work", and "explain Z"
+- **AST Mode in Tuning**: The `ogrep tune` command now properly enables AST-aware chunking when available
+
+### 🐛 Bug Fixes
+
+- Fixed tilde expansion in lock file paths (e.g., `~/.cache/ogrep/rerank.lock` now resolves correctly)
+- Fixed path comparison issues in tune and benchmark commands
+- Fixed model resolution in tuning workflow
+
 ## [0.8.6] - 2026-01-22
 
 ### ✨ Improvements
