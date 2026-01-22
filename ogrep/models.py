@@ -238,7 +238,7 @@ MODELS: dict[str, EmbeddingModel] = {
             "Multi-language code",
         ),
         notes="Requires VOYAGE_API_KEY. Best for code-specific queries. 32K token context.",
-        optimal_chunk_lines=60,
+        optimal_chunk_lines=30,  # Tuned: smaller chunks improve retrieval accuracy
         optimal_overlap_lines=15,
         context_tokens=32000,
         max_batch_size=128,
@@ -256,7 +256,7 @@ MODELS: dict[str, EmbeddingModel] = {
             "Document retrieval",
         ),
         notes="Requires VOYAGE_API_KEY. General-purpose, high quality. 32K token context.",
-        optimal_chunk_lines=60,
+        optimal_chunk_lines=30,  # Tuned: smaller chunks improve retrieval accuracy
         optimal_overlap_lines=15,
         context_tokens=32000,
         max_batch_size=128,
@@ -274,7 +274,7 @@ MODELS: dict[str, EmbeddingModel] = {
             "High throughput",
         ),
         notes="Requires VOYAGE_API_KEY. Faster and cheaper than voyage-3.",
-        optimal_chunk_lines=60,
+        optimal_chunk_lines=30,  # Tuned: smaller chunks improve retrieval accuracy
         optimal_overlap_lines=15,
         context_tokens=32000,
         max_batch_size=128,
