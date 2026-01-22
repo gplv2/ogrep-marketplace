@@ -2,9 +2,11 @@
 name: ogrep
 description: |
   Semantic code search - finds code by meaning, not just keywords. Helpful when:
-  - User asks WHERE something is implemented ("where is X handled", "how does Y work")
+  - User asks WHERE or HOW something is implemented ("where is X handled", "how does Y work", "where are Z". "how are X", "explain Y", "find where X")
+  - User searches for an explanation on certain behavior
   - You need to understand code behavior without knowing exact function names
   - Exploring unfamiliar codebases where you don't know the terminology yet
+  - You need to find the exact file and linenumber without classical grep through the whole filebase
 allowed-tools: Bash, Read
 ---
 
