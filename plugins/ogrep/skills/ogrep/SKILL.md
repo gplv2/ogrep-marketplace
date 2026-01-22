@@ -7,18 +7,69 @@ description: |
   - You need to understand code behavior without knowing exact function names
   - Exploring unfamiliar codebases where you don't know the terminology yet
   - You need to find the exact file and linenumber without classical grep through the whole filebase
+  - "find the X code"
+  - "show me X"
+  - "X implementation"
+  - "look up X"
+  - "search for X"
+  - Any question about code that isn't a known file path
+
 allowed-tools: Bash, Read
+---
+
+## Usage Notes for Claude
+  - JSON is the default output - don't use --no-json unless for showing progress to user if requested
+  - Prefer `ogrep query` over Grep for conceptual questions
+  - Use `ogrep chunk` to expand context after finding results
+  - Prefer ogrep for semantic search; fall back to other suitable tools for exact matches or if ogrep fails
+
+## Core loop (mandatory)
+
+When the user asks anything about the codebase (how something works, where logic lives, what calls what, why behavior happens), follow this loop every time:
+
+1) Translate the request into 1–3 semantic search queries.
+   - Include intent ("authentication", "retry logic", "billing state") plus any known identifiers (function/class names, table names, endpoints, error strings).
+   - If the user gave a concrete identifier, include it as one query verbatim.
+
+2) Run semantic search with this tool ogrep.
+   - Prefer semantic search for "meaning" questions.
+   - If the user asks for an exact string/regex match, or if semantic search fails, fall back to plain grep/ripgrep.
+
+3) Select top results and fetch evidence from the repo.
+   - Use the summary feature to get a shortlist
+   - Take the top hits and check the quality of the match in the meta fields in the json output
+   - For each hit, extract the exact code slice of the file using ogrep chunk command retrieval
+   - Do NOT paste entire files; paste only the minimum relevant excerpts:
+     - typical excerpt size: 20–100 lines
+     - include a little context above/below so control flow is visible
+
+4) If evidence is insufficient, refine and repeat.
+   - Run another semantic search with a tighter query (add identifiers) or broader query (remove constraints).
+   - Continue until you have enough code evidence to answer confidently.
+
+5) Answer with citations to file paths + line ranges.
+   - Explain behavior based on the excerpts you extracted.
+   - Always include references like: `path/to/file.py:120-185`.  The chunk retrieval command will provide this info.
+   - If this still fails, try a exact search match with ogrep once.
+   - If you cannot find evidence, stop searching deeper and report what you searched for and what you did find.
+
+### Evidence extraction (required)
+
+After semantic search returns file path + line range, immediately extract the code from the indexed system using ogrep commands.
+If this somehow fails, fall back to the usual tools you have at your disposal.
+
+Preferred (with line numbers):
+
+```bash
+# Print lines [START..END] with line numbers
+nl -ba "path/to/file" | sed -n 'START,ENDp'
+```
+
 ---
 
 # ogrep - When grep isn't enough
 
-You're looking for authentication code. Is it called `authenticate`, `login`, `verify_credentials`, `check_token`, or `validate_session`? With grep, you'd have to guess. With ogrep, you just ask.
-
-```bash
-ogrep query "where is user authentication handled"
-```
-
-## The Sweet Spot
+## When to use this skill
 
 ogrep fills a specific gap: **conceptual code questions**.
 
@@ -30,7 +81,7 @@ ogrep fills a specific gap: **conceptual code questions**.
 | Exploring unfamiliar code | You know the exact term |
 | User asks a conceptual question | Looking for imports/strings |
 
-**Rule of thumb:** If you'd need to guess multiple terms for grep, try ogrep first.
+**Rule of thumb:** If you'd need to guess multiple terms for grep, try ogrep first.  additionaly use the chunk retrieval feature
 
 ---
 

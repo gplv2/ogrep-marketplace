@@ -187,9 +187,15 @@ class TestGetOptimalChunkLines:
     def test_model_specific_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test model-specific chunk size defaults."""
         monkeypatch.delenv("OGREP_CHUNK_LINES", raising=False)
+        # Local models use smaller chunks
         assert get_optimal_chunk_lines("nomic") == 30  # Updated per benchmark results
         assert get_optimal_chunk_lines("bge") == 30
         assert get_optimal_chunk_lines("minilm") == 30
+        # Voyage AI models use smaller chunks (tuned for retrieval accuracy)
+        assert get_optimal_chunk_lines("voyage-code-3") == 30
+        assert get_optimal_chunk_lines("voyage-3") == 30
+        assert get_optimal_chunk_lines("voyage-3-lite") == 30
+        # OpenAI models use default chunk size
         assert get_optimal_chunk_lines("small") == DEFAULT_CHUNK_LINES
 
     def test_uses_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
