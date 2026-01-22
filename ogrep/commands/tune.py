@@ -133,13 +133,14 @@ def _test_chunk_size(
     # Resolve model from arg, env, or default (avoid passing None to search)
     resolved_model = resolve_model(model)
 
-    # Index with this chunk size
+    # Index with this chunk size (use AST when available)
     index_path(
         root=root,
         db_path=db_path,
         model=model,
         chunk_lines=chunk_size,
         overlap=max(5, chunk_size // 6),
+        ast=None,  # Auto-detect: use AST chunking when tree-sitter is available
     )
 
     hits = 0
@@ -321,6 +322,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
                 model=args.model,
                 chunk_lines=best_chunk,
                 overlap=max(5, best_chunk // 6),
+                ast=None,  # Auto-detect: use AST chunking when tree-sitter is available
             )
             print(f"Indexed into {db}")
             print(f"  Files: {stats.files_indexed} indexed")

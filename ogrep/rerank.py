@@ -87,8 +87,9 @@ DEFAULT_RERANK_MODEL = "flashrank"  # Lightweight, parallel-safe, best for local
 DEFAULT_RERANK_TOPN = int(os.environ.get("OGREP_RERANK_TOPN", "50"))
 
 # Lock configuration - prevents multiple processes from loading the ~300MB model simultaneously
-RERANK_LOCK_PATH = Path(
-    os.environ.get("OGREP_RERANK_LOCK", Path.home() / ".cache" / "ogrep" / "rerank.lock")
+_lock_env = os.environ.get("OGREP_RERANK_LOCK")
+RERANK_LOCK_PATH = (
+    Path(os.path.expanduser(_lock_env)) if _lock_env else Path.home() / ".cache" / "ogrep" / "rerank.lock"
 )
 RERANK_LOCK_TIMEOUT = float(os.environ.get("OGREP_RERANK_LOCK_TIMEOUT", "120"))  # seconds
 
