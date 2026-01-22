@@ -814,7 +814,7 @@ legacy/*
 
 ## Auto-Tuning
 
-Different models and codebases have different optimal chunk sizes:
+Different models and codebases have different optimal chunk sizes. The tune command uses AST chunking by default when tree-sitter is available, matching production indexing behavior:
 
 ```bash
 ogrep tune . -m nomic

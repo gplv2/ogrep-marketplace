@@ -1,6 +1,66 @@
-# ogrep Updates — Past 30 Days
+# ogrep Updates — Recent Releases
 
-*January 10-11, 2026*
+*January 2026*
+
+---
+
+## January 22, 2026 — v0.8.6
+
+### AST-Aware Auto-Tuning
+
+The `ogrep tune` command now uses AST (Abstract Syntax Tree) chunking when tree-sitter is available. This means tuning respects semantic code boundaries like functions and classes, giving you more accurate optimal chunk size recommendations.
+
+```bash
+ogrep tune .  # Now uses AST chunking automatically
+```
+
+### Bug Fixes
+
+- **Fixed tilde expansion**: The `OGREP_RERANK_LOCK` environment variable now properly expands `~` to your home directory
+
+---
+
+## January 16-21, 2026 — v0.8.0-0.8.5
+
+### FlashRank Reranking (Parallel-Safe)
+
+New lightweight reranking backend that works safely in parallel:
+
+```bash
+pip install "ogrep[rerank-light]"  # 4MB, no GPU needed
+ogrep query "auth" --rerank
+```
+
+### Voyage AI Integration
+
+Code-optimized embeddings and reranking from Voyage AI:
+
+```bash
+export VOYAGE_API_KEY=pa-...
+ogrep index . -m voyage-code-3
+ogrep query "auth" --rerank --rerank-model voyage
+```
+
+### Path Filtering
+
+Filter results by file pattern:
+
+```bash
+ogrep query "auth" --glob "*.py"
+ogrep query "auth" --exclude "tests/*"
+```
+
+### Summary Mode
+
+Get file-level aggregation (85% fewer tokens):
+
+```bash
+ogrep query "auth" --summarize
+```
+
+---
+
+## January 10-11, 2026 — v0.1.0-0.5.0
 
 ## New Features
 
@@ -93,20 +153,21 @@ ogrep benchmark . -s 10
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **0.8.6** | Jan 22 | Tune command uses AST mode, tilde expansion fix |
+| **0.8.5** | Jan 21 | PyPI re-release |
+| **0.8.4** | Jan 21 | Smart API key detection, improved reporting |
+| **0.8.3** | Jan 20 | FlashRank parallel safety, Voyage AI integration |
+| **0.8.0** | Jan 16 | Path filtering, summary mode, reranking backends |
+| **0.7.0** | Jan 14 | AST-aware chunking (default), branch-aware indexing |
+| **0.6.4** | Jan 13 | Relative confidence scoring |
+| **0.6.0** | Jan 12 | Full-text search, hybrid mode default |
 | **0.5.0** | Jan 11 | Hybrid search, chunk navigation, confidence scoring |
 | **0.4.5** | Jan 11 | File type detection, `.ogrepignore`, preview mode |
-| **0.4.3** | Jan 11 | CI fixes |
-| **0.4.2** | Jan 11 | Documentation improvements |
-| **0.4.1** | Jan 11 | Smarter Claude Code integration, clear API errors |
 | **0.4.0** | Jan 11 | Local embedding models with LM Studio |
-| **0.3.4** | Jan 10 | Manual refresh command |
-| **0.3.3** | Jan 10 | Auto-refresh before queries |
-| **0.3.2** | Jan 10 | Code cleanup |
-| **0.3.1** | Jan 10 | Expanded default exclusions |
 | **0.3.0** | Jan 10 | Smart embedding reuse, auto-tuning |
 | **0.2.0** | Jan 10 | Configurable embedding models |
 | **0.1.0** | Jan 10 | Initial release |
 
 ---
 
-This changelog summarizes 73 commits across 13 releases over the past 30 days. The project went from initial release to a mature semantic search tool with local model support, hybrid search, and comprehensive file filtering.
+This changelog summarizes major releases. See [CHANGELOG.md](CHANGELOG.md) for detailed technical changes.

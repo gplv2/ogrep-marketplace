@@ -26,7 +26,7 @@
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
 | `ogrep device` | Check GPU/CPU |
-| `ogrep tune .` | Auto-tune chunk size |
+| `ogrep tune .` | Auto-tune chunk size (uses AST when available) |
 
 **JSON output is default.** Use `--no-json` for human-readable.
 

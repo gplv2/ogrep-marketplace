@@ -170,7 +170,7 @@ make check          # All checks
 | `ogrep reindex .` | Rebuild from scratch |
 | `ogrep clean --vacuum` | Remove stale entries |
 | `ogrep models` | List available models |
-| `ogrep tune .` | Auto-tune chunk size |
+| `ogrep tune .` | Auto-tune chunk size (uses AST when available) |
 | `ogrep benchmark .` | Compare all models |
 
 ## Common Flags

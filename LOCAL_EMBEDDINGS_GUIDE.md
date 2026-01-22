@@ -423,7 +423,9 @@ Chunk Size   Accuracy   Hits
 
 ### How to Tune for Your Codebase
 
-The model-specific defaults are just starting points. **Your codebase will likely have different optimal settings.** Always run tuning when switching models or on a new repository:
+The model-specific defaults are just starting points. **Your codebase will likely have different optimal settings.** Always run tuning when switching models or on a new repository.
+
+> **Note:** The tune command uses AST chunking by default when tree-sitter is available, matching production indexing behavior.
 
 ```bash
 # Set your base URL

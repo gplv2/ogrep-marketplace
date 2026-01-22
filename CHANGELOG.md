@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-01-22
+
+### ✨ Improvements
+
+#### Tune Command Now Uses AST Mode
+
+The `ogrep tune` command now uses AST chunking by default when tree-sitter is available, matching the behavior of `ogrep index`. This ensures tuning results accurately reflect production indexing quality.
+
+```bash
+ogrep tune .  # Now uses AST chunking when available
+```
+
+### 🐛 Bug Fixes
+
+#### Fixed Tilde Expansion in Lock Path
+
+The `OGREP_RERANK_LOCK` environment variable now properly expands `~` to the home directory. Previously, setting `OGREP_RERANK_LOCK=~/.cache/ogrep/rerank.lock` would create a literal `~` directory in the current working directory.
+
+```bash
+# Now works correctly
+export OGREP_RERANK_LOCK=~/.cache/ogrep/rerank.lock
+```
+
 ## [0.8.5] - 2026-01-21
 
 ### 🔧 Maintenance
