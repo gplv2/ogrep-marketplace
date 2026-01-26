@@ -1,3 +1,54 @@
+## Environment Variables for Claude Code
+
+**Important:** Claude Code runs bash commands in a non-interactive shell, which means environment variables from `.bashrc`, `.zshrc`, or `direnv` are **not automatically loaded**.
+
+You must configure environment variables in Claude Code's settings files.
+
+### Option 1: Project-level (recommended)
+
+Create `.claude/settings.local.json` in your project:
+
+```bash
+# Copy the example template
+cp .claude/settings.json.example .claude/settings.local.json
+
+# Edit and add your actual API keys
+```
+
+Or create it directly with your shell's env vars:
+
+```bash
+cat << EOF > .claude/settings.local.json
+{
+  "env": {
+    "VOYAGE_API_KEY": "$VOYAGE_API_KEY",
+    "OPENAI_API_KEY": "$OPENAI_API_KEY"
+  }
+}
+EOF
+```
+
+### Option 2: User-level (all projects)
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "OPENAI_API_KEY": "sk-your-key",
+    "VOYAGE_API_KEY": "pa-your-key"
+  }
+}
+```
+
+### Settings Template
+
+See `.claude/settings.json.example` for all available environment variables. Convention:
+- Keys starting with `_` are disabled (commented out)
+- Remove the `_` prefix to enable a setting
+
+---
+
 ## Auto-Allow ogrep Commands (Optional)
 
 To let Claude Code run ogrep commands without prompting each time, add this to your settings:

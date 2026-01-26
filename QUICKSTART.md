@@ -17,7 +17,11 @@ pipx install ogrep
 
 ```bash
 export OPENAI_API_KEY="sk-your-key-here"
+# Or for Voyage AI (recommended for code):
+export VOYAGE_API_KEY="pa-your-key-here"
 ```
+
+**Claude Code Users:** Environment variables from your shell are NOT automatically available to Claude Code. See [SETUP.md](SETUP.md) for configuring `.claude/settings.local.json`.
 
 ### 3. Index and Query
 

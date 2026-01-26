@@ -114,6 +114,15 @@ Note: pipx sometimes has issues. If you encounter problems, use pip instead.
 
 It will ask where to install. Use 'user' mode — local mode can cause path issues when working on multiple codebases.
 
+**Important:** Claude Code runs bash in a non-interactive shell, so environment variables from `.bashrc`/`.zshrc`/`direnv` are **not loaded**. You must configure API keys in `.claude/settings.local.json`:
+
+```bash
+cp .claude/settings.json.example .claude/settings.local.json
+# Edit with your actual API keys
+```
+
+See [SETUP.md](SETUP.md) for details.
+
 ### Optional Extras
 
 ```bash

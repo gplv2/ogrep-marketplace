@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-01-26
+
+### 🐛 Bug Fixes
+
+#### Fixed Voyage AI Batch Token Limit
+
+Voyage AI embedding requests now respect the 120K token-per-batch limit. Previously, batching only split by count (128 texts max), ignoring token limits. This caused `InvalidRequestError: batch has X tokens after truncation` errors when indexing repositories with large files.
+
+The fix uses Voyage-specific token estimation (~1 char/token vs ~3 chars/token for OpenAI) with an 80% safety margin. The estimation ratio is configurable via `OGREP_VOYAGE_CHARS_PER_TOKEN` environment variable (default: 1.0).
+
+### 🔧 Improvements
+
+#### Graceful API Error Handling
+
+All embedding API errors now show user-friendly messages instead of raw stack traces. Messages are context-aware, differentiating between local servers and cloud APIs:
+
+- **Rate limits**: Clear message to wait and retry
+- **Authentication**: Hints to check the appropriate API key (`OPENAI_API_KEY` or `VOYAGE_API_KEY`)
+- **Connection errors**: For local servers, shows the `OGREP_BASE_URL` and suggests checking the server; for cloud APIs, suggests checking network
+- **Other errors**: Shows error context without full traceback
+
 ## [0.8.7] - 2026-01-22
 
 ### ✨ New Features

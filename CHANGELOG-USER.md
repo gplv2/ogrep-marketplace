@@ -4,6 +4,18 @@
 
 ---
 
+## January 26, 2026 — v0.8.8
+
+### Bug Fix: Voyage AI Large Repository Indexing
+
+Fixed an issue where indexing repositories with large files using Voyage AI would fail with "batch has X tokens after truncation" errors. The Voyage embedding path now properly respects the 120K token-per-batch API limit.
+
+### Improved Error Messages
+
+API errors now show clear, actionable messages instead of stack traces. Messages are context-aware—local embedding server errors show your `OGREP_BASE_URL` and suggest checking the server, while cloud API errors point to the relevant API key.
+
+---
+
 ## January 22, 2026 — v0.8.6
 
 ### AST-Aware Auto-Tuning

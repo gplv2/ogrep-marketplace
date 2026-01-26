@@ -37,10 +37,12 @@ ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
 ENV_VOYAGE_API_KEY = "VOYAGE_API_KEY"
 ENV_VOYAGE_TIMEOUT = "OGREP_VOYAGE_TIMEOUT"  # Timeout in seconds (default: 120)
 ENV_VOYAGE_RETRIES = "OGREP_VOYAGE_RETRIES"  # Max retries (default: 2)
+ENV_VOYAGE_CHARS_PER_TOKEN = "OGREP_VOYAGE_CHARS_PER_TOKEN"  # Token estimation ratio (default: 1.0)
 
 # Voyage defaults
 DEFAULT_VOYAGE_TIMEOUT = 120.0  # 2 minutes
 DEFAULT_VOYAGE_RETRIES = 2
+DEFAULT_VOYAGE_CHARS_PER_TOKEN = 1.0  # Conservative: assume 1 char = 1 token for code
 
 
 def _is_voyage_model(model: str) -> bool:
@@ -105,11 +107,44 @@ def _embed_voyage(
 
     # Voyage API call with timing for slow request detection
     start_time = time.time()
-    result = client.embed(
-        texts=texts,
-        model=model,
-        input_type=input_type,
-    )
+    try:
+        result = client.embed(
+            texts=texts,
+            model=model,
+            input_type=input_type,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # Handle batch token limit errors gracefully
+        if "tokens" in error_msg.lower() and "batch" in error_msg.lower():
+            raise RuntimeError(
+                f"Voyage API batch token limit exceeded ({len(texts)} texts in batch). "
+                f"This is an internal error - please report it at "
+                f"https://github.com/gplv2/ogrep/issues\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Handle rate limiting
+        if "rate" in error_msg.lower() or "429" in error_msg:
+            raise RuntimeError(
+                f"Voyage API rate limit reached. Wait a moment and try again.\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Handle authentication errors
+        if "auth" in error_msg.lower() or "api key" in error_msg.lower() or "401" in error_msg:
+            raise RuntimeError(
+                f"Voyage API authentication failed. Check your VOYAGE_API_KEY.\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Handle connection errors
+        if any(
+            term in error_msg.lower() for term in ["connect", "timeout", "network", "unreachable"]
+        ):
+            raise RuntimeError(
+                f"Could not connect to Voyage API. Check your network connection.\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Re-raise other errors with context
+        raise RuntimeError(f"Voyage API error: {error_msg}") from None
     elapsed = time.time() - start_time
 
     # Warn on slow requests (>30s per batch is unusual)
@@ -132,22 +167,122 @@ def _embed_voyage(
     return blobs, dim
 
 
+# Voyage AI batch token limit (per API request)
+# The API returns: "max allowed tokens per submitted batch is 120000"
+VOYAGE_BATCH_TOKEN_LIMIT = 120000
+
+
+def _get_voyage_chars_per_token() -> float:
+    """
+    Get the chars-per-token ratio for Voyage token estimation.
+
+    Configurable via OGREP_VOYAGE_CHARS_PER_TOKEN environment variable.
+    Default is 1.0 (conservative: assume 1 char = 1 token for code).
+
+    Returns:
+        Chars per token ratio.
+    """
+    env_val = os.environ.get(ENV_VOYAGE_CHARS_PER_TOKEN)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return DEFAULT_VOYAGE_CHARS_PER_TOKEN
+
+
+def _estimate_voyage_tokens(text: str) -> int:
+    """
+    Estimate tokens for Voyage AI's tokenizer.
+
+    Voyage uses a more aggressive tokenizer than OpenAI, especially for code.
+    The estimation ratio is configurable via OGREP_VOYAGE_CHARS_PER_TOKEN.
+
+    Args:
+        text: Text to estimate tokens for.
+
+    Returns:
+        Estimated number of tokens.
+    """
+    if not text:
+        return 0
+    chars_per_token = _get_voyage_chars_per_token()
+    return max(1, int(len(text) / chars_per_token))
+
+
+def _create_voyage_batches(
+    texts: list[str],
+    max_tokens: int,
+    max_count: int | None = None,
+) -> list[list[str]]:
+    """
+    Create batches of texts for Voyage AI that respect token limits.
+
+    Uses Voyage-specific token estimation which is more conservative
+    than the standard estimate.
+
+    Args:
+        texts: List of texts to batch.
+        max_tokens: Maximum tokens per batch.
+        max_count: Optional maximum texts per batch.
+
+    Returns:
+        List of text batches.
+    """
+    if not texts:
+        return []
+
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    for text in texts:
+        text_tokens = _estimate_voyage_tokens(text)
+
+        # If single text exceeds limit, truncate it
+        if text_tokens > max_tokens:
+            # Truncate to fit
+            chars_per_token = _get_voyage_chars_per_token()
+            max_chars = int(max_tokens * chars_per_token * 0.9)  # 90% margin
+            text = text[:max_chars] + "\n[...truncated...]"
+            text_tokens = _estimate_voyage_tokens(text)
+
+        # Check if adding this text would exceed limits
+        would_exceed_tokens = (current_tokens + text_tokens) > max_tokens
+        would_exceed_count = max_count is not None and len(current_batch) >= max_count
+
+        if current_batch and (would_exceed_tokens or would_exceed_count):
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(text)
+        current_tokens += text_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
+
 def _embed_voyage_batched(
     texts: list[str],
     model: str,
     input_type: str = "document",
-    batch_size: int = 128,
+    max_batch_count: int = 128,
 ) -> tuple[list[bytes], int]:
     """
-    Embed texts using Voyage AI API with batching.
+    Embed texts using Voyage AI API with token-aware batching.
 
-    Voyage API has limits on tokens per request, so we batch to stay safe.
+    Voyage API has a limit of 120,000 tokens per batch request.
+    This function creates batches that respect both token and count limits,
+    using Voyage-specific token estimation.
 
     Args:
         texts: List of texts to embed.
         model: Voyage AI model name.
         input_type: Type of input ("document" or "query").
-        batch_size: Maximum texts per API call.
+        max_batch_count: Maximum texts per API call.
 
     Returns:
         Tuple of (embedding_blobs, dimension).
@@ -155,12 +290,16 @@ def _embed_voyage_batched(
     if not texts:
         return [], 0
 
+    # Use Voyage-specific batching with conservative token estimation
+    # Apply 80% safety margin due to tokenizer estimation variance
+    max_tokens = int(VOYAGE_BATCH_TOKEN_LIMIT * 0.8)
+    batches = _create_voyage_batches(texts, max_tokens=max_tokens, max_count=max_batch_count)
+
     all_blobs: list[bytes] = []
     dim: int = 0
 
-    # Process in batches
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    # Process each token-aware batch
+    for batch in batches:
         blobs, batch_dim = _embed_voyage(batch, model, input_type)
         all_blobs.extend(blobs)
         if dim == 0:
@@ -428,7 +567,7 @@ def _embed_batch(
     import re
     import warnings
 
-    from openai import BadRequestError
+    from openai import APIConnectionError, AuthenticationError, BadRequestError, RateLimitError
 
     kwargs: dict = {"input": texts, "model": model}
     if dimensions is not None:
@@ -469,7 +608,50 @@ def _embed_batch(
 
                 # Retry with truncated texts
                 return _embed_batch(client, truncated_texts, model, dimensions, _retry_count + 1)
-        raise
+        # Other bad request errors
+        base_url = os.environ.get("OGREP_BASE_URL")
+        api_name = f"Local embedding server ({base_url})" if base_url else "OpenAI API"
+        raise RuntimeError(
+            f"{api_name} request failed: {error_msg}\n"
+            f"Model: {model}, Batch size: {len(texts)} texts"
+        ) from None
+    except RateLimitError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Local embedding server rate limit reached. Wait a moment and try again.\n"
+                f"Server: {base_url}\n"
+                f"Original error: {e}"
+            ) from None
+        raise RuntimeError(
+            f"OpenAI API rate limit reached. Wait a moment and try again.\nOriginal error: {e}"
+        ) from None
+    except AuthenticationError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Local embedding server authentication failed.\n"
+                f"Server: {base_url}\n"
+                f"Original error: {e}"
+            ) from None
+        raise RuntimeError(
+            f"OpenAI API authentication failed. Check your OPENAI_API_KEY.\nOriginal error: {e}"
+        ) from None
+    except APIConnectionError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Could not connect to local embedding server at {base_url}.\n"
+                f"Check that the server is running and the URL is correct.\n"
+                f"Original error: {e}"
+            ) from None
+        raise RuntimeError(
+            f"Could not connect to OpenAI API. Check your network connection.\nOriginal error: {e}"
+        ) from None
+    except Exception as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        api_name = f"Local embedding server ({base_url})" if base_url else "OpenAI API"
+        raise RuntimeError(f"{api_name} error: {e}") from None
 
     vectors: list[bytes] = []
     dim: int | None = None
