@@ -1,6 +1,37 @@
 {
   "env": {
+    "_comment": "=== API KEYS (at least one required) ===",
+    "OPENAI_API_KEY": "sk-your-openai-api-key",
     "VOYAGE_API_KEY": "pa-your-voyage-api-key",
-    "OPENAI_API_KEY": "sk-your-openai-api-key"
+
+    "_comment_model": "=== MODEL CONFIGURATION ===",
+    "_OGREP_BASE_URL": "http://localhost:1234/v1",
+    "_OGREP_MODEL": "text-embedding-3-small",
+    "_OGREP_DIMENSIONS": "1536",
+    "_OGREP_BATCH_SIZE": "32",
+
+    "_comment_voyage": "=== VOYAGE AI SETTINGS ===",
+    "_OGREP_VOYAGE_TIMEOUT": "120",
+    "_OGREP_VOYAGE_RETRIES": "2",
+    "_OGREP_VOYAGE_CHARS_PER_TOKEN": "1.0",
+
+    "_comment_chunk": "=== CHUNKING ===",
+    "_OGREP_CHUNK_LINES": "60",
+    "_OGREP_OVERLAP_LINES": "10",
+
+    "_comment_search": "=== SEARCH ===",
+    "_OGREP_SEARCH_MODE": "hybrid",
+    "_OGREP_FUSION_METHOD": "rrf",
+    "_OGREP_HYBRID_ALPHA": "0.7",
+    "_OGREP_RRF_K": "60",
+
+    "_comment_rerank": "=== RERANKING ===",
+    "_OGREP_RERANK_MODEL": "flashrank",
+    "_OGREP_RERANK_TOPN": "50",
+    "_OGREP_RERANK_LOCK_TIMEOUT": "120",
+
+    "_comment_cache": "=== CACHE ===",
+    "_OGREP_CACHE_DISABLED": "0",
+    "_OGREP_CACHE_L1_TTL": "86400"
   }
 }

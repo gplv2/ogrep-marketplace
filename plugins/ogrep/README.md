@@ -23,7 +23,9 @@ Claude Code needs access to your API keys. Copy the example settings and add you
 cp .claude/settings.json.example .claude/settings.local.json
 ```
 
-Then edit `.claude/settings.local.json` with your actual keys:
+Then edit `.claude/settings.local.json`:
+- Remove the `_` prefix from settings you want to enable
+- Fill in your actual API keys
 
 ```json
 {
