@@ -1,0 +1,6 @@
+{
+  "env": {
+    "VOYAGE_API_KEY": "pa-your-voyage-api-key",
+    "OPENAI_API_KEY": "sk-your-openai-api-key"
+  }
+}
