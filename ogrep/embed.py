@@ -513,27 +513,52 @@ def _embed_batch(
                 # Retry with truncated texts
                 return _embed_batch(client, truncated_texts, model, dimensions, _retry_count + 1)
         # Other bad request errors
+        base_url = os.environ.get("OGREP_BASE_URL")
+        api_name = f"Local embedding server ({base_url})" if base_url else "OpenAI API"
         raise RuntimeError(
-            f"OpenAI API request failed: {error_msg}\n"
+            f"{api_name} request failed: {error_msg}\n"
             f"Model: {model}, Batch size: {len(texts)} texts"
         ) from None
     except RateLimitError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Local embedding server rate limit reached. Wait a moment and try again.\n"
+                f"Server: {base_url}\n"
+                f"Original error: {e}"
+            ) from None
         raise RuntimeError(
             f"OpenAI API rate limit reached. Wait a moment and try again.\n"
             f"Original error: {e}"
         ) from None
     except AuthenticationError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Local embedding server authentication failed.\n"
+                f"Server: {base_url}\n"
+                f"Original error: {e}"
+            ) from None
         raise RuntimeError(
             f"OpenAI API authentication failed. Check your OPENAI_API_KEY.\n"
             f"Original error: {e}"
         ) from None
     except APIConnectionError as e:
+        base_url = os.environ.get("OGREP_BASE_URL")
+        if base_url:
+            raise RuntimeError(
+                f"Could not connect to local embedding server at {base_url}.\n"
+                f"Check that the server is running and the URL is correct.\n"
+                f"Original error: {e}"
+            ) from None
         raise RuntimeError(
-            f"Could not connect to OpenAI API. Check your network or OGREP_BASE_URL setting.\n"
+            f"Could not connect to OpenAI API. Check your network connection.\n"
             f"Original error: {e}"
         ) from None
     except Exception as e:
-        raise RuntimeError(f"OpenAI API error: {e}") from None
+        base_url = os.environ.get("OGREP_BASE_URL")
+        api_name = f"Local embedding server ({base_url})" if base_url else "OpenAI API"
+        raise RuntimeError(f"{api_name} error: {e}") from None
 
     vectors: list[bytes] = []
     dim: int | None = None
