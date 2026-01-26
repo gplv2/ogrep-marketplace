@@ -26,6 +26,12 @@ All embedding API errors now show user-friendly messages instead of raw stack tr
 - **Connection errors**: For local servers, shows the `OGREP_BASE_URL` and suggests checking the server; for cloud APIs, suggests checking network
 - **Other errors**: Shows error context without full traceback
 
+### 📚 Documentation
+
+- Added comprehensive `settings.json.example` for Claude Code configuration
+- Added API key setup instructions for Claude Code integration
+- Documented environment variable configuration in Claude Code settings
+
 ## [0.8.7] - 2026-01-22
 
 ### ✨ New Features
