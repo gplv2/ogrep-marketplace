@@ -15,6 +15,17 @@ Voyage AI embedding requests now respect the 120K token-per-batch limit. Previou
 
 The fix uses token-aware batching with a 90% safety margin (108K tokens) to account for tokenizer differences.
 
+### 🔧 Improvements
+
+#### Graceful API Error Handling
+
+Both OpenAI and Voyage AI API errors now show user-friendly messages instead of raw stack traces:
+
+- **Rate limits**: Clear message to wait and retry
+- **Authentication**: Hints to check API key environment variable
+- **Connection errors**: Suggests checking network or base URL
+- **Other errors**: Shows error context without full traceback
+
 ## [0.8.7] - 2026-01-22
 
 ### ✨ New Features

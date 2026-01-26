@@ -465,7 +465,7 @@ def _embed_batch(
     import re
     import warnings
 
-    from openai import BadRequestError
+    from openai import APIConnectionError, AuthenticationError, BadRequestError, RateLimitError
 
     kwargs: dict = {"input": texts, "model": model}
     if dimensions is not None:
@@ -506,7 +506,28 @@ def _embed_batch(
 
                 # Retry with truncated texts
                 return _embed_batch(client, truncated_texts, model, dimensions, _retry_count + 1)
-        raise
+        # Other bad request errors
+        raise RuntimeError(
+            f"OpenAI API request failed: {error_msg}\n"
+            f"Model: {model}, Batch size: {len(texts)} texts"
+        ) from None
+    except RateLimitError as e:
+        raise RuntimeError(
+            f"OpenAI API rate limit reached. Wait a moment and try again.\n"
+            f"Original error: {e}"
+        ) from None
+    except AuthenticationError as e:
+        raise RuntimeError(
+            f"OpenAI API authentication failed. Check your OPENAI_API_KEY.\n"
+            f"Original error: {e}"
+        ) from None
+    except APIConnectionError as e:
+        raise RuntimeError(
+            f"Could not connect to OpenAI API. Check your network or OGREP_BASE_URL setting.\n"
+            f"Original error: {e}"
+        ) from None
+    except Exception as e:
+        raise RuntimeError(f"OpenAI API error: {e}") from None
 
     vectors: list[bytes] = []
     dim: int | None = None
