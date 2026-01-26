@@ -132,22 +132,31 @@ def _embed_voyage(
     return blobs, dim
 
 
+# Voyage AI batch token limit (per API request)
+# The API returns: "max allowed tokens per submitted batch is 120000"
+VOYAGE_BATCH_TOKEN_LIMIT = 120000
+
+# Safety margin for token estimation (Voyage's tokenizer may differ from our estimate)
+VOYAGE_TOKEN_SAFETY_MARGIN = 0.9  # Use 90% of limit to be safe
+
+
 def _embed_voyage_batched(
     texts: list[str],
     model: str,
     input_type: str = "document",
-    batch_size: int = 128,
+    max_batch_count: int = 128,
 ) -> tuple[list[bytes], int]:
     """
-    Embed texts using Voyage AI API with batching.
+    Embed texts using Voyage AI API with token-aware batching.
 
-    Voyage API has limits on tokens per request, so we batch to stay safe.
+    Voyage API has a limit of 120,000 tokens per batch request.
+    This function creates batches that respect both token and count limits.
 
     Args:
         texts: List of texts to embed.
         model: Voyage AI model name.
         input_type: Type of input ("document" or "query").
-        batch_size: Maximum texts per API call.
+        max_batch_count: Maximum texts per API call.
 
     Returns:
         Tuple of (embedding_blobs, dimension).
@@ -155,12 +164,15 @@ def _embed_voyage_batched(
     if not texts:
         return [], 0
 
+    # Use token-aware batching to respect Voyage's 120K token limit
+    max_tokens = int(VOYAGE_BATCH_TOKEN_LIMIT * VOYAGE_TOKEN_SAFETY_MARGIN)
+    batches = _create_token_aware_batches(texts, max_tokens=max_tokens, max_count=max_batch_count)
+
     all_blobs: list[bytes] = []
     dim: int = 0
 
-    # Process in batches
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    # Process each token-aware batch
+    for batch in batches:
         blobs, batch_dim = _embed_voyage(batch, model, input_type)
         all_blobs.extend(blobs)
         if dim == 0:
