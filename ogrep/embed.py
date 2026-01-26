@@ -37,10 +37,12 @@ ENV_BATCH_SIZE = "OGREP_BATCH_SIZE"
 ENV_VOYAGE_API_KEY = "VOYAGE_API_KEY"
 ENV_VOYAGE_TIMEOUT = "OGREP_VOYAGE_TIMEOUT"  # Timeout in seconds (default: 120)
 ENV_VOYAGE_RETRIES = "OGREP_VOYAGE_RETRIES"  # Max retries (default: 2)
+ENV_VOYAGE_CHARS_PER_TOKEN = "OGREP_VOYAGE_CHARS_PER_TOKEN"  # Token estimation ratio (default: 1.0)
 
 # Voyage defaults
 DEFAULT_VOYAGE_TIMEOUT = 120.0  # 2 minutes
 DEFAULT_VOYAGE_RETRIES = 2
+DEFAULT_VOYAGE_CHARS_PER_TOKEN = 1.0  # Conservative: assume 1 char = 1 token for code
 
 
 def _is_voyage_model(model: str) -> bool:
@@ -167,8 +169,98 @@ def _embed_voyage(
 # The API returns: "max allowed tokens per submitted batch is 120000"
 VOYAGE_BATCH_TOKEN_LIMIT = 120000
 
-# Safety margin for token estimation (Voyage's tokenizer may differ from our estimate)
-VOYAGE_TOKEN_SAFETY_MARGIN = 0.9  # Use 90% of limit to be safe
+
+def _get_voyage_chars_per_token() -> float:
+    """
+    Get the chars-per-token ratio for Voyage token estimation.
+
+    Configurable via OGREP_VOYAGE_CHARS_PER_TOKEN environment variable.
+    Default is 1.0 (conservative: assume 1 char = 1 token for code).
+
+    Returns:
+        Chars per token ratio.
+    """
+    env_val = os.environ.get(ENV_VOYAGE_CHARS_PER_TOKEN)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return DEFAULT_VOYAGE_CHARS_PER_TOKEN
+
+
+def _estimate_voyage_tokens(text: str) -> int:
+    """
+    Estimate tokens for Voyage AI's tokenizer.
+
+    Voyage uses a more aggressive tokenizer than OpenAI, especially for code.
+    The estimation ratio is configurable via OGREP_VOYAGE_CHARS_PER_TOKEN.
+
+    Args:
+        text: Text to estimate tokens for.
+
+    Returns:
+        Estimated number of tokens.
+    """
+    if not text:
+        return 0
+    chars_per_token = _get_voyage_chars_per_token()
+    return max(1, int(len(text) / chars_per_token))
+
+
+def _create_voyage_batches(
+    texts: list[str],
+    max_tokens: int,
+    max_count: int | None = None,
+) -> list[list[str]]:
+    """
+    Create batches of texts for Voyage AI that respect token limits.
+
+    Uses Voyage-specific token estimation which is more conservative
+    than the standard estimate.
+
+    Args:
+        texts: List of texts to batch.
+        max_tokens: Maximum tokens per batch.
+        max_count: Optional maximum texts per batch.
+
+    Returns:
+        List of text batches.
+    """
+    if not texts:
+        return []
+
+    batches: list[list[str]] = []
+    current_batch: list[str] = []
+    current_tokens = 0
+
+    for text in texts:
+        text_tokens = _estimate_voyage_tokens(text)
+
+        # If single text exceeds limit, truncate it
+        if text_tokens > max_tokens:
+            # Truncate to fit
+            chars_per_token = _get_voyage_chars_per_token()
+            max_chars = int(max_tokens * chars_per_token * 0.9)  # 90% margin
+            text = text[:max_chars] + "\n[...truncated...]"
+            text_tokens = _estimate_voyage_tokens(text)
+
+        # Check if adding this text would exceed limits
+        would_exceed_tokens = (current_tokens + text_tokens) > max_tokens
+        would_exceed_count = max_count is not None and len(current_batch) >= max_count
+
+        if current_batch and (would_exceed_tokens or would_exceed_count):
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(text)
+        current_tokens += text_tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
 
 
 def _embed_voyage_batched(
@@ -181,7 +273,8 @@ def _embed_voyage_batched(
     Embed texts using Voyage AI API with token-aware batching.
 
     Voyage API has a limit of 120,000 tokens per batch request.
-    This function creates batches that respect both token and count limits.
+    This function creates batches that respect both token and count limits,
+    using Voyage-specific token estimation.
 
     Args:
         texts: List of texts to embed.
@@ -195,9 +288,10 @@ def _embed_voyage_batched(
     if not texts:
         return [], 0
 
-    # Use token-aware batching to respect Voyage's 120K token limit
-    max_tokens = int(VOYAGE_BATCH_TOKEN_LIMIT * VOYAGE_TOKEN_SAFETY_MARGIN)
-    batches = _create_token_aware_batches(texts, max_tokens=max_tokens, max_count=max_batch_count)
+    # Use Voyage-specific batching with conservative token estimation
+    # Apply 80% safety margin due to tokenizer estimation variance
+    max_tokens = int(VOYAGE_BATCH_TOKEN_LIMIT * 0.8)
+    batches = _create_voyage_batches(texts, max_tokens=max_tokens, max_count=max_batch_count)
 
     all_blobs: list[bytes] = []
     dim: int = 0
