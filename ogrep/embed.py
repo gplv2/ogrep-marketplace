@@ -136,7 +136,9 @@ def _embed_voyage(
                 f"Original error: {error_msg}"
             ) from None
         # Handle connection errors
-        if any(term in error_msg.lower() for term in ["connect", "timeout", "network", "unreachable"]):
+        if any(
+            term in error_msg.lower() for term in ["connect", "timeout", "network", "unreachable"]
+        ):
             raise RuntimeError(
                 f"Could not connect to Voyage API. Check your network connection.\n"
                 f"Original error: {error_msg}"
@@ -622,8 +624,7 @@ def _embed_batch(
                 f"Original error: {e}"
             ) from None
         raise RuntimeError(
-            f"OpenAI API rate limit reached. Wait a moment and try again.\n"
-            f"Original error: {e}"
+            f"OpenAI API rate limit reached. Wait a moment and try again.\nOriginal error: {e}"
         ) from None
     except AuthenticationError as e:
         base_url = os.environ.get("OGREP_BASE_URL")
@@ -634,8 +635,7 @@ def _embed_batch(
                 f"Original error: {e}"
             ) from None
         raise RuntimeError(
-            f"OpenAI API authentication failed. Check your OPENAI_API_KEY.\n"
-            f"Original error: {e}"
+            f"OpenAI API authentication failed. Check your OPENAI_API_KEY.\nOriginal error: {e}"
         ) from None
     except APIConnectionError as e:
         base_url = os.environ.get("OGREP_BASE_URL")
@@ -646,8 +646,7 @@ def _embed_batch(
                 f"Original error: {e}"
             ) from None
         raise RuntimeError(
-            f"Could not connect to OpenAI API. Check your network connection.\n"
-            f"Original error: {e}"
+            f"Could not connect to OpenAI API. Check your network connection.\nOriginal error: {e}"
         ) from None
     except Exception as e:
         base_url = os.environ.get("OGREP_BASE_URL")
