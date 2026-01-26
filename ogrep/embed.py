@@ -105,11 +105,36 @@ def _embed_voyage(
 
     # Voyage API call with timing for slow request detection
     start_time = time.time()
-    result = client.embed(
-        texts=texts,
-        model=model,
-        input_type=input_type,
-    )
+    try:
+        result = client.embed(
+            texts=texts,
+            model=model,
+            input_type=input_type,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # Handle batch token limit errors gracefully
+        if "tokens" in error_msg.lower() and "batch" in error_msg.lower():
+            raise RuntimeError(
+                f"Voyage API batch token limit exceeded ({len(texts)} texts in batch). "
+                f"This is an internal error - please report it at "
+                f"https://github.com/gplv2/ogrep/issues\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Handle rate limiting
+        if "rate" in error_msg.lower() or "429" in error_msg:
+            raise RuntimeError(
+                f"Voyage API rate limit reached. Wait a moment and try again.\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Handle authentication errors
+        if "auth" in error_msg.lower() or "api key" in error_msg.lower() or "401" in error_msg:
+            raise RuntimeError(
+                f"Voyage API authentication failed. Check your VOYAGE_API_KEY.\n"
+                f"Original error: {error_msg}"
+            ) from None
+        # Re-raise other errors with context
+        raise RuntimeError(f"Voyage API error: {error_msg}") from None
     elapsed = time.time() - start_time
 
     # Warn on slow requests (>30s per batch is unusual)
