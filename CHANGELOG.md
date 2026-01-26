@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-01-26
+
+### 🐛 Bug Fixes
+
+#### Fixed Voyage AI Batch Token Limit
+
+Voyage AI embedding requests now respect the 120K token-per-batch limit. Previously, batching only split by count (128 texts max), ignoring token limits. This caused `InvalidRequestError: batch has X tokens after truncation` errors when indexing repositories with large files.
+
+The fix uses token-aware batching with a 90% safety margin (108K tokens) to account for tokenizer differences.
+
 ## [0.8.7] - 2026-01-22
 
 ### ✨ New Features

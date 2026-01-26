@@ -4,6 +4,14 @@
 
 ---
 
+## January 26, 2026 — v0.8.8
+
+### Bug Fix: Voyage AI Large Repository Indexing
+
+Fixed an issue where indexing repositories with large files using Voyage AI would fail with "batch has X tokens after truncation" errors. The Voyage embedding path now properly respects the 120K token-per-batch API limit.
+
+---
+
 ## January 22, 2026 — v0.8.6
 
 ### AST-Aware Auto-Tuning
