@@ -133,6 +133,12 @@ def _embed_voyage(
                 f"Voyage API authentication failed. Check your VOYAGE_API_KEY.\n"
                 f"Original error: {error_msg}"
             ) from None
+        # Handle connection errors
+        if any(term in error_msg.lower() for term in ["connect", "timeout", "network", "unreachable"]):
+            raise RuntimeError(
+                f"Could not connect to Voyage API. Check your network connection.\n"
+                f"Original error: {error_msg}"
+            ) from None
         # Re-raise other errors with context
         raise RuntimeError(f"Voyage API error: {error_msg}") from None
     elapsed = time.time() - start_time
