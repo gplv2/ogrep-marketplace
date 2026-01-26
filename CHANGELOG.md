@@ -19,11 +19,11 @@ The fix uses token-aware batching with a 90% safety margin (108K tokens) to acco
 
 #### Graceful API Error Handling
 
-Both OpenAI and Voyage AI API errors now show user-friendly messages instead of raw stack traces:
+All embedding API errors now show user-friendly messages instead of raw stack traces. Messages are context-aware, differentiating between local servers and cloud APIs:
 
 - **Rate limits**: Clear message to wait and retry
-- **Authentication**: Hints to check API key environment variable
-- **Connection errors**: Suggests checking network or base URL
+- **Authentication**: Hints to check the appropriate API key (`OPENAI_API_KEY` or `VOYAGE_API_KEY`)
+- **Connection errors**: For local servers, shows the `OGREP_BASE_URL` and suggests checking the server; for cloud APIs, suggests checking network
 - **Other errors**: Shows error context without full traceback
 
 ## [0.8.7] - 2026-01-22
