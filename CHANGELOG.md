@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Voyage AI embedding requests now respect the 120K token-per-batch limit. Previously, batching only split by count (128 texts max), ignoring token limits. This caused `InvalidRequestError: batch has X tokens after truncation` errors when indexing repositories with large files.
 
-The fix uses token-aware batching with a 90% safety margin (108K tokens) to account for tokenizer differences.
+The fix uses Voyage-specific token estimation (~1 char/token vs ~3 chars/token for OpenAI) with an 80% safety margin. The estimation ratio is configurable via `OGREP_VOYAGE_CHARS_PER_TOKEN` environment variable (default: 1.0).
 
 ### 🔧 Improvements
 

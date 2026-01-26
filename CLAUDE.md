@@ -351,6 +351,7 @@ You only need **one** of these. The default model is automatically selected base
 | `OGREP_RERANK_LOCK_TIMEOUT` | Lock timeout in seconds (default: 120) |
 | `OGREP_VOYAGE_TIMEOUT` | Voyage API request timeout in seconds (default: 120) |
 | `OGREP_VOYAGE_RETRIES` | Voyage API max retries (default: 2) |
+| `OGREP_VOYAGE_CHARS_PER_TOKEN` | Token estimation ratio for Voyage batching (default: 1.0) |
 
 Full list: grep for `OGREP_` in codebase or check `ogrep --help`.
 
