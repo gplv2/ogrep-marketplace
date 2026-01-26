@@ -4,6 +4,42 @@
 
 **ogrep** is a local semantic grep tool: SQLite index + OpenAI/local embeddings + FTS5 hybrid search + branch-aware indexing.
 
+## Claude Code Environment Setup
+
+**Critical:** Claude Code runs bash commands in a non-interactive shell. Environment variables from `.bashrc`, `.zshrc`, or `direnv` are **NOT automatically loaded**.
+
+### Configure API Keys
+
+Create `.claude/settings.local.json` in your project:
+
+```bash
+# Option 1: Copy from template
+cp .claude/settings.json.example .claude/settings.local.json
+# Then edit with your actual keys
+
+# Option 2: Generate from current shell (run in terminal where env is loaded)
+cat << EOF > .claude/settings.local.json
+{
+  "env": {
+    "VOYAGE_API_KEY": "$VOYAGE_API_KEY",
+    "OPENAI_API_KEY": "$OPENAI_API_KEY"
+  }
+}
+EOF
+```
+
+Or configure globally in `~/.claude/settings.json` for all projects.
+
+### Settings Template
+
+See `.claude/settings.json.example` for all available settings. Convention:
+- Keys starting with `_` are disabled (e.g., `_OGREP_MODEL`)
+- Remove the `_` prefix to enable a setting
+
+### Why This Matters
+
+Without this configuration, Claude Code cannot run `ogrep` commands that require API access. You'll see authentication errors even if your terminal has the env vars set.
+
 ## CLI Quick Reference
 
 | Command | Description |

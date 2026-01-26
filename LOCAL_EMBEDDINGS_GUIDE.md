@@ -31,6 +31,20 @@ Local embedding models allow you to run semantic search without sending data to 
 
 However, local models have different characteristics than OpenAI models, and **optimal settings vary significantly between models**.
 
+### Claude Code Users
+
+Claude Code runs bash in a non-interactive shell, so `OGREP_BASE_URL` from your shell is not automatically available. Configure it in `.claude/settings.local.json`:
+
+```json
+{
+  "env": {
+    "OGREP_BASE_URL": "http://localhost:1234/v1"
+  }
+}
+```
+
+See [SETUP.md](SETUP.md) for full details on Claude Code environment configuration.
+
 ---
 
 ## Installing LM Studio
