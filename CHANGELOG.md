@@ -22,6 +22,10 @@ Trimmed SKILL.md from 548 to 180 lines (67% reduction) by removing content dupli
 
 - Removed redundant `refresh` command (was an alias for `ogrep index`; use `ogrep query --refresh` or `ogrep index .` instead)
 
+### 🧹 Maintenance
+
+- Added `.claude/` to `.gitignore` (except `settings.json.example`), untracked local Claude Code config files
+
 ### 📚 Documentation
 
 - Trimmed CLAUDE.md for conciseness
