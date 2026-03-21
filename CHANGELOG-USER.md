@@ -4,6 +4,18 @@
 
 ---
 
+## March 21, 2026 — v0.8.9
+
+### Leaner Skill, Faster Triggering
+
+The ogrep skill definition is now 67% smaller, meaning less token overhead every time Claude uses it. Trigger accuracy is improved with clearer boundaries on when ogrep should (and shouldn't) be used.
+
+### Removed: `refresh` Command
+
+The standalone `refresh` command has been removed — it was just an alias for `ogrep index`. Use `ogrep query --refresh` to refresh before querying, or `ogrep index .` directly.
+
+---
+
 ## January 26, 2026 — v0.8.8
 
 ### Bug Fix: Voyage AI Large Repository Indexing
