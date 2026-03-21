@@ -26,6 +26,7 @@ Trimmed SKILL.md from 548 to 180 lines (67% reduction) by removing content dupli
 
 - Added `.claude/` to `.gitignore` (except `settings.json.example`), untracked local Claude Code config files
 
+
 ### 📚 Documentation
 
 - Trimmed CLAUDE.md for conciseness
