@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-03-21
+
+### 🔧 Improvements
+
+#### Optimized Skill Definition for Token Efficiency
+
+Trimmed SKILL.md from 548 to 180 lines (67% reduction) by removing content duplicated in command files and CLAUDE.md. This reduces token consumption on every skill invocation.
+
+- Tightened skill trigger description with explicit negative examples to prevent over-triggering
+- Replaced `nl`/`sed` fallback with Read tool guidance for evidence extraction
+- Condensed error handling into a compact lookup table
+- Clarified `--no-ast` flag documentation (AST is default when tree-sitter is available)
+
+### 🗑️ Removed
+
+- Removed redundant `refresh` command (was an alias for `ogrep index`; use `ogrep query --refresh` or `ogrep index .` instead)
+
+### 🧹 Maintenance
+
+- Added `.claude/` to `.gitignore` (except `settings.json.example`), untracked local Claude Code config files
+
+### 📚 Documentation
+
+- Trimmed CLAUDE.md for conciseness
+
 ## [0.8.8] - 2026-01-26
 
 ### 🐛 Bug Fixes

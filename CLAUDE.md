@@ -63,156 +63,30 @@ Without this configuration, Claude Code cannot run `ogrep` commands that require
 | `ogrep models` | List available models |
 | `ogrep device` | Check GPU/CPU |
 | `ogrep tune .` | Auto-tune chunk size (uses AST when available) |
+| `ogrep benchmark .` | Run quality benchmarks |
+| `ogrep cache-report` | Show embedding cache stats |
+| `ogrep delete "file"` | Delete specific file from index |
+| `ogrep log` | Show indexing log |
 
 **JSON output is default.** Use `--no-json` for human-readable.
 
-## AI Tool Integration
+## Reranking
 
-### Auto-Refresh Behavior
+**Key rule:** Reranking **helps weak embeddings** but **hurts strong embeddings** (benchmark: `test-reports/BENCHMARK-REPORT-2026-01-16.md`).
 
-Queries automatically check for file changes and reindex stale files before searching. For heavy editing sessions, you can force a full refresh:
+- **OpenAI embeddings** (MRR 0.700): Don't rerank (-21% with flashrank)
+- **Local/Nomic embeddings** (MRR 0.545→0.633): Use `--rerank` (+16% with flashrank)
 
-```bash
-ogrep query "where is auth handled" --refresh
-```
+| Model | Backend | Size | Context | Install | Parallel-safe |
+|-------|---------|------|---------|---------|---------------|
+| `flashrank` (default) | ONNX | ~4MB | 512 | `[rerank-light]` | Yes |
+| `flashrank:mini` | ONNX | ~50MB | 512 | `[rerank-light]` | Yes |
+| `voyage` | Voyage AI API | - | 32K | `[voyage]` | Yes |
+| `voyage:lite` | Voyage AI API | - | 32K | `[voyage]` | Yes |
+| `minilm` | sentence-transformers | ~90MB | 512 | `[rerank]` | No (file lock) |
+| `bge-m3` | sentence-transformers | ~300MB | 8K | `[rerank]` | No (file lock) |
 
-### Search Modes (`--mode` / `-M`)
-
-| Mode | Best For |
-|------|----------|
-| `semantic` | Conceptual: "where is authentication handled" |
-| `fulltext` | Exact: "def validate_token" |
-| `hybrid` | Mixed/unsure (default) |
-
-### Chunk Navigation
-
-After query finds something, expand context:
-```bash
-ogrep chunk "src/auth.py:2" --context 1
-```
-
-### Reranking
-
-Three backend options with multiple models:
-
-| Model | Backend | Size | Context | Install |
-|-------|---------|------|---------|---------|
-| `flashrank` (default) | ONNX | ~4MB | 512 | `[rerank-light]` |
-| `flashrank:mini` | ONNX | ~50MB | 512 | `[rerank-light]` |
-| `voyage` | Voyage AI API | - | 32K | `[voyage]` |
-| `voyage:lite` | Voyage AI API | - | 32K | `[voyage]` |
-| `minilm` | sentence-transformers | ~90MB | 512 | `[rerank]` |
-| `bge-m3` | sentence-transformers | ~300MB | 8K | `[rerank]` |
-
-**FlashRank models are parallel-safe** (no locking needed). **Voyage models** use REST API (code-optimized, needs VOYAGE_API_KEY). Sentence-transformers models use file-based locking to prevent OOM.
-
-```bash
-ogrep query "auth" --rerank                       # Default (flashrank)
-ogrep query "auth" --rerank-model flashrank:mini  # Better quality ONNX (50MB)
-ogrep query "auth" --rerank-model voyage          # Voyage AI (code-optimized, 32K)
-ogrep query "auth" --rerank-model voyage:lite     # Voyage AI (faster, cheaper)
-ogrep query "auth" --rerank-model minilm          # Smaller PyTorch (90MB)
-ogrep query "auth" --rerank-model bge-m3          # Heavy PyTorch (GPU only)
-ogrep query "auth" --rerank-top 30                # Rerank top 30 candidates
-```
-
-Install backends:
-```bash
-pip install "ogrep[rerank-light]"  # Lightweight (FlashRank + ONNX, parallel-safe) - RECOMMENDED
-pip install "ogrep[voyage]"        # Voyage AI (code-optimized embeddings + reranking)
-pip install "ogrep[rerank]"        # Full-featured (sentence-transformers + PyTorch)
-pip install "ogrep[rerank-all]"    # All backends
-```
-
-Check hardware and available backends: `ogrep device`.
-
-**Note:** `--rerank-top` must be >= `-n`. Example: `-n 20 --rerank-top 15` is invalid.
-
-**Parallel Safety:** Sentence-transformers models use file-based locking. On lock timeout (default: 120s), returns unreranked results with a warning. Configure via `OGREP_RERANK_LOCK` (path) and `OGREP_RERANK_LOCK_TIMEOUT` (seconds). **FlashRank models don't need locking** - they're safe for parallel use.
-
-### When to Use Reranking (Benchmark Results)
-
-**Key finding from quality benchmarks (MRR = Mean Reciprocal Rank):**
-
-| Embedding | Without Rerank | With flashrank | Recommendation |
-|-----------|----------------|----------------|----------------|
-| OpenAI | **0.700** | 0.550 (-21%) | ❌ Don't rerank |
-| Nomic (local) | 0.545 | **0.633** (+16%) | ✅ Use reranking |
-
-**The rule:** Reranking **helps weak embeddings** but **hurts strong embeddings**.
-
-- **OpenAI embeddings:** Already well-calibrated. Reranking adds noise → disable it.
-- **Local embeddings (Nomic):** Less precise. Reranking compensates → use flashrank.
-
-```bash
-# OpenAI (best quality) - NO reranking
-ogrep query "where is auth"
-
-# Nomic (local/free) - WITH reranking
-ogrep query "where is auth" --rerank
-```
-
-**Reranker comparison:**
-
-| Model | MRR (Nomic) | Speed | Verdict |
-|-------|-------------|-------|---------|
-| flashrank | **0.633** | ~200ms | ✅ Default - best balance |
-| minilm | 0.568 | ~2s | ⚠️ Optional |
-| bge-m3 | 0.516 | ~30s | ❌ Too slow on CPU |
-
-Full benchmark: `test-reports/BENCHMARK-REPORT-2026-01-16.md`
-
-### Path Filtering (`--glob` / `--exclude`)
-
-Filter results to specific file patterns:
-
-```bash
-ogrep query "auth" --glob "*.py"            # Only Python files
-ogrep query "auth" -g "*.py" -g "*.php"     # Multiple patterns
-ogrep query "auth" --exclude "tests/*"      # Exclude tests
-ogrep query "auth" -g "**/*.py" -x "vendor/*"  # Combine include/exclude
-```
-
-Supports `**` for recursive matching. JSON output includes filter stats.
-
-### Summary Mode (`--summarize`)
-
-Get file-level aggregation without full chunk text (token-efficient):
-
-```bash
-ogrep query "authentication" --summarize
-ogrep query "auth" --summarize --glob "*.py"
-```
-
-Output shows:
-- Files matched with chunk counts
-- Best score and score range per file
-- Line ranges covered
-- Recommendation to use `ogrep chunk` for expansion
-
-~85% token savings vs full output.
-
-### Confidence Scoring
-
-Results include hybrid confidence combining relative position and absolute quality:
-
-```json
-"confidence": {
-  "level": "medium",
-  "relative_pct": 95.2,
-  "absolute_quality": "weak",
-  "signal": "top_result_weak_absolute"
-}
-```
-
-| Field | Meaning |
-|-------|---------|
-| `level` | Overall: high/medium/low/very_low |
-| `relative_pct` | Score as % of top result |
-| `absolute_quality` | strong/expected_range/weak/very_weak |
-| `signal` | Human-readable explanation |
-
-**Key insight:** Low absolute scores (e.g., 0.03) can still be "medium" confidence if they're the best available match. The `signal` field explains why.
+**Note:** `--rerank-top` must be >= `-n`. Sentence-transformers lock timeout configurable via `OGREP_RERANK_LOCK_TIMEOUT` (default: 120s).
 
 ## Branch-Aware Indexing
 
@@ -279,88 +153,9 @@ ogrep index . --no-ast
 
 **Local models:** See `LOCAL_EMBEDDINGS_GUIDE.md` for LM Studio setup.
 
-**Smart default model selection** (based on available API keys):
+**Smart default model selection** (based on available API keys): `OGREP_BASE_URL` → nomic, `VOYAGE_API_KEY` only → voyage-code-3, `OPENAI_API_KEY` → text-embedding-3-small.
 
-| Environment | Default Model |
-|-------------|---------------|
-| `OGREP_BASE_URL` set | `nomic-embed-text-v1.5` (local) |
-| Only `VOYAGE_API_KEY` | `voyage-code-3` (code-optimized) |
-| Only `OPENAI_API_KEY` | `text-embedding-3-small` |
-| Both API keys | `text-embedding-3-small` (OpenAI) |
-
-This means you only need to set the API key for the service you want to use - ogrep will automatically select the right model.
-
-## Voyage AI Backend
-
-Voyage AI provides **code-optimized** embeddings and reranking. Particularly good for code search.
-
-**Setup:**
-```bash
-pip install "ogrep[voyage]"
-export VOYAGE_API_KEY=pa-...  # Get from https://dash.voyageai.com/
-```
-
-**Embeddings:**
-```bash
-ogrep index . -m voyage-code-3  # Code-optimized (1024D, 32K context)
-ogrep index . -m voyage-3-lite  # Faster/cheaper (512D)
-```
-
-**Reranking:**
-```bash
-ogrep query "auth" --rerank --rerank-model voyage       # rerank-2.5 (instruction-following)
-ogrep query "auth" --rerank --rerank-model voyage:lite  # rerank-2.5-lite (faster)
-```
-
-**Full Voyage stack:**
-```bash
-export VOYAGE_API_KEY=pa-...
-ogrep index . -m voyage-code-3
-ogrep query "where is auth" --rerank --rerank-model voyage
-```
-
-| Component | Model | Context | Notes |
-|-----------|-------|---------|-------|
-| Embeddings | voyage-code-3 | 32K | Code-optimized, 1024D |
-| Embeddings | voyage-3-lite | 32K | Faster, 512D |
-| Reranking | rerank-2.5 | 32K | Instruction-following |
-| Reranking | rerank-2.5-lite | 32K | Faster/cheaper |
-
-## Recommended Configurations
-
-Based on quality benchmarks (10 ground-truth queries, MRR metric):
-
-### Maximum Quality (Cloud)
-```bash
-export OPENAI_API_KEY=...
-ogrep index .
-ogrep query "your search"  # NO --rerank flag
-```
-- **MRR: 0.700** (best achievable)
-- Fast indexing: ~30s for 285 files
-- Cost: ~$0.02 per index
-
-### Privacy/Offline (Local)
-```bash
-export OGREP_BASE_URL=http://localhost:1234/v1
-export OGREP_MODEL=nomic
-ogrep index .
-ogrep query "your search" --rerank  # flashrank default
-```
-- **MRR: 0.633** (-9.5% vs OpenAI)
-- Zero cost, fully offline
-- Slower indexing: ~17 min for 285 files
-
-### Decision Matrix
-
-| Requirement | Configuration |
-|-------------|---------------|
-| Maximum accuracy | OpenAI, no reranking |
-| Privacy/compliance | Nomic + flashrank |
-| Offline capability | Nomic + flashrank |
-| Minimum cost | Nomic + flashrank |
-| Fastest indexing | OpenAI |
-| Fastest queries | Any, no reranking |
+**Voyage AI** requires `pip install "ogrep[voyage]"` and `VOYAGE_API_KEY`. Provides code-optimized embeddings (voyage-code-3) and reranking (rerank-2.5).
 
 ## Environment Variables
 
@@ -396,10 +191,11 @@ Full list: grep for `OGREP_` in codebase or check `ogrep --help`.
 ```bash
 source .venv/bin/activate
 pip install -e ".[dev]"
-make test    # pytest
-make lint    # ruff + yamllint
-make fmt     # format
-make check   # all
+make test      # pytest
+make lint      # ruff + yamllint
+make fmt       # format
+make typecheck # mypy
+make check     # all
 ```
 
 ### Key Files
@@ -412,6 +208,12 @@ make check   # all
 | `ogrep/indexer.py` | Indexing + DEFAULT_EXCLUDES |
 | `ogrep/search.py` | Query execution |
 | `ogrep/db.py` | SQLite schema |
+| `ogrep/embed.py` | Embedding API calls (OpenAI, Voyage, local) |
+| `ogrep/rerank.py` | Reranking backends (flashrank, voyage, sentence-transformers) |
+| `ogrep/ast_chunking.py` | Tree-sitter AST chunking |
+| `ogrep/chunking.py` | Line-based chunking |
+| `ogrep/cache.py` | Embedding cache logic |
+| `ogrep/filetype.py` | File type detection + exclusion patterns |
 
 ### Adding a Command
 

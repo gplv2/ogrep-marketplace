@@ -10,3 +10,5 @@ build/
 test.*
 index.html
 .mcp.json
+.claude/*
+!.claude/settings.json.example

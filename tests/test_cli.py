@@ -25,7 +25,7 @@ def test_cli_version() -> None:
         text=True,
     )
     assert result.returncode == 0
-    assert "0.8.8" in result.stdout
+    assert "0.8.9" in result.stdout
 
 
 def test_cli_index_help() -> None:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ogrep"
-version = "0.8.8"
+version = "0.8.9"
 description = "Semantic grep for codebases - local-first, SQLite-backed, with local or cloud embeddings"
 readme = "README.md"
 requires-python = ">=3.10"
