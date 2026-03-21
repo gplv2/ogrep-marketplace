@@ -519,7 +519,7 @@ ogrep status
 
 JSON output is now the default. The Claude Code Skill should:
 - Use `--refresh` to ensure results reflect current codebase state
-- Check `stats.ast_mode` and suggest `ogrep reindex . --ast` if false
+- Check `stats.ast_mode` and suggest `ogrep reindex .` if false (AST is default when tree-sitter is available)
 - Use `--no-json` only if human-readable output is needed
 
 ---
@@ -691,7 +691,7 @@ Semantic search works best when code has good comments, docstrings, or descripti
 
 **If you're getting consistently low scores:**
 
-1. **Use AST chunking** — `ogrep reindex . --ast` for better semantic boundaries
+1. **Use AST chunking** — `ogrep reindex .` for better semantic boundaries (AST is default)
 2. **Try reranking** — `--rerank` for more accurate ordering
 3. **Try code-like queries** — match the terminology in the code
 4. **Use fulltext mode** — for exact identifiers: `--mode fulltext`
