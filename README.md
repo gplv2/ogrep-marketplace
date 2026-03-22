@@ -1,6 +1,6 @@
 # ogrep
 
-**Semantic grep for codebases** — local-first, SQLite-backed, and built for Claude Code Skills (not MCP).
+**Semantic grep for codebases** — local-first, SQLite-backed, with agentic Claude Code integration.
 
 ogrep helps you search code by **meaning**, not just keywords. It builds a local semantic index (`.ogrep/index.sqlite` by default) and retrieves the most relevant code chunks for questions like:
 
@@ -14,9 +14,27 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ---
 
-## What's New in v0.8.x
+## What's New
 
-### v0.8.1: AST Chunking Now Default
+### v0.9.0: Agentic Semantic Search
+
+ogrep now runs as a **dedicated Claude Code subagent** — dispatched automatically when Claude encounters conceptual code questions. This is a fundamental shift from passive skill to active agent.
+
+**What changed:**
+- **Agent architecture:** ogrep registers as a `subagent_type` (like episodic-memory), running in its own context window with a specialized system prompt
+- **Summarize → Narrow → Drill:** The agent follows a mandatory three-step workflow — cheap `--summarize` overview first, narrow to relevant files, then expand specific chunks. Saves ~85% tokens vs raw results
+- **Clean context:** The agent processes JSON output internally and returns synthesized findings with `file:line` references. No raw JSON in your conversation
+- **Skill as router:** The skill is now a lightweight dispatcher (48 lines) that tells Claude *when* to use ogrep. All search logic lives in the agent
+
+**Why it matters:** Claude now dispatches ogrep at the right moment for conceptual questions, without manual invocation. The agent handles the full search workflow autonomously and returns concise, actionable results.
+
+### v0.8.x: AST Chunking, Voyage AI, FlashRank
+
+#### v0.8.9: Optimized Skill
+
+Trimmed skill definition from 548 to 180 lines (67% reduction). Better trigger accuracy with explicit negative examples.
+
+#### v0.8.1: AST Chunking Now Default
 
 AST-aware chunking is now **enabled by default** when tree-sitter is available. This produces semantically coherent chunks (complete functions, classes) instead of arbitrary line breaks.
 
@@ -30,7 +48,7 @@ ogrep index .             # AST enabled automatically
 ogrep index . --no-ast    # Explicitly disable
 ```
 
-### v0.8.0: Voyage AI Integration & Benchmark Findings
+#### v0.8.0: Voyage AI Integration & Benchmark Findings
 
 #### Voyage AI (Recommended for Code Search)
 
@@ -515,12 +533,13 @@ ogrep status
 }
 ```
 
-### For Claude Code Skills
+### For Claude Code (Agentic Integration)
 
-JSON output is now the default. The Claude Code Skill should:
-- Use `--refresh` to ensure results reflect current codebase state
-- Check `stats.ast_mode` and suggest `ogrep reindex . --ast` if false
-- Use `--no-json` only if human-readable output is needed
+As of v0.9.0, ogrep runs as a **dedicated search agent** inside Claude Code:
+- Claude auto-dispatches the `ogrep-search` agent for conceptual code questions
+- The agent uses JSON output internally and returns synthesized findings
+- The skill acts as a lightweight router — it decides *when* to dispatch, the agent does the *work*
+- No manual CLI invocation needed; the agent handles `--summarize`, narrowing, and chunk expansion autonomously
 
 ---
 
@@ -691,7 +710,7 @@ Semantic search works best when code has good comments, docstrings, or descripti
 
 **If you're getting consistently low scores:**
 
-1. **Use AST chunking** — `ogrep reindex . --ast` for better semantic boundaries
+1. **Use AST chunking** — `ogrep reindex .` for better semantic boundaries (AST is default)
 2. **Try reranking** — `--rerank` for more accurate ordering
 3. **Try code-like queries** — match the terminology in the code
 4. **Use fulltext mode** — for exact identifiers: `--mode fulltext`

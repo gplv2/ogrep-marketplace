@@ -1,11 +1,12 @@
 {
   "name": "ogrep",
-  "version": "0.8.9",
+  "version": "0.9.0",
   "description": "Semantic code search with multiple modes: semantic (embedding similarity for conceptual queries), fulltext (FTS5 keyword matching for exact identifiers), and hybrid (combined - best of both). Supports Voyage AI (code-optimized), OpenAI, or local models via LM Studio. JSON output for AI tools.",
   "author": {
     "name": "gplv2",
     "email": "glenn@bitless.be"
   },
+  "agents": ["./agents/ogrep-search.md"],
   "skills": "./skills/",
   "commands": ["./commands/"]
 }
