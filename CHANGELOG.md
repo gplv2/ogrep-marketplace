@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-03-22
+
+### ✨ Added
+
+#### Agentic Semantic Search (`ogrep-search` agent)
+
+ogrep now registers as a Claude Code **agent** (like episodic-memory), instead of relying on the skill to teach Claude how to run CLI commands directly.
+
+- New `agents/ogrep-search.md` agent definition with Sonnet model, running as a dedicated subagent
+- Agent follows a mandatory **summarize → narrow → drill** workflow for token efficiency
+- Always uses JSON output internally; returns synthesized findings to the parent conversation
+- Dispatched automatically when Claude encounters conceptual code questions
+
+### 🔄 Changed
+
+#### Skill Becomes a Routing Layer
+
+The skill (`SKILL.md`) is now a lightweight dispatcher that tells Claude *when* to use ogrep and instructs it to launch the agent — similar to how episodic-memory's skill routes to its search agent.
+
+- Reduced from 181 to 48 lines — all search logic moved into the agent's system prompt
+- Discourages direct CLI usage in the main conversation (wastes context window)
+- Clear "use ogrep vs grep/Glob" decision table retained
+
+#### Plugin Registration
+
+- Added `"agents"` field to `plugin.json` to register `ogrep-search` as a subagent type
+
 ## [0.8.9] - 2026-03-21
 
 ### 🔧 Improvements

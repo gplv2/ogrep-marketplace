@@ -4,6 +4,20 @@
 
 ---
 
+## March 22, 2026 — v0.9.0
+
+### Agentic Search: ogrep Now Runs as a Subagent
+
+ogrep no longer relies on Claude running CLI commands in your conversation. Instead, it launches a dedicated **search agent** (like episodic-memory does) that runs ogrep commands in its own context, follows a summarize→narrow→drill workflow, and returns clean, synthesized findings.
+
+**What this means for you:**
+- Claude dispatches `ogrep-search` automatically for conceptual code questions
+- Results are concise summaries with file:line references — no raw JSON cluttering your conversation
+- The agent always starts with `--summarize` for a cheap file-level overview before drilling into chunks
+- Your main conversation stays clean while the agent does the heavy searching
+
+---
+
 ## March 21, 2026 — v0.8.9
 
 ### Leaner Skill, Faster Triggering
