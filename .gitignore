@@ -12,3 +12,4 @@ index.html
 .mcp.json
 .claude/*
 !.claude/settings.json.example
+2*.pdf
