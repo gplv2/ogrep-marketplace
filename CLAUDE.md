@@ -214,6 +214,7 @@ make check     # all
 | `ogrep/chunking.py` | Line-based chunking |
 | `ogrep/cache.py` | Embedding cache logic |
 | `ogrep/filetype.py` | File type detection + exclusion patterns |
+| `ogrep/mcp/__main__.py` | MCP server (5 tools: query, chunk, index, status, health) |
 
 ### Adding a Command
 

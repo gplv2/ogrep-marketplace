@@ -8,7 +8,7 @@ description: |
   - User asks a conceptual question about the codebase
   NOT for: exact string matching, known file paths, import lookups, or simple identifier searches — use grep/Glob for those.
 
-allowed-tools: Bash, Read
+allowed-tools: Bash, Read, mcp__plugin_ogrep_ogrep__ogrep_query, mcp__plugin_ogrep_ogrep__ogrep_chunk, mcp__plugin_ogrep_ogrep__ogrep_status
 ---
 
 ## Mandatory: Use the Search Agent
@@ -27,7 +27,7 @@ Agent tool:
 ```
 
 The agent will:
-1. Run `--summarize` for a cheap file-level overview
+1. Call `ogrep_query(summarize=true)` for a cheap file-level overview
 2. Narrow to the most relevant files
 3. Expand specific chunks for evidence
 4. Return synthesized findings with file:line references
@@ -51,8 +51,19 @@ The agent will:
 
 **Rule of thumb:** If you'd need to guess multiple terms for grep, dispatch the ogrep agent.
 
+## Direct MCP Access (Simple Queries)
+
+For simple, quick lookups you CAN call MCP tools directly without dispatching the agent:
+
+```
+ogrep_query(query="where is auth?")
+ogrep_status()
+```
+
+This is appropriate for quick checks. For deeper exploration, always dispatch the agent.
+
 ## Direct CLI Access (Discouraged)
 
-You CAN run `ogrep` commands directly via Bash, but DON'T — it wastes your context window with raw JSON output. Always dispatch the agent instead.
+You CAN run `ogrep` commands directly via Bash, but DON'T — MCP tools are faster (persistent process, warm models) and return structured data. Always prefer MCP tools or the agent.
 
-Exception: `ogrep index .` for first-time indexing can be run directly if the agent reports no index exists.
+Exception: `ogrep index .` for first-time indexing can be run directly if the agent reports no index exists, or use `ogrep_index()` via MCP.
