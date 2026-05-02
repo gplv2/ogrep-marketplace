@@ -1,6 +1,6 @@
 # ogrep
 
-**Semantic grep for codebases** — local-first, SQLite-backed, with agentic Claude Code integration.
+**Semantic grep for codebases** — local-first, SQLite-backed, with MCP server and agentic Claude Code integration.
 
 ogrep helps you search code by **meaning**, not just keywords. It builds a local semantic index (`.ogrep/index.sqlite` by default) and retrieves the most relevant code chunks for questions like:
 
@@ -16,17 +16,44 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ## What's New
 
+### v0.10.0: MCP Server — Native Tool Integration
+
+ogrep now includes an **MCP (Model Context Protocol) server** that exposes 5 native tools Claude can call directly — no shell spawning, no CLI parsing, no cold starts.
+
+**5 MCP tools:**
+- `ogrep_query` — Search with semantic, fulltext, or hybrid mode. Supports `summarize`, `glob`/`exclude`, `rerank`, and `branch`
+- `ogrep_chunk` — Expand a chunk reference with before/after context
+- `ogrep_index` — Index or re-index a directory (incremental, AST-aware)
+- `ogrep_status` — Index statistics: files, chunks, model, branches
+- `ogrep_health` — Database diagnostics: table stats, FTS5, integrity check
+
+**Why MCP?** Every `ogrep query` via Bash spawns a fresh Python process (~500ms), loads models from disk, and returns raw text. The MCP server starts once and keeps everything warm:
+
+| Resource | Bash (per-command) | MCP (persistent) |
+|----------|-------------------|-------------------|
+| Python startup | ~500ms each time | Once |
+| FlashRank ONNX model | Load from disk each query | Loaded once, stays in memory |
+| SQLite connection | Open/close each command | Kept open |
+| Tree-sitter parsers | Load per language each time | Loaded once |
+
+**Token efficiency:** MCP returns structured dicts (200–500 tokens) vs raw CLI output (2,000+). The agent + MCP combination is the most efficient: MCP returns structured data to the agent, the agent synthesizes, only the synthesis enters your conversation.
+
+**Architecture — three layers:**
+```
+Skill (when to use ogrep)
+  → Agent (summarize → narrow → drill)
+       → ogrep_query(summarize=true)    # file-level overview
+       → ogrep_query(glob="src/*.py")   # narrow to files
+       → ogrep_chunk(ref, context=1)    # expand context
+
+Direct use (simple queries):
+  Claude → ogrep_query("where is auth?")
+  Claude → ogrep_status()
+```
+
 ### v0.9.0: Agentic Semantic Search
 
-ogrep now runs as a **dedicated Claude Code subagent** — dispatched automatically when Claude encounters conceptual code questions. This is a fundamental shift from passive skill to active agent.
-
-**What changed:**
-- **Agent architecture:** ogrep registers as a `subagent_type` (like episodic-memory), running in its own context window with a specialized system prompt
-- **Summarize → Narrow → Drill:** The agent follows a mandatory three-step workflow — cheap `--summarize` overview first, narrow to relevant files, then expand specific chunks. Saves ~85% tokens vs raw results
-- **Clean context:** The agent processes JSON output internally and returns synthesized findings with `file:line` references. No raw JSON in your conversation
-- **Skill as router:** The skill is now a lightweight dispatcher (48 lines) that tells Claude *when* to use ogrep. All search logic lives in the agent
-
-**Why it matters:** Claude now dispatches ogrep at the right moment for conceptual questions, without manual invocation. The agent handles the full search workflow autonomously and returns concise, actionable results.
+ogrep runs as a **dedicated Claude Code subagent** — dispatched automatically for conceptual code questions. The agent follows a **summarize → narrow → drill** workflow, processes results in its own context window, and returns synthesized findings with `file:line` references.
 
 ### v0.8.x: AST Chunking, Voyage AI, FlashRank
 
@@ -533,13 +560,13 @@ ogrep status
 }
 ```
 
-### For Claude Code (Agentic Integration)
+### For Claude Code (MCP + Agentic Integration)
 
-As of v0.9.0, ogrep runs as a **dedicated search agent** inside Claude Code:
-- Claude auto-dispatches the `ogrep-search` agent for conceptual code questions
-- The agent uses JSON output internally and returns synthesized findings
-- The skill acts as a lightweight router — it decides *when* to dispatch, the agent does the *work*
-- No manual CLI invocation needed; the agent handles `--summarize`, narrowing, and chunk expansion autonomously
+As of v0.10.0, ogrep runs as an **MCP server** with a **dedicated search agent** inside Claude Code:
+- **MCP server** starts automatically when the plugin loads — 5 native tools available as first-class Claude tools
+- **Agent** dispatches automatically for conceptual questions, routing through MCP tools for fast structured results
+- **Direct access** — Claude can also call `ogrep_query` or `ogrep_status` directly for quick lookups without the agent
+- **Skill** acts as a lightweight router — decides *when* to use ogrep, the agent handles *how*
 
 ---
 
