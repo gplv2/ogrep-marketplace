@@ -50,7 +50,7 @@ from .models import (
 )
 from .search import Hit, query
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 __all__ = [
     "__version__",

@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-05-02
+
+### 📝 Documentation
+
+- Added v0.10.0 changelog entry (was missing from initial release)
+- Version bump to 0.10.1 across all version files
+
+## [0.10.0] - 2026-05-02
+
+### ✨ Added
+
+#### MCP Server — 5 Native Tools
+
+ogrep now includes a full MCP (Model Context Protocol) server that Claude Code calls as first-class tools, replacing shell-based CLI invocation. The server runs as a persistent process, keeping SQLite connections, reranking models, and tree-sitter parsers warm in memory.
+
+- `ogrep_query` — Search with semantic, fulltext, or hybrid mode. Supports `summarize`, `glob`/`exclude` filtering, `rerank`, and `branch` selection
+- `ogrep_chunk` — Expand a chunk reference with before/after context for drill-down
+- `ogrep_index` — Index or re-index a directory (incremental by default, AST-aware)
+- `ogrep_status` — Index statistics: files, chunks, model, branch info, database size
+- `ogrep_health` — Database diagnostics: table stats, FTS5 info, integrity check, dedup stats
+
+#### Why MCP?
+
+Every `ogrep query` via Bash spawns a fresh Python process (~500ms startup), loads models from disk, and returns raw text. The MCP server starts once and keeps everything warm:
+
+| Resource | Bash (per-command) | MCP (persistent) |
+|----------|-------------------|-------------------|
+| Python startup | ~500ms each time | Once |
+| FlashRank ONNX model | Load from disk each query | Loaded once, stays in memory |
+| SQLite connection | Open/close each command | Kept open |
+| Tree-sitter parsers | Load per language each time | Loaded once |
+
+Token efficiency also improves — MCP returns structured dicts (200–500 tokens) instead of raw CLI output (2,000+).
+
+### 🔄 Changed
+
+#### Agent Uses MCP Tools
+
+The `ogrep-search` agent now routes through MCP tools instead of Bash commands:
+
+- Tools changed from `Bash, Read` to `ogrep_query, ogrep_chunk, ogrep_status, Read`
+- Workflow steps use MCP calls: `ogrep_query(summarize=true)` → `ogrep_query(glob=...)` → `ogrep_chunk(ref, context=1)`
+- Same summarize → narrow → drill workflow, faster and more reliable execution
+
+#### Skill Allows MCP Tools
+
+- Added MCP tool names to `allowed-tools` in skill frontmatter
+- Added "Direct MCP Access" section for simple queries without agent dispatch
+- Claude can now call `ogrep_query` or `ogrep_status` directly for quick lookups
+
+#### Plugin Registration
+
+- Added `mcpServers` block to `plugin.json` pointing to `python -m ogrep.mcp`
+- MCP server starts automatically when the plugin is loaded in Claude Code
+
+### 🧪 Tests
+
+- Added `tests/test_mcp.py` with 17 tests covering all 5 tools, `_resolve_context`, error cases, and integration flows
+- All existing tests continue to pass (530 passed)
+
+### 📦 Packaging
+
+- Version bumped to 0.10.0 across all 6 version files
+- Updated `index.html` homepage for ogrep.be with MCP documentation
+- Updated CLAUDE.md key files table
+
 ## [0.9.0] - 2026-03-22
 
 ### ✨ Added
