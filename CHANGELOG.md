@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-05-03
+
+### ✨ Improved
+
+#### MCP Tool Descriptions: Agentic Guidance for Reranking & Error Handling
+
+AI agents discover ogrep tools via MCP and only see the docstrings. Two gaps existed:
+
+1. **Reranking guidance was missing** — agents didn't know that reranking hurts quality with strong embedders (voyage, openai) and only helps with local/weak ones (nomic, bge, minilm). The runtime hint fired *after* reranking was already done.
+2. **Non-indexed directory behavior was undocumented** — tools handle it gracefully at runtime (clean error dicts), but docstrings didn't tell agents what to expect or how to react.
+
+**All 5 MCP tool docstrings now include:**
+- `ogrep_query`: Reranking guidance (when it helps vs degrades), non-indexed error behavior, expanded parameter docs for `rerank` and `rerank_model`
+- `ogrep_status`: Guidance to check embedding model before deciding on reranking, non-indexed response shape
+- `ogrep_index`: Embedding model auto-selection logic, cross-reference to reranking guidance
+- `ogrep_chunk`: Non-indexed error behavior
+- `ogrep_health`: Non-indexed response shape
+
+**Package description updated** to reflect ogrep's current identity: hybrid fulltext/vector search, MCP-native, designed for AI agents and humans.
+
 ## [0.10.3] - 2026-05-03
 
 ### 🐛 Fixed

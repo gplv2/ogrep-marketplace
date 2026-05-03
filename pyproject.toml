@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ogrep"
-version = "0.10.3"
-description = "Semantic grep for codebases - local-first, SQLite-backed, with local or cloud embeddings"
+version = "0.11.0"
+description = "Semantic code search for AI agents and humans - hybrid fulltext/vector search, MCP-native, SQLite-backed, local or cloud embeddings"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
