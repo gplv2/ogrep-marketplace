@@ -4,6 +4,20 @@
 
 ---
 
+## May 3, 2026 — v0.11.0
+
+### Smarter Tool Discovery for AI Agents
+
+ogrep's MCP tools now carry richer docstrings so AI agents make better decisions without trial-and-error:
+
+- **Reranking guidance baked in** — agents now know that reranking *degrades* results with strong embedders (voyage-code-3, text-embedding-3) and should only be used with local/weak models (nomic, bge, minilm). No more wasted cross-encoder passes.
+- **Error handling documented** — when a directory isn't indexed, agents get a clear error dict and know to fall back to grep/glob or offer to index first, instead of retrying.
+- **`ogrep_status` as decision point** — agents can check the embedding model before querying and skip reranking automatically.
+
+If you're using ogrep as an MCP tool in Claude Code, Gemini, or any agent framework, this release means fewer bad-quality searches and faster fallback behavior.
+
+---
+
 ## March 22, 2026 — v0.9.0
 
 ### Agentic Search: ogrep Now Runs as a Subagent

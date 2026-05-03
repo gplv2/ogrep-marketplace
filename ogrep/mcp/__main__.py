@@ -132,6 +132,16 @@ def ogrep_query(
     Returns ranked code chunks with scores and confidence levels.
     Use summarize=True for a token-efficient file-level overview.
 
+    If the directory is not indexed, returns an error dict with an
+    "error" key — do not retry, fall back to grep/glob or offer to
+    run ogrep_index first.
+
+    Reranking guidance: reranking improves results with local/weak
+    embeddings (nomic, bge, minilm) but DEGRADES quality with strong
+    API embeddings (voyage-code-3, voyage-3, text-embedding-3-small/large).
+    When in doubt, leave rerank=False — the default hybrid search with
+    a quality embedder is already well-calibrated.
+
     Args:
         query: Natural language search query (min 2 chars).
         path: Directory to search in (resolves repo root automatically).
@@ -141,8 +151,12 @@ def ogrep_query(
         glob: Glob pattern to include (e.g. "*.py", "src/**/*.ts").
         exclude: Glob pattern to exclude (e.g. "tests/*").
         summarize: If True, aggregate results to file-level summary.
-        rerank: If True, apply cross-encoder reranking (loads model on first use).
-        rerank_model: Override reranking model (flashrank, voyage, minilm, bge-m3).
+        rerank: If True, apply cross-encoder reranking. Only beneficial with
+            local/weak embeddings (nomic, bge). Degrades results with strong
+            models (voyage-*, text-embedding-3-*). Default False.
+        rerank_model: Override reranking model (flashrank, voyage, minilm,
+            bge-m3). Requires rerank=True. flashrank is lightweight (ONNX);
+            bge-m3 is heavy and slow without GPU.
         refresh: If True (default), auto-reindex changed files before searching.
     """
     repo_root, db_path = _resolve_context(path)
@@ -273,6 +287,7 @@ def ogrep_chunk(
     """Expand a chunk reference with surrounding context.
 
     Use after ogrep_query to read more code around an interesting result.
+    If the directory is not indexed, returns an error dict — do not retry.
 
     Args:
         ref: Chunk reference — "path/file.py:N" (path:chunk_index) or raw chunk ID.
@@ -362,6 +377,11 @@ def ogrep_index(
     Incremental by default — only embeds new/changed files.
     If reindex=True, clears current branch data and re-indexes from scratch.
 
+    The embedding model is auto-selected based on available API keys
+    (VOYAGE_API_KEY → voyage-code-3, OPENAI_API_KEY → text-embedding-3-small,
+    else local nomic). The model choice affects whether reranking helps —
+    see ogrep_query docstring.
+
     Args:
         path: Directory to index.
         no_ast: If True, use line-based chunking instead of AST-aware chunking.
@@ -407,6 +427,13 @@ def ogrep_index(
 @mcp.tool()
 def ogrep_status(path: str = ".") -> dict:
     """Show index statistics — files, chunks, model, branch info.
+
+    Returns the embedding model used for the index in the "model" field.
+    Use this to decide whether reranking is appropriate in ogrep_query:
+    strong models (voyage-*, text-embedding-3-*) do NOT benefit from
+    reranking; local models (nomic, bge, minilm) do.
+
+    If not indexed, returns {"indexed": false, "status": "not_indexed"}.
 
     Args:
         path: Directory to check.
@@ -475,6 +502,7 @@ def ogrep_health(path: str = ".") -> dict:
     """Database diagnostics — table stats, FTS5 info, integrity check.
 
     Read-only health check. For repairs use the CLI: ogrep health --vacuum
+    If not indexed, returns {"exists": false, "status": "not_indexed"}.
 
     Args:
         path: Directory to check.
