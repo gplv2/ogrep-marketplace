@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-05-03
+
+### 🐛 Fixed
+
+#### MCP Auto-Refresh Now Catches New Files
+
+The MCP query's `refresh=True` (the default) previously only detected **modified or deleted** files via `_check_stale_files()`, which only looked at files already in the database. **New files that were never indexed were invisible** — they weren't in the `files` table so they couldn't be "stale." This caused queries via MCP to return incomplete results until the user manually ran `ogrep index`.
+
+Now `refresh=True` always runs `_index_path`, which is already incremental (unchanged files are skipped cheaply via mtime/size/hash), but new files get indexed automatically.
+
+### ✨ Added
+
+#### Optional Background Refresh for MCP Server
+
+The MCP server can now periodically re-index all repos it has seen, picking up new and changed files automatically. Controlled by `OGREP_REFRESH_INTERVAL` (seconds, default `0` = disabled).
+
+```bash
+# .env or shell
+OGREP_REFRESH_INTERVAL=600  # every 10 minutes
+```
+
+- Tracks repos automatically as tool calls resolve them
+- Reads model/dims from the existing index (no extra config)
+- Daemon thread — dies when the MCP server exits
+- Only logs when files actually get indexed
+
+### 🔧 Changed
+
+#### Removed `reindex` Parameter from MCP `ogrep_index` Tool
+
+The `reindex: bool` parameter that cleared the current branch and rebuilt from scratch has been removed from the MCP tool. `ogrep_index` is already incremental and creational — it creates the index if missing, updates changed files, and skips unchanged ones. The destructive "nuke and rebuild" operation remains available via the CLI (`ogrep reindex`).
+
+#### Version Sync
+
+All version strings synchronized to 0.12.0 across `pyproject.toml`, `ogrep/__init__.py`, `ogrep/cli.py`, `plugin.json`, `marketplace.json`, and `tests/test_cli.py`.
+
 ## [0.11.0] - 2026-05-03
 
 ### ✨ Improved

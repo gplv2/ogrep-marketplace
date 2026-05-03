@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ogrep"
-version = "0.11.0"
+version = "0.12.0"
 description = "Semantic code search for AI agents and humans - hybrid fulltext/vector search, MCP-native, SQLite-backed, local or cloud embeddings"
 readme = "README.md"
 requires-python = ">=3.10"

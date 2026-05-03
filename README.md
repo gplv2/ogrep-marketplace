@@ -16,6 +16,12 @@ ogrep helps you search code by **meaning**, not just keywords. It builds a local
 
 ## What's New
 
+### v0.12.0: MCP Refresh Fix + Background Indexing
+
+- **Auto-refresh now catches new files** — MCP queries with `refresh=True` (the default) previously only detected modified/deleted files. New files that were never indexed were invisible. Now refresh always runs an incremental index, picking up new files automatically.
+- **Optional background refresh** — Set `OGREP_REFRESH_INTERVAL=600` to have the MCP server re-index all known repos every 10 minutes in the background. Keeps indexes fresh during long coding sessions.
+- **Removed `reindex` from MCP `ogrep_index`** — The tool is incremental and creational; the destructive "nuke and rebuild" stays CLI-only (`ogrep reindex`).
+
 ### v0.10.0: MCP Server — Native Tool Integration
 
 ogrep now includes an **MCP (Model Context Protocol) server** that exposes 5 native tools Claude can call directly — no shell spawning, no CLI parsing, no cold starts.
@@ -23,7 +29,7 @@ ogrep now includes an **MCP (Model Context Protocol) server** that exposes 5 nat
 **5 MCP tools:**
 - `ogrep_query` — Search with semantic, fulltext, or hybrid mode. Supports `summarize`, `glob`/`exclude`, `rerank`, and `branch`
 - `ogrep_chunk` — Expand a chunk reference with before/after context
-- `ogrep_index` — Index or re-index a directory (incremental, AST-aware)
+- `ogrep_index` — Incremental index (creates if missing, updates changed files, skips unchanged)
 - `ogrep_status` — Index statistics: files, chunks, model, branches
 - `ogrep_health` — Database diagnostics: table stats, FTS5, integrity check
 
@@ -951,6 +957,12 @@ ogrep tune . -m nomic --save --apply # Both
 |----------|-------------|---------|
 | `OGREP_VOYAGE_TIMEOUT` | API request timeout (seconds) | `120` |
 | `OGREP_VOYAGE_RETRIES` | Max retries on failure | `2` |
+
+### MCP Server
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OGREP_REFRESH_INTERVAL` | Background refresh interval (seconds, 0 = disabled) | `0` |
 
 ### Confidence Thresholds
 

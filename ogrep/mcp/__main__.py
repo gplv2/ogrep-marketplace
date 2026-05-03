@@ -13,7 +13,11 @@ Prerequisites:
 
 from __future__ import annotations
 
+import logging
+import os
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 # Load .env from cwd so API keys are available when Claude Code spawns the MCP
@@ -45,6 +49,71 @@ from ..search import query as _query_db  # noqa: E402
 
 mcp = FastMCP("ogrep")
 
+_log = logging.getLogger("ogrep.mcp")
+
+# ---------------------------------------------------------------------------
+# Background refresh
+# ---------------------------------------------------------------------------
+
+# Repos seen by any tool call — the refresh thread indexes all of them.
+_known_repos: dict[Path, Path] = {}  # repo_root -> db_path
+_known_repos_lock = threading.Lock()
+
+
+def _register_repo(repo_root: Path, db_path: Path) -> None:
+    """Record a repo so the background thread can refresh it."""
+    with _known_repos_lock:
+        _known_repos[repo_root] = db_path
+
+
+def _refresh_loop(interval: int) -> None:
+    """Periodically run incremental index on all known repos."""
+    while True:
+        time.sleep(interval)
+        with _known_repos_lock:
+            repos = dict(_known_repos)
+        for repo_root, db_path in repos.items():
+            if not db_path.exists():
+                continue
+            try:
+                con = sqlite3.connect(str(db_path))
+                row = con.execute("SELECT model, dim FROM chunks LIMIT 1").fetchone()
+                con.close()
+                if not row:
+                    continue
+                model, dim = row[0], row[1]
+                stats = _index_path(
+                    root=repo_root,
+                    db_path=db_path,
+                    model=model,
+                    dimensions=dim,
+                )
+                if stats.files_indexed > 0:
+                    _log.info(
+                        "background refresh: %s — %d files indexed",
+                        repo_root.name,
+                        stats.files_indexed,
+                    )
+            except Exception:
+                _log.debug("background refresh failed for %s", repo_root, exc_info=True)
+
+
+def _start_refresh_thread() -> None:
+    """Start background refresh if OGREP_REFRESH_INTERVAL is set."""
+    raw = os.environ.get("OGREP_REFRESH_INTERVAL", "0")
+    try:
+        interval = int(raw)
+    except ValueError:
+        return
+    if interval <= 0:
+        return
+    t = threading.Thread(target=_refresh_loop, args=(interval,), daemon=True)
+    t.start()
+    _log.info("background refresh enabled: every %ds", interval)
+
+
+_start_refresh_thread()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,6 +124,7 @@ def _resolve_context(path: str = ".") -> tuple[Path, Path]:
     """Resolve repo root and DB path from a directory.
 
     Uses git root detection so .ogrep/ is always at the repo root.
+    Also registers the repo for background refresh.
 
     Returns:
         (repo_root, db_path)
@@ -66,6 +136,8 @@ def _resolve_context(path: str = ".") -> tuple[Path, Path]:
 
     # Load .env from the resolved repo root (may differ from cwd at startup)
     load_dotenv(repo_root / ".env", override=False)
+
+    _register_repo(repo_root, db_path)
 
     return repo_root, db_path
 
@@ -173,20 +245,19 @@ def ogrep_query(
     # Resolve branch
     search_branch = branch or get_current_branch(repo_root)
 
-    # Auto-refresh: reindex changed files before querying
+    # Auto-refresh: run incremental index before querying.
+    # Always call _index_path (not just on stale files) so NEW files
+    # that were never indexed also get picked up.  index_path is
+    # already incremental — unchanged files are skipped cheaply.
     refreshed_files = 0
     if refresh:
-        from ..commands.query import _check_stale_files
-
-        stale_files = _check_stale_files(db_path, repo_root)
-        if stale_files:
-            stats = _index_path(
-                root=repo_root,
-                db_path=db_path,
-                model=index_model,
-                dimensions=index_dim,
-            )
-            refreshed_files = stats.files_indexed
+        stats = _index_path(
+            root=repo_root,
+            db_path=db_path,
+            model=index_model,
+            dimensions=index_dim,
+        )
+        refreshed_files = stats.files_indexed
 
     # Over-fetch when filtering or reranking
     fetch_limit = top_k
@@ -370,12 +441,12 @@ def ogrep_chunk(
 def ogrep_index(
     path: str = ".",
     no_ast: bool = False,
-    reindex: bool = False,
 ) -> dict:
-    """Index (or re-index) a directory for semantic search.
+    """Index a directory for semantic search.
 
-    Incremental by default — only embeds new/changed files.
-    If reindex=True, clears current branch data and re-indexes from scratch.
+    Incremental — only embeds new or changed files, skips unchanged ones.
+    Safe to call repeatedly; it creates the index if missing or updates it
+    if files have changed.
 
     The embedding model is auto-selected based on available API keys
     (VOYAGE_API_KEY → voyage-code-3, OPENAI_API_KEY → text-embedding-3-small,
@@ -385,22 +456,8 @@ def ogrep_index(
     Args:
         path: Directory to index.
         no_ast: If True, use line-based chunking instead of AST-aware chunking.
-        reindex: If True, clear and rebuild the index for the current branch.
     """
     repo_root, db_path = _resolve_context(path)
-
-    # If reindex, clear current branch first
-    if reindex and db_path.exists():
-        branch = get_current_branch(repo_root)
-        con = connect(db_path, init_fts=False)
-        try:
-            con.execute(
-                "DELETE FROM files WHERE branch = ?",
-                (branch,),
-            )
-            con.commit()
-        finally:
-            con.close()
 
     stats = _index_path(
         root=repo_root,

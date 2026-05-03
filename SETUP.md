@@ -15,7 +15,7 @@ OPENAI_API_KEY=sk-your-key
 
 This works everywhere:
 - **CLI:** ogrep loads `.env` via python-dotenv
-- **MCP server:** The MCP server loads `.env` from the project root at startup (v0.10.3+)
+- **MCP server:** The MCP server loads `.env` from the project root at startup (v0.10.3+). Also supports `OGREP_REFRESH_INTERVAL` for background re-indexing (v0.12.0+).
 - **Claude Code Bash commands:** Use with `direnv` or `activate.sh` to export into the shell
 
 **Why this is recommended:** Standard Python convention. Works for both CLI and MCP. The `.env` file is per-project and goes in `.gitignore`.

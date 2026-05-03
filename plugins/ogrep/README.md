@@ -48,7 +48,7 @@ ogrep index .
 
 The plugin provides three layers:
 
-- **MCP server** — 5 native tools (`ogrep_query`, `ogrep_chunk`, `ogrep_index`, `ogrep_status`, `ogrep_health`) that Claude calls directly as first-class tools
+- **MCP server** — 5 native tools (`ogrep_query`, `ogrep_chunk`, `ogrep_index`, `ogrep_status`, `ogrep_health`) that Claude calls directly as first-class tools. Queries auto-refresh the index (new + changed files). Optional background refresh via `OGREP_REFRESH_INTERVAL`.
 - **Search agent** — Dispatched automatically for conceptual code questions, runs a summarize-narrow-drill workflow through MCP tools
 - **Skill** — Routing layer that tells Claude *when* to use ogrep
 
