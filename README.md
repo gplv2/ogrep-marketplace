@@ -1,6 +1,6 @@
 # ogrep
 
-**Semantic grep for codebases** — local-first, SQLite-backed, with MCP server and agentic Claude Code integration.
+**Semantic code search for AI agents and humans** — hybrid fulltext/vector search, MCP-native, SQLite-backed, local or cloud embeddings.
 
 ogrep helps you search code by **meaning**, not just keywords. It builds a local semantic index (`.ogrep/index.sqlite` by default) and retrieves the most relevant code chunks for questions like:
 
