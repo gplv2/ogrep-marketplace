@@ -1,21 +1,37 @@
-## Environment Variables for Claude Code
+## API Key Configuration
 
-**Important:** Claude Code runs bash commands in a non-interactive shell, which means environment variables from `.bashrc`, `.zshrc`, or `direnv` are **not automatically loaded**.
+ogrep needs at least one API key for embeddings. There are three ways to provide it, in priority order:
 
-You must configure environment variables in Claude Code's settings files.
+### Option 1: `.env` file in your project (recommended)
 
-### Option 1: Project-level (recommended)
-
-Create `.claude/settings.local.json` in your project:
+Create a `.env` file in your project root:
 
 ```bash
-# Copy the example template
-cp .claude/settings.json.example .claude/settings.local.json
+# .env — add to .gitignore!
+VOYAGE_API_KEY=pa-your-key
+# or
+OPENAI_API_KEY=sk-your-key
+```
 
+This works everywhere:
+- **CLI:** ogrep loads `.env` via python-dotenv
+- **MCP server:** The MCP server loads `.env` from the project root at startup (v0.10.3+)
+- **Claude Code Bash commands:** Use with `direnv` or `activate.sh` to export into the shell
+
+**Why this is recommended:** Standard Python convention. Works for both CLI and MCP. The `.env` file is per-project and goes in `.gitignore`.
+
+### Option 2: Claude Code settings (Claude Code only)
+
+Claude Code injects `env` from settings into all child processes (including MCP servers).
+
+**Project-level** — `.claude/settings.local.json`:
+
+```bash
+cp .claude/settings.json.example .claude/settings.local.json
 # Edit and add your actual API keys
 ```
 
-Or create it directly with your shell's env vars:
+Or create directly:
 
 ```bash
 cat << EOF > .claude/settings.local.json
@@ -28,9 +44,7 @@ cat << EOF > .claude/settings.local.json
 EOF
 ```
 
-### Option 2: User-level (all projects)
-
-Add to `~/.claude/settings.json`:
+**User-level** (all projects) — `~/.claude/settings.json`:
 
 ```json
 {
@@ -41,11 +55,65 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
+### Option 3: Shell environment variables
+
+```bash
+export VOYAGE_API_KEY=pa-your-key
+```
+
+Works for CLI. For Claude Code, shell vars from `.bashrc`/`.zshrc` are **not inherited** by non-interactive sessions — use Option 1 or 2 instead.
+
+### Priority order
+
+When multiple sources provide the same key, explicit env vars win:
+
+1. Shell environment (highest)
+2. Claude Code settings (`settings.local.json`)
+3. `.env` file in project root (lowest, `override=False`)
+
 ### Settings Template
 
 See `.claude/settings.json.example` for all available environment variables. Convention:
 - Keys starting with `_` are disabled (commented out)
 - Remove the `_` prefix to enable a setting
+
+---
+
+## Updating the Plugin
+
+Claude Code caches plugins at install time. After a new ogrep release, the cache still has the old version — `/plugin` will report "already at latest" even though it's stale.
+
+### Fix: Nuke cache and reinstall
+
+```bash
+rm -rf ~/.claude/plugins/cache/ogrep-marketplace
+```
+
+Then restart Claude Code and reinstall:
+```
+/plugin install ogrep@ogrep-marketplace
+```
+
+### For developers: Symlink instead of cache
+
+If you're developing ogrep or want to always run from your local checkout:
+
+```bash
+rm -rf ~/.claude/plugins/cache/ogrep-marketplace/ogrep
+ln -s ~/repos/ogrep-marketplace/plugins/ogrep ~/.claude/plugins/cache/ogrep-marketplace/ogrep
+```
+
+This way Claude Code always loads your local dev copy — no more stale cache. Changes to plugin files (agent, skill, plugin.json) take effect on the next Claude Code restart.
+
+### Verify
+
+After updating, check that the MCP server is registered:
+```bash
+cat ~/.claude/plugins/cache/ogrep-marketplace/ogrep/.claude-plugin/plugin.json | grep version
+# Should show the latest version with mcpServers
+```
+
+In Claude Code, `/mcp` should list the ogrep server.
 
 ---
 

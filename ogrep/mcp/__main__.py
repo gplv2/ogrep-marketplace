@@ -16,6 +16,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+# Load .env from cwd so API keys are available when Claude Code spawns the MCP
+# child process. python-dotenv is a core ogrep dependency, so always available.
+# override=False means explicit env vars (from shell, Claude settings, or
+# plugin.json "env") always win over .env file values.
+from dotenv import load_dotenv
+
+load_dotenv(Path.cwd() / ".env", override=False)
+
 try:
     from mcp.server.fastmcp import FastMCP
 except Exception as e:
@@ -24,16 +32,16 @@ except Exception as e:
         f"Original import error: {e}"
     ) from e
 
-from ..commands._common import (
+from ..commands._common import (  # noqa: E402
     detect_language,
     find_git_root,
     get_current_branch,
     resolve_db_path,
 )
-from ..db import connect, get_branch_file_counts
-from ..indexer import index_path as _index_path
-from ..search import Hit, PathFilter, filter_hits_by_path
-from ..search import query as _query_db
+from ..db import connect, get_branch_file_counts  # noqa: E402
+from ..indexer import index_path as _index_path  # noqa: E402
+from ..search import Hit, PathFilter, filter_hits_by_path  # noqa: E402
+from ..search import query as _query_db  # noqa: E402
 
 mcp = FastMCP("ogrep")
 
@@ -55,6 +63,10 @@ def _resolve_context(path: str = ".") -> tuple[Path, Path]:
     git_root = find_git_root(target)
     repo_root = git_root if git_root else target
     db_path = resolve_db_path(None, None, False, repo_root)
+
+    # Load .env from the resolved repo root (may differ from cwd at startup)
+    load_dotenv(repo_root / ".env", override=False)
+
     return repo_root, db_path
 
 
@@ -113,6 +125,7 @@ def ogrep_query(
     summarize: bool = False,
     rerank: bool = False,
     rerank_model: str | None = None,
+    refresh: bool = True,
 ) -> dict:
     """Search the ogrep index using semantic, fulltext, or hybrid search.
 
@@ -130,6 +143,7 @@ def ogrep_query(
         summarize: If True, aggregate results to file-level summary.
         rerank: If True, apply cross-encoder reranking (loads model on first use).
         rerank_model: Override reranking model (flashrank, voyage, minilm, bge-m3).
+        refresh: If True (default), auto-reindex changed files before searching.
     """
     repo_root, db_path = _resolve_context(path)
 
@@ -144,6 +158,21 @@ def ogrep_query(
 
     # Resolve branch
     search_branch = branch or get_current_branch(repo_root)
+
+    # Auto-refresh: reindex changed files before querying
+    refreshed_files = 0
+    if refresh:
+        from ..commands.query import _check_stale_files
+
+        stale_files = _check_stale_files(db_path, repo_root)
+        if stale_files:
+            stats = _index_path(
+                root=repo_root,
+                db_path=db_path,
+                model=index_model,
+                dimensions=index_dim,
+            )
+            refreshed_files = stats.files_indexed
 
     # Over-fetch when filtering or reranking
     fetch_limit = top_k
@@ -207,6 +236,7 @@ def ogrep_query(
         "index_model": index_model,
         "index_dimensions": index_dim,
         "branch": search_branch,
+        "refreshed_files": refreshed_files,
     }
     if filter_stats is not None:
         stats["path_filter"] = filter_stats.to_dict()

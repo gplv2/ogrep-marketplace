@@ -4,41 +4,31 @@
 
 **ogrep** is a local semantic grep tool: SQLite index + OpenAI/local embeddings + FTS5 hybrid search + branch-aware indexing.
 
-## Claude Code Environment Setup
+## API Key Configuration
 
-**Critical:** Claude Code runs bash commands in a non-interactive shell. Environment variables from `.bashrc`, `.zshrc`, or `direnv` are **NOT automatically loaded**.
-
-### Configure API Keys
-
-Create `.claude/settings.local.json` in your project:
+ogrep needs at least one embedding API key. The **recommended** approach is a `.env` file in your project root:
 
 ```bash
-# Option 1: Copy from template
-cp .claude/settings.json.example .claude/settings.local.json
-# Then edit with your actual keys
-
-# Option 2: Generate from current shell (run in terminal where env is loaded)
-cat << EOF > .claude/settings.local.json
-{
-  "env": {
-    "VOYAGE_API_KEY": "$VOYAGE_API_KEY",
-    "OPENAI_API_KEY": "$OPENAI_API_KEY"
-  }
-}
-EOF
+# .env — add to .gitignore!
+VOYAGE_API_KEY=pa-your-key
+# or
+OPENAI_API_KEY=sk-your-key
 ```
 
-Or configure globally in `~/.claude/settings.json` for all projects.
+This works for both CLI and the MCP server (which loads `.env` automatically via `python-dotenv`).
 
-### Settings Template
+**Alternative for Claude Code:** Configure in `.claude/settings.local.json`:
 
-See `.claude/settings.json.example` for all available settings. Convention:
-- Keys starting with `_` are disabled (e.g., `_OGREP_MODEL`)
-- Remove the `_` prefix to enable a setting
+```bash
+cp .claude/settings.json.example .claude/settings.local.json
+# Edit with your actual keys
+```
 
-### Why This Matters
+Or globally in `~/.claude/settings.json` for all projects.
 
-Without this configuration, Claude Code cannot run `ogrep` commands that require API access. You'll see authentication errors even if your terminal has the env vars set.
+**Priority:** Shell env > Claude Code settings > `.env` file (lowest, `override=False`).
+
+See `SETUP.md` for full details and `.claude/settings.json.example` for all available settings.
 
 ## CLI Quick Reference
 

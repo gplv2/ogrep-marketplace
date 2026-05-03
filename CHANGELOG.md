@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-05-03
+
+### 🐛 Fixed
+
+#### MCP Server Environment: API Keys Not Reaching the Server
+
+**This is the fix release for v0.10.x.** The MCP server shipped in v0.10.0–0.10.2 had a critical gap: it could not find API keys when spawned by Claude Code. The server runs as a child process without shell environment variables (`.bashrc`/`.zshrc` are not loaded), and the v0.10.0 implementation did not load `.env` files. This meant the MCP server would fail with authentication errors on any machine where API keys weren't set via Claude Code's `settings.local.json`.
+
+**What was broken:** The MCP server had no mechanism to discover API keys on its own. It relied entirely on the parent process (Claude Code) injecting them — which only works if the user configures `.claude/settings.local.json`. Most Python developers use `.env` files, which were silently ignored.
+
+**What's fixed:** The MCP server now loads `.env` from the project root at startup via `python-dotenv` (already a core ogrep dependency). This is the standard Python convention and works everywhere:
+
+- Loads `.env` from cwd at server startup (covers most cases)
+- Loads `.env` from resolved repo root per-tool-call (handles cwd != target project)
+- Uses `override=False` — explicit env vars (shell, Claude settings) always take priority
+
+**Priority order for API keys:**
+1. Shell environment (highest)
+2. Claude Code `settings.local.json` `env` (injected into child processes)
+3. `.env` file in project root (lowest, never overrides the above)
+
+### 📝 Documentation
+
+**The v0.10.0–0.10.2 releases had incomplete documentation.** API key setup for the MCP server was undocumented, and existing docs incorrectly stated that `.env` files don't work with Claude Code (they do now — the MCP server loads them directly). This release fixes and unifies all documentation:
+
+- **SETUP.md**: Complete rewrite. Recommends `.env` as primary approach with clear priority table. Documents all three methods (`.env`, Claude settings, shell env) with when to use each.
+- **README.md**: Updated installation section — shows `.env` setup instead of only `settings.local.json`. Added "MCP Server API Key Configuration" section explaining how keys reach the server.
+- **CLAUDE.md**: Simplified API key section. Recommends `.env`, references SETUP.md for full details. Removed outdated "Critical" warning about non-interactive shells (no longer relevant for MCP).
+- **plugins/ogrep/README.md**: Rewritten for v0.10.x. Documents MCP server, `.env` setup, three-layer architecture (MCP + agent + skill).
+
 ## [0.10.2] - 2026-05-02
 
 ### 📝 Documentation

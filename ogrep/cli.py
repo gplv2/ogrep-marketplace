@@ -61,7 +61,7 @@ from .commands import (
 from .commands._arg_builders import add_benchmark_args, add_indexing_args, add_model_args
 from .commands._common import add_scope_args
 
-__version__ = "0.10.2"
+__version__ = "0.10.3"
 
 
 def _add_index_command(sub: argparse._SubParsersAction) -> None:

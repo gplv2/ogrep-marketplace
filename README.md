@@ -159,14 +159,16 @@ Note: pipx sometimes has issues. If you encounter problems, use pip instead.
 
 It will ask where to install. Use 'user' mode — local mode can cause path issues when working on multiple codebases.
 
-**Important:** Claude Code runs bash in a non-interactive shell, so environment variables from `.bashrc`/`.zshrc`/`direnv` are **not loaded**. You must configure API keys in `.claude/settings.local.json`:
+**API keys:** Create a `.env` file in your project root (the MCP server loads it automatically):
 
 ```bash
-cp .claude/settings.json.example .claude/settings.local.json
-# Edit with your actual API keys
+# .env — add to .gitignore!
+VOYAGE_API_KEY=pa-your-key
 ```
 
-See [SETUP.md](SETUP.md) for details.
+Or configure in `.claude/settings.local.json` — see [SETUP.md](SETUP.md) for all options.
+
+**Updating:** Claude Code caches plugins. After a new release: `rm -rf ~/.claude/plugins/cache/ogrep-marketplace`, restart Claude Code, and reinstall. See [SETUP.md](SETUP.md#updating-the-plugin) for details.
 
 ### Optional Extras
 
@@ -567,6 +569,26 @@ As of v0.10.0, ogrep runs as an **MCP server** with a **dedicated search agent**
 - **Agent** dispatches automatically for conceptual questions, routing through MCP tools for fast structured results
 - **Direct access** — Claude can also call `ogrep_query` or `ogrep_status` directly for quick lookups without the agent
 - **Skill** acts as a lightweight router — decides *when* to use ogrep, the agent handles *how*
+
+### MCP Server API Key Configuration
+
+The MCP server loads API keys from your project's `.env` file automatically (via `python-dotenv`). This is the simplest setup:
+
+```bash
+# Create .env in your project root
+echo "VOYAGE_API_KEY=pa-your-key" >> .env
+echo ".env" >> .gitignore
+```
+
+**How API keys reach the MCP server** (in priority order):
+
+| Source | How it works |
+|--------|-------------|
+| Shell environment | Inherited if Claude Code was started from a shell with env vars set |
+| Claude Code settings | `env` from `settings.local.json` is injected into all child processes |
+| `.env` file | Loaded by the MCP server at startup (`override=False` — never overrides the above) |
+
+The `.env` approach is recommended because it's standard Python, per-project, and works for both CLI and MCP.
 
 ---
 
